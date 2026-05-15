@@ -10,3 +10,11 @@ services:
             - /app/node_modules
         environment:
             - CHOKIDAR_USEPOLLING=true
+    backend:
+        build: .
+        container_name: backend
+        ports:
+            - '8000:8000'
+        env_file:
+            - .env
+        restart: unless-stopped
