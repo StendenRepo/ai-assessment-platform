@@ -14,8 +14,8 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+frontend/.next/
+frontend/out/
 
 # production
 /build
@@ -49,3 +49,14 @@ backend/.pytest_cache/
 # editor
 .vscode/
 .idea/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.env
