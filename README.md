@@ -209,28 +209,45 @@ EXPORT_DIR=/app/data/exports
 
 # Database Migration
 
-To set up and migrate the database, follow these steps:
+Run Alembic inside the backend container.
 
-1. Ensure you have the Python environment set up:
-
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
-
-2. Generate a migration script:
+1. Start services:
 
     ```bash
-    alembic revision --autogenerate -m "Migration message"
+    docker compose -f docker-compose.dev.yml up -d --build
     ```
 
-3. Apply the migration:
+2. Create a new migration after model changes:
+
     ```bash
-    alembic upgrade head
+    docker compose -f docker-compose.dev.yml exec backend alembic revision --autogenerate -m "describe change"
     ```
 
-The database will now be up-to-date with the models defined in the application.
+3. Upgrade to the latest revision:
+
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
+    ```
+
+4. Check the current revision:
+
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend alembic current -v
+    ```
+
+5. Downgrade one revision:
+
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend alembic downgrade -1
+    ```
+
+6. View migration history:
+
+    ```bash
+    docker compose -f docker-compose.dev.yml exec backend alembic history --indicate-current
+    ```
+
+Use the same commands with docker-compose.yml for non-dev environments.
 
 ---
 
