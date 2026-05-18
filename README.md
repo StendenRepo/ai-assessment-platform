@@ -23,20 +23,24 @@ The project is currently in the prototype and development phase.
 
 ## Frontend
 
-- React
-- Next.js
+- React 19
+- Next.js 16 (App Router)
 - JavaScript
-- Tailwind CSS
+- Tailwind CSS 4
+- ESLint
 
 ## Backend
 
-Backend technology is currently under evaluation.
+- Python
+- FastAPI
+- SQLAlchemy 2 (ORM)
+- Alembic (migrations)
+- PostgreSQL 16
 
-Potential backend technologies:
+## Infrastructure
 
-- Node.js
-- NestJS
-- Python FastAPI
+- Docker & Docker Compose
+- pgAdmin 4 (development only)
 
 ## Version Control
 
@@ -50,9 +54,26 @@ Potential backend technologies:
 ```txt
 ai-assessment-platform/
 │
-├── frontend/        # Next.js frontend application
-├── backend/         # Backend application (future)
-├── docs/            # Documentation and project files
+├── frontend/                  # Next.js frontend application
+│   ├── src/app/               # App Router pages and layouts
+│   ├── public/                # Static assets
+│   ├── Dockerfile
+│   └── package.json
+│
+├── backend/                   # FastAPI backend application
+│   ├── app/
+│   │   ├── config.py          # Environment-based settings
+│   │   ├── database.py        # SQLAlchemy engine & session
+│   │   ├── main.py            # FastAPI app entry point
+│   │   ├── models/            # SQLAlchemy models
+│   │   ├── routes/            # API route handlers
+│   │   └── services/          # Business logic
+│   ├── .env.example           # Environment variable template
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── docker-compose.yml         # Production stack
+├── docker-compose.dev.yml     # Development overrides (pgAdmin, hot-reload)
 └── README.md
 ```
 
@@ -62,10 +83,7 @@ ai-assessment-platform/
 
 ## Prerequisites
 
-Make sure the following software is installed:
-
-- Node.js
-- npm
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - Git
 
 ---
@@ -76,34 +94,42 @@ Clone the repository:
 
 ```bash
 git clone <repository-url>
+cd ai-assessment-platform
 ```
 
-Navigate to the frontend folder:
+Copy the backend environment template:
 
 ```bash
-cd frontend
+cp backend/.env.example backend/.env
 ```
 
-Install dependencies:
-
-```bash
-npm install
-```
+The default values in `.env` work out of the box with Docker Compose. Edit the file if you need custom credentials.
 
 ---
 
 # Running the Project
 
-Start the development server:
+## Development
+
+Starts all services with hot-reload for the frontend and pgAdmin for database management:
 
 ```bash
-npm run dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Open the application in your browser:
+| Service  | URL                   |
+| -------- | --------------------- |
+| Frontend | http://localhost:3000 |
+| Backend  | http://localhost:8000 |
+| pgAdmin  | http://localhost:5050 |
 
-```txt
-http://localhost:3000
+**pgAdmin login:** `admin@admin.com` / `admin`
+Connect to the database using host `postgres`, port `5432`, database `ai_assessment`, user `postgres`, password `postgres`.
+
+## Production
+
+```bash
+docker compose up -d --build
 ```
 
 ---
@@ -168,11 +194,16 @@ git push origin feature/feature-name
 
 # Environment Variables
 
-Create a `.env.local` file inside the frontend directory:
+Copy `backend/.env.example` to `backend/.env` and adjust as needed:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8080
+DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_assessment
+UPLOAD_DIR=/app/data/uploads
+RECORDING_DIR=/app/data/recordings
+EXPORT_DIR=/app/data/exports
 ```
+
+> `backend/.env` is git-ignored. Never commit real credentials — use `backend/.env.example` as the committed template.
 
 ---
 
@@ -185,4 +216,3 @@ Developed by HBO Informatica students at NHL Stenden.
 # License
 
 This project is currently intended for educational purposes.
-
