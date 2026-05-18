@@ -6,23 +6,6 @@ services:
         ports:
             - '3000:3000'
         restart: unless-stopped
-    postgres:
-        image: postgres:16-alpine
-        container_name: postgres
-        ports:
-            - '5432:5432'
-        environment:
-            POSTGRES_USER: ${POSTGRES_USER:-postgres}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-            POSTGRES_DB: ${POSTGRES_DB:-ai_assessment}
-        volumes:
-            - postgres_data:/var/lib/postgresql/data
-        healthcheck:
-            test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_assessment}']
-            interval: 10s
-            timeout: 5s
-            retries: 5
-        restart: unless-stopped
     backend:
         build:
             context: ./backend
@@ -37,6 +20,21 @@ services:
         depends_on:
             postgres:
                 condition: service_healthy
+        restart: unless-stopped
+    postgres:
+        image: postgres:16-alpine
+        container_name: postgres
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:-postgres}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+            POSTGRES_DB: ${POSTGRES_DB:-ai_assessment}
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_assessment}']
+            interval: 10s
+            timeout: 5s
+            retries: 5
         restart: unless-stopped
 
 volumes:
