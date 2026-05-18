@@ -1,16 +1,16 @@
 from fastapi import FastAPI
-from app.routes.health import router as health_router
+
+from app.api.v1.router import api_router
+from app.config import settings
 
 app = FastAPI(
-    title="AI Assessment Service",
-    version="0.1.0"
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
 )
 
-app.include_router(health_router)
+app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")
 def root():
-    return {
-        "message": "AI Assessment Service Running"
-    }
+    return {"message": "AI Assessment Service Running"}
