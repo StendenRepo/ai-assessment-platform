@@ -207,6 +207,33 @@ EXPORT_DIR=/app/data/exports
 
 ---
 
+# Database Migration
+
+To set up and migrate the database, follow these steps:
+
+1. Ensure you have the Python environment set up:
+
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
+
+2. Generate a migration script:
+
+    ```bash
+    alembic revision --autogenerate -m "Migration message"
+    ```
+
+3. Apply the migration:
+    ```bash
+    alembic upgrade head
+    ```
+
+The database will now be up-to-date with the models defined in the application.
+
+---
+
 # Contributors
 
 Developed by HBO Informatica students at NHL Stenden.
