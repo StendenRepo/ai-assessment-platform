@@ -251,45 +251,6 @@ Use the same commands with docker-compose.yml for non-dev environments.
 
 ---
 
-# Backend Setup
-
-Navigate to backend:
-
-```bash
-cd backend
-```
-
-Start PostgreSQL:
-
-```bash
-docker run --name postgres-test -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ai_assessment -p 5432:5432 -d postgres:16
-```
-
-Install dependencies:
-
-```bash
-pip install sqlalchemy fastapi uvicorn python-dotenv "psycopg[binary]" alembic python-multipart
-```
-
-Create tables:
-
-```bash
-python test_db.py
-```
-Verify tables:
-
-```bash
-docker exec -it postgres-test psql -U postgres -d ai_assessment -c "\dt"
-```
-
-Run the backend:
-
-```bash
-python -m uvicorn app.main:app --reload
-```
-
-Open in browser: http://localhost:8000
-
 # Contributors
 
 Developed by HBO Informatica students at NHL Stenden.
