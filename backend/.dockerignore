@@ -1,5 +1,12 @@
 venv
 __pycache__
 *.pyc
+*.pyo
 .env
 .git
+.gitignore
+*.md
+Dockerfile*
+.dockerignore
+test_db.py
+database

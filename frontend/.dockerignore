@@ -1,3 +1,10 @@
 node_modules
 .next
 .git
+.gitignore
+.husky
+.prettierrc
+.eslintrc*
+*.md
+Dockerfile*
+.dockerignore
