@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import Reports from '@/components/Reports';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import Reports from './_components/Reports';
 
 export default function ReportsPage() {
   return (

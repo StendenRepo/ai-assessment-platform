@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import Dashboard from '@/components/Dashboard';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import Dashboard from './_components/Dashboard';
 
 export default function DashboardPage() {
   return (

@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import ProjectDetail from '@/components/ProjectDetail';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import ProjectDetail from './_components/ProjectDetail';
 
 export default async function ProjectDetailPage({ params }) {
   const { projectId, groupId } = await params;

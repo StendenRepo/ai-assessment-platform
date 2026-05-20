@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import CriteriaSetup from '@/components/CriteriaSetup';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import CriteriaSetup from './_components/CriteriaSetup';
 
 export default async function CriteriaPage({ params }) {
   const { projectId } = await params;

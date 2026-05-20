@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import ProjectSetup from '@/components/ProjectSetup';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import ProjectSetup from './_components/ProjectSetup';
 
 export default function NewProjectPage() {
   return (

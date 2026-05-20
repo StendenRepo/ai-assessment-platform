@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import GroupsList from '@/components/GroupsList';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import GroupsList from './_components/GroupsList';
 
 export default async function GroupsPage({ params }) {
   const { projectId } = await params;
