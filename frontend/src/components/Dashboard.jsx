@@ -1,8 +1,11 @@
 'use client';
+
 import { useRouter } from 'next/navigation';
 import { mockProjects } from '@/lib/mockData';
+
 export default function Dashboard() {
   const router = useRouter();
+
   return (
     <div>
       <div className="mb-8">

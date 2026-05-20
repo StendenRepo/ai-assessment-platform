@@ -1,6 +1,8 @@
 'use client';
+
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+
 const navItems = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Projects', href: '/projects' },
@@ -8,9 +10,11 @@ const navItems = [
   { label: 'Reports', href: '/reports' },
   { label: 'Settings', href: '/settings' },
 ];
+
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
+
   const isActive = (href) => {
     if (href === '/dashboard') return pathname === '/dashboard';
     if (href === '/projects/new') return pathname === '/projects/new';
@@ -18,6 +22,7 @@ export default function Header() {
       return pathname.startsWith('/projects') && pathname !== '/projects/new';
     return pathname.startsWith(href);
   };
+
   return (
     <div className="bg-white border-b-2 border-gray-300">
       <div className="max-w-7xl mx-auto px-8 py-4">

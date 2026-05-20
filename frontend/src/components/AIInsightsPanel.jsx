@@ -1,11 +1,14 @@
 'use client';
+
 import { useState } from 'react';
 import { mockAIInsights } from '@/lib/mockData';
+
 export default function AIInsightsPanel({ studentId }) {
   const relevantInsights = mockAIInsights.filter((insight) =>
     insight.affectedStudents.includes(studentId)
   );
   const [expandedInsight, setExpandedInsight] = useState(null);
+
   return (
     <div className="space-y-4">
       <div className="border-2 border-gray-400 p-4">

@@ -27,6 +27,7 @@ export const mockProjects = [
     assessmentProgress: 60,
   },
 ];
+
 export const mockStudents = [
   {
     id: 'student-1',
@@ -58,6 +59,7 @@ export const mockStudents = [
     assessmentStatus: 'in-progress',
   },
 ];
+
 export const mockContributions = [
   {
     id: 'contrib-1',
@@ -121,6 +123,7 @@ export const mockContributions = [
     aiConfidence: 0.75,
   },
 ];
+
 export const mockCriteria = [
   {
     id: 'crit-1',
@@ -158,6 +161,7 @@ export const mockCriteria = [
     category: 'Communication',
   },
 ];
+
 export const mockAIInsights = [
   {
     id: 'insight-1',

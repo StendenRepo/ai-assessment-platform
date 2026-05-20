@@ -1,14 +1,18 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
   const handleSubmit = (e) => {
     e.preventDefault();
     router.push('/dashboard');
   };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="w-full max-w-md">
@@ -73,7 +77,7 @@ export default function LoginPage() {
 
         <div className="border-2 border-gray-400 bg-white p-4 mt-6">
           <div className="text-xs">
-            <div className="font-bold mb-2">[i] Privacy & Security</div>
+            <div className="font-bold mb-2">[i] Privacy &amp; Security</div>
             <p className="text-gray-600">
               This system processes all data on-premises and complies with GDPR
               regulations. Your credentials are stored securely.

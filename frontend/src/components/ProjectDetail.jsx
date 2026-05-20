@@ -1,7 +1,9 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { mockStudents } from '@/lib/mockData';
+
 const evidenceFiles = [
   {
     id: '1',
@@ -32,10 +34,12 @@ const evidenceFiles = [
     date: '2026-05-11',
   },
 ];
+
 export default function ProjectDetail({ projectId, groupId }) {
   const router = useRouter();
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+
   const group = {
     id: groupId,
     name: 'Group 1',
@@ -44,12 +48,14 @@ export default function ProjectDetail({ projectId, groupId }) {
     course: 'Advanced Web Development',
     deadline: '2026-06-15',
   };
+
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
     else if (e.type === 'dragleave') setDragActive(false);
   };
+
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -58,11 +64,13 @@ export default function ProjectDetail({ projectId, groupId }) {
       setUploadedFiles([...uploadedFiles, ...Array.from(e.dataTransfer.files)]);
     }
   };
+
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       setUploadedFiles([...uploadedFiles, ...Array.from(e.target.files)]);
     }
   };
+
   return (
     <div>
       <div className="mb-8">
@@ -191,7 +199,9 @@ export default function ProjectDetail({ projectId, groupId }) {
             <div className="border-t-2 border-gray-300 pt-4">
               <div className="text-sm font-bold mb-2">Add Evidence</div>
               <div
-                className={`border-2 border-dashed ${dragActive ? 'border-gray-900 bg-gray-100' : 'border-gray-400'} p-6 text-center transition-all`}
+                className={`border-2 border-dashed ${
+                  dragActive ? 'border-gray-900 bg-gray-100' : 'border-gray-400'
+                } p-6 text-center transition-all`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}

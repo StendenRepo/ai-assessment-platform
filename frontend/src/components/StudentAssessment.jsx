@@ -1,7 +1,9 @@
 'use client';
+
 import { useState, useEffect, useRef } from 'react';
 import { mockStudents, mockContributions, mockCriteria } from '@/lib/mockData';
 import AIInsightsPanel from './AIInsightsPanel';
+
 export default function StudentAssessment({ studentId, projectId, groupId }) {
   const student = mockStudents.find((s) => s.id === studentId);
   const [currentTab, setCurrentTab] = useState(0);
@@ -14,6 +16,7 @@ export default function StudentAssessment({ studentId, projectId, groupId }) {
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const timerRef = useRef(null);
+
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(
@@ -27,27 +30,33 @@ export default function StudentAssessment({ studentId, projectId, groupId }) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRecording, isPaused]);
+
   if (!student) return <div>Student not found</div>;
+
   const handleScoreChange = (criterionId, value) => {
     const numValue = parseFloat(value);
     if (!isNaN(numValue)) setScores({ ...scores, [criterionId]: numValue });
   };
+
   const calculateOverallScore = () => {
     const vals = Object.values(scores);
     if (vals.length === 0) return 0;
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
   };
+
   const handleConsentSubmit = () => {
     if (consentGiven) {
       setShowConsentPopup(false);
       setIsRecording(true);
     }
   };
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
+
   return (
     <div>
       <div className="border-2 border-gray-400 p-6 mb-8">
@@ -89,7 +98,7 @@ export default function StudentAssessment({ studentId, projectId, groupId }) {
                 className={`px-6 py-3 border-r-2 border-gray-400 ${currentTab === 0 ? 'bg-gray-300 font-bold' : ''}`}
                 onClick={() => setCurrentTab(0)}
               >
-                Contributions & Evidence
+                Contributions &amp; Evidence
               </button>
               <button
                 className={`px-6 py-3 ${currentTab === 1 ? 'bg-gray-300 font-bold' : ''}`}
@@ -351,7 +360,7 @@ export default function StudentAssessment({ studentId, projectId, groupId }) {
                   }}
                   className="w-full border-2 border-gray-400 bg-gray-900 text-white px-4 py-3 hover:bg-gray-700"
                 >
-                  [STOP & SAVE]
+                  [STOP &amp; SAVE]
                 </button>
               </div>
 

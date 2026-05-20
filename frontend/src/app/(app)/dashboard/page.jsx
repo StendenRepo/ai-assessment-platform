@@ -1,5 +1,6 @@
 import Breadcrumb from '@/components/Breadcrumb';
 import Dashboard from '@/components/Dashboard';
+
 export default function DashboardPage() {
   return (
     <>

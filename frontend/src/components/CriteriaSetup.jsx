@@ -1,8 +1,11 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { mockCriteria } from '@/lib/mockData';
+
 const CATEGORIES = ['Technical', 'Communication', 'Process', 'Collaboration'];
+
 export default function CriteriaSetup({ projectId }) {
   const router = useRouter();
   const [criteria, setCriteria] = useState(mockCriteria);
@@ -13,6 +16,7 @@ export default function CriteriaSetup({ projectId }) {
     maxScore: 10,
     category: 'Technical',
   });
+
   const handleAddCriterion = () => {
     setCriteria([...criteria, { id: `crit-${Date.now()}`, ...newCriterion }]);
     setShowAddForm(false);
@@ -23,11 +27,12 @@ export default function CriteriaSetup({ projectId }) {
       category: 'Technical',
     });
   };
+
   return (
     <div>
       <div className="mb-8">
         <h2 className="text-2xl font-bold mb-2">
-          Setup Assessment Criteria & Rubrics
+          Setup Assessment Criteria &amp; Rubrics
         </h2>
         <p className="text-gray-600">
           Define the criteria and rubrics for assessing this project
