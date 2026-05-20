@@ -1,3 +1,5 @@
+name: ai-assessment
+
 services:
     frontend:
         build:
