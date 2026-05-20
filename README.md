@@ -23,23 +23,30 @@ The project is currently in the prototype and development phase.
 
 ## Frontend
 
-- React 19
-- Next.js 16 (App Router)
-- JavaScript
-- Tailwind CSS 4
-- ESLint
+- [Next.js 16](https://nextjs.org/) (App Router)
+- [React 19](https://react.dev/)
+- JavaScript (JSX)
+- [Tailwind CSS 4](https://tailwindcss.com/)
+- [lucide-react](https://lucide.dev/) — icon library
+- [ESLint 9](https://eslint.org/) — linting
+- [Prettier 3](https://prettier.io/) — code formatting
+- [Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) — pre-commit hooks
 
 ## Backend
 
-- Python
-- FastAPI
-- SQLAlchemy 2 (ORM)
-- Alembic (migrations)
-- PostgreSQL 16
+- [Python](https://www.python.org/)
+- [FastAPI](https://fastapi.tiangolo.com/) — web framework
+- [Pydantic v2](https://docs.pydantic.dev/) — data validation
+- [SQLAlchemy 2](https://www.sqlalchemy.org/) — ORM
+- [Alembic](https://alembic.sqlalchemy.org/) — database migrations
+- [Uvicorn](https://www.uvicorn.org/) — ASGI server
+- [psycopg2](https://www.psycopg.org/) — PostgreSQL driver
+- [python-dotenv](https://github.com/theskumar/python-dotenv) — environment variables
+- [PostgreSQL 16](https://www.postgresql.org/)
 
 ## Infrastructure
 
-- Docker & Docker Compose
+- [Docker](https://www.docker.com/) & Docker Compose
 - pgAdmin 4 (development only)
 
 ## Version Control
