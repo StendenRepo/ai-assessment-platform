@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import StudentAssessment from '@/components/StudentAssessment';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import StudentAssessment from './_components/StudentAssessment';
 
 export default async function StudentAssessmentPage({ params }) {
   const { projectId, groupId, studentId } = await params;

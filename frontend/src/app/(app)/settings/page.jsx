@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import Settings from '@/components/Settings';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import Settings from './_components/Settings';
 
 export default function SettingsPage() {
   return (

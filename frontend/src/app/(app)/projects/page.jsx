@@ -1,5 +1,5 @@
-import Breadcrumb from '@/components/Breadcrumb';
-import ProjectsList from '@/components/ProjectsList';
+import Breadcrumb from '@/components/layout/Breadcrumb';
+import ProjectsList from './_components/ProjectsList';
 
 export default function ProjectsPage() {
   return (
