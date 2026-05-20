@@ -192,6 +192,31 @@ git push origin feature/feature-name
 
 ---
 
+# Code Formatting
+
+This project uses Prettier for code formatting. To ensure consistent styling:
+
+1. Install dependencies:
+
+    ```bash
+    npm install
+    ```
+
+2. Format code manually:
+
+    ```bash
+    npm run format
+    ```
+
+3. Pre-commit Hook:
+   Prettier is enforced on staged files via a pre-commit hook. Ensure you have Husky installed by running:
+    ```bash
+    npm run prepare
+    ```
+    This sets up the pre-commit hook to format staged files automatically.
+
+---
+
 # Environment Variables
 
 Copy `backend/.env.example` to `backend/.env` and adjust as needed:
