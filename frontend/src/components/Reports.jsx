@@ -182,8 +182,8 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="col-span-1">
-          <div className="border-2 border-gray-400 p-6 mb-4 sticky top-8">
+        <div className="col-span-1 sticky top-8 self-start">
+          <div className="border-2 border-gray-400 p-6 mb-4">
             <h3 className="font-bold mb-4">[i] Report Types</h3>
             <div className="space-y-4 text-sm">
               {[
