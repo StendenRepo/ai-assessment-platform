@@ -1,16 +1,17 @@
 import Breadcrumb from '@/components/Breadcrumb';
-import Settings from '@/components/Settings';
-export default function SettingsPage() {
+import Reports from '@/components/Reports';
+
+export default function ReportsPage() {
   return (
     <>
       <Breadcrumb
         crumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Settings' },
+          { label: 'Reports' },
         ]}
       />
       <div className="max-w-7xl mx-auto px-8 py-8">
-        <Settings />
+        <Reports />
       </div>
     </>
   );

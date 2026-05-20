@@ -1,17 +1,17 @@
 import Breadcrumb from '@/components/Breadcrumb';
-import GroupsList from '@/components/GroupsList';
-export default function GroupsPage({ params }) {
+import Settings from '@/components/Settings';
+
+export default function SettingsPage() {
   return (
     <>
       <Breadcrumb
         crumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Projects', href: '/projects' },
-          { label: 'Groups' },
+          { label: 'Settings' },
         ]}
       />
       <div className="max-w-7xl mx-auto px-8 py-8">
-        <GroupsList projectId={params.projectId} />
+        <Settings />
       </div>
     </>
   );

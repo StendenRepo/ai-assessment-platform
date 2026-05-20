@@ -1,18 +1,19 @@
 import Breadcrumb from '@/components/Breadcrumb';
-import CriteriaSetup from '@/components/CriteriaSetup';
-export default function CriteriaPage({ params }) {
+import GroupsList from '@/components/GroupsList';
+
+export default async function GroupsPage({ params }) {
+  const { projectId } = await params;
   return (
     <>
       <Breadcrumb
         crumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Projects', href: '/projects' },
-          { label: 'New Project', href: '/projects/new' },
-          { label: 'Setup Criteria & Rubrics' },
+          { label: 'Groups' },
         ]}
       />
       <div className="max-w-7xl mx-auto px-8 py-8">
-        <CriteriaSetup projectId={params.projectId} />
+        <GroupsList projectId={projectId} />
       </div>
     </>
   );

@@ -1,5 +1,7 @@
 'use client';
+
 import Link from 'next/link';
+
 export default function Breadcrumb({ crumbs }) {
   return (
     <div className="bg-gray-200 border-b border-gray-300">

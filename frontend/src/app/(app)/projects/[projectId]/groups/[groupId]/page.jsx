@@ -1,18 +1,20 @@
 import Breadcrumb from '@/components/Breadcrumb';
 import ProjectDetail from '@/components/ProjectDetail';
-export default function ProjectDetailPage({ params }) {
+
+export default async function ProjectDetailPage({ params }) {
+  const { projectId, groupId } = await params;
   return (
     <>
       <Breadcrumb
         crumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Projects', href: '/projects' },
-          { label: 'Groups', href: `/projects/${params.projectId}` },
+          { label: 'Groups', href: `/projects/${projectId}` },
           { label: 'Project Detail' },
         ]}
       />
       <div className="max-w-7xl mx-auto px-8 py-8">
-        <ProjectDetail projectId={params.projectId} groupId={params.groupId} />
+        <ProjectDetail projectId={projectId} groupId={groupId} />
       </div>
     </>
   );

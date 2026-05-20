@@ -1,12 +1,15 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { mockProjects } from '@/lib/mockData';
+
 export default function ProjectsList() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
+
   const filteredProjects = mockProjects.filter((project) => {
     const matchesSearch =
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -17,7 +20,9 @@ export default function ProjectsList() {
       courseFilter === 'all' || project.course === courseFilter;
     return matchesSearch && matchesStatus && matchesCourse;
   });
+
   const courses = Array.from(new Set(mockProjects.map((p) => p.course)));
+
   return (
     <div>
       <div className="mb-8">

@@ -1,16 +1,18 @@
 import Breadcrumb from '@/components/Breadcrumb';
-import ProjectsList from '@/components/ProjectsList';
-export default function ProjectsPage() {
+import ProjectSetup from '@/components/ProjectSetup';
+
+export default function NewProjectPage() {
   return (
     <>
       <Breadcrumb
         crumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Projects' },
+          { label: 'Projects', href: '/projects' },
+          { label: 'New Project' },
         ]}
       />
       <div className="max-w-7xl mx-auto px-8 py-8">
-        <ProjectsList />
+        <ProjectSetup />
       </div>
     </>
   );

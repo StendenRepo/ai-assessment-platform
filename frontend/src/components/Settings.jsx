@@ -1,13 +1,17 @@
 'use client';
+
 import { useState } from 'react';
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('general');
+
   const tabs = [
     { key: 'general', label: 'General' },
     { key: 'ai', label: 'AI Configuration' },
     { key: 'privacy', label: 'Privacy & GDPR' },
     { key: 'integration', label: 'Integrations' },
   ];
+
   return (
     <div>
       <div className="mb-8">
@@ -24,7 +28,11 @@ export default function Settings() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`w-full text-left px-4 py-3 ${i < tabs.length - 1 ? 'border-b-2 border-gray-400' : ''} ${activeTab === tab.key ? 'bg-gray-900 text-white font-bold' : 'hover:bg-gray-100'}`}
+                className={`w-full text-left px-4 py-3 ${i < tabs.length - 1 ? 'border-b-2 border-gray-400' : ''} ${
+                  activeTab === tab.key
+                    ? 'bg-gray-900 text-white font-bold'
+                    : 'hover:bg-gray-100'
+                }`}
               >
                 {tab.label}
               </button>

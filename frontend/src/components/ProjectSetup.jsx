@@ -1,6 +1,8 @@
 'use client';
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+
 export default function ProjectSetup() {
   const router = useRouter();
   const [projectName, setProjectName] = useState('');
@@ -11,19 +13,23 @@ export default function ProjectSetup() {
   const [students, setStudents] = useState([{ email: '', studentNumber: '' }]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+
   const addStudentField = () =>
     setStudents([...students, { email: '', studentNumber: '' }]);
+
   const updateStudent = (index, field, value) => {
     const updated = [...students];
     updated[index][field] = value;
     setStudents(updated);
   };
+
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
     else if (e.type === 'dragleave') setDragActive(false);
   };
+
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -32,15 +38,18 @@ export default function ProjectSetup() {
       setUploadedFiles([...uploadedFiles, ...Array.from(e.dataTransfer.files)]);
     }
   };
+
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       setUploadedFiles([...uploadedFiles, ...Array.from(e.target.files)]);
     }
   };
+
   const handleCreateProject = () => {
     const projectId = `proj-${Date.now()}`;
     router.push(`/projects/${projectId}/criteria`);
   };
+
   return (
     <div>
       <div className="mb-8">
@@ -165,7 +174,9 @@ export default function ProjectSetup() {
 
           <div className="space-y-4">
             <div
-              className={`border-4 border-dashed ${dragActive ? 'border-gray-900 bg-gray-100' : 'border-gray-400'} p-12 text-center transition-all`}
+              className={`border-4 border-dashed ${
+                dragActive ? 'border-gray-900 bg-gray-100' : 'border-gray-400'
+              } p-12 text-center transition-all`}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
               onDragOver={handleDrag}

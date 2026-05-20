@@ -1,5 +1,7 @@
 'use client';
+
 import { useRouter } from 'next/navigation';
+
 const groups = [
   {
     id: 'group-1',
@@ -34,8 +36,10 @@ const groups = [
     evidenceCount: 5,
   },
 ];
+
 export default function GroupsList({ projectId }) {
   const router = useRouter();
+
   return (
     <div>
       <div className="mb-8">

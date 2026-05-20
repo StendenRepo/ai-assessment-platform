@@ -1,14 +1,17 @@
 'use client';
+
 import { useState } from 'react';
 import { mockProjects } from '@/lib/mockData';
+
 export default function Reports() {
   const [selectedProject, setSelectedProject] = useState('');
   const [reportType, setReportType] = useState('individual');
   const [exportFormat, setExportFormat] = useState('pdf');
+
   return (
     <div>
       <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2">Reports & Export</h2>
+        <h2 className="text-2xl font-bold mb-2">Reports &amp; Export</h2>
         <p className="text-gray-600">Generate and export assessment reports</p>
       </div>
 
@@ -87,7 +90,11 @@ export default function Reports() {
                     <button
                       key={fmt}
                       onClick={() => setExportFormat(fmt)}
-                      className={`border-2 border-gray-400 px-4 py-2 ${exportFormat === fmt ? 'bg-gray-900 text-white' : 'hover:bg-gray-100'}`}
+                      className={`border-2 border-gray-400 px-4 py-2 ${
+                        exportFormat === fmt
+                          ? 'bg-gray-900 text-white'
+                          : 'hover:bg-gray-100'
+                      }`}
                     >
                       [{fmt.toUpperCase()}]
                     </button>
