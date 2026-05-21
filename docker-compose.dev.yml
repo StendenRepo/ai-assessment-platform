@@ -1,7 +1,10 @@
+name: ai-assessment-dev
+
 services:
     frontend:
         build:
             context: ./frontend
+            target: dev
         container_name: frontend
         ports:
             - '3000:3000'
@@ -14,6 +17,7 @@ services:
     backend:
         build:
             context: ./backend
+            target: dev
         container_name: backend
         ports:
             - '8000:8000'
