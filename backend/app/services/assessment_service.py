@@ -1,0 +1,2 @@
+class AssessmentService:
+    pass
