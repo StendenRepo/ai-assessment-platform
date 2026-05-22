@@ -1,0 +1,5 @@
+# Ignore artifacts and build output
+node_modules/
+.next/
+out/
+build/
