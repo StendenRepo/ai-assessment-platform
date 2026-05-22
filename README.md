@@ -40,7 +40,7 @@ The project is currently in the prototype and development phase.
 - [SQLAlchemy 2](https://www.sqlalchemy.org/) — ORM
 - [Alembic](https://alembic.sqlalchemy.org/) — database migrations
 - [Uvicorn](https://www.uvicorn.org/) — ASGI server
-- [psycopg2](https://www.psycopg.org/) — PostgreSQL driver
+- [psycopg2-binary](https://www.psycopg.org/) — PostgreSQL driver
 - [python-dotenv](https://github.com/theskumar/python-dotenv) — environment variables
 - [PostgreSQL 16](https://www.postgresql.org/)
 

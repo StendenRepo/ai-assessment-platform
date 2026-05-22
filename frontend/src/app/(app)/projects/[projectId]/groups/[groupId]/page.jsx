@@ -127,6 +127,7 @@ export default function GroupDetailPage() {
           <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
             {mockStudents.map((student) => {
               const status = assessmentStatusConfig[student.assessmentStatus];
+              const StatusIcon = status.icon;
               return (
                 <div
                   key={student.id}
@@ -164,7 +165,7 @@ export default function GroupDetailPage() {
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 ${status.classes}`}
                   >
-                    <status.icon size={11} />
+                    <StatusIcon size={11} />
                     {status.label}
                   </span>
                   <button

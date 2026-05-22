@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, DateTime, BigInteger, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 from app.models.enums import AuditSource
@@ -17,6 +18,4 @@ class AuditEvent(Base):
     source = Column(Enum(AuditSource))
     ip_address = Column(INET, nullable=True)
 
-    # Relationships
-    from sqlalchemy.orm import relationship
     teacher = relationship("Teacher", back_populates="audit_events")
