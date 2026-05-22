@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { mockCriteria } from '@/lib/mockData';
 

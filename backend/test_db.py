@@ -1,5 +1,5 @@
+import app.models  # noqa: F401 — registers all models with Base metadata
 from app.database import engine, Base
-from app.models import *
 
 Base.metadata.create_all(bind=engine)
 print("All tables created successfully!")

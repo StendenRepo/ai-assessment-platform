@@ -422,7 +422,7 @@ export default function SettingsPage() {
                     name: 'GitHub Integration',
                     desc: 'Automatically analyze Git repositories',
                     active: true,
-                    detail: 'API Key: ghp_**********************',
+                    detail: 'API Key: EXAMPLE_TOKEN_NOT_REAL',
                   },
                   {
                     name: 'Learning Management System',
