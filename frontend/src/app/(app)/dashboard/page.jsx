@@ -65,22 +65,25 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        {statCards.map((card) => (
-          <div
-            key={card.label}
-            className="rounded-lg bg-card border border-border p-5"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                {card.label}
-              </span>
-              <card.icon size={15} className={card.color} />
+        {statCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="rounded-lg bg-card border border-border p-5"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                  {card.label}
+                </span>
+                <Icon size={15} className={card.color} />
+              </div>
+              <div className="text-3xl font-bold text-foreground">
+                {card.value}
+              </div>
             </div>
-            <div className="text-3xl font-bold text-foreground">
-              {card.value}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div>
