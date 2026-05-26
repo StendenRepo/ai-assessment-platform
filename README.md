@@ -239,6 +239,45 @@ EXPORT_DIR=/app/data/exports
 
 ---
 
+# Testing
+
+## Backend
+
+Tests are located in `backend/tests/` and use pytest with an in-memory SQLite database — no running services required.
+
+### Run with Docker (recommended)
+
+With the dev stack already running:
+
+```bash
+docker exec backend python -m pytest tests/ -v
+```
+
+If the stack is not running:
+
+```bash
+docker compose -f docker-compose.dev.yml run --rm backend python -m pytest tests/ -v
+```
+
+With coverage report:
+
+```bash
+docker exec backend python -m pytest tests/ -v --cov=app --cov-report=term-missing
+```
+
+### Run locally (without Docker)
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate  # macOS / Linux
+pip install -r requirements.txt
+python -m pytest tests/ -v
+```
+
+---
+
 # Database Migration
 
 Run Alembic inside the backend container.
