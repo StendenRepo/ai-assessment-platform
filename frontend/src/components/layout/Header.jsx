@@ -13,6 +13,7 @@ const navItems = [
   { href: '/settings', label: 'Settings' },
 ];
 
+// Returns up to 2 uppercase initials from a full name, e.g. "John Smith" → "JS"
 function initials(name = '') {
   return name
     .split(' ')
