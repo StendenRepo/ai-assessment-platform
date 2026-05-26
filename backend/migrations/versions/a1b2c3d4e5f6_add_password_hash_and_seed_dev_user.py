@@ -6,6 +6,7 @@ Create Date: 2026-05-26 00:00:00.000000
 
 """
 from typing import Sequence, Union
+import os
 import uuid
 
 from alembic import op
@@ -23,8 +24,9 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def upgrade() -> None:
     op.add_column('teachers', sa.Column('password_hash', sa.String(), nullable=True))
 
-    password_hash = _pwd_context.hash("admin")
-    teacher_id = str(uuid.uuid4())
+    email = os.getenv("SEED_ADMIN_EMAIL", "admin@admin.nl")
+    name = os.getenv("SEED_ADMIN_NAME", "Admin")
+    password = os.getenv("SEED_ADMIN_PASSWORD", "admin")
 
     op.execute(
         sa.text(
@@ -32,14 +34,15 @@ def upgrade() -> None:
             "VALUES (:id, :name, :email, :password_hash, NOW()) "
             "ON CONFLICT (email) DO NOTHING"
         ).bindparams(
-            id=teacher_id,
-            name="Admin",
-            email="admin@admin.nl",
-            password_hash=password_hash,
+            id=str(uuid.uuid4()),
+            name=name,
+            email=email,
+            password_hash=_pwd_context.hash(password),
         )
     )
 
 
 def downgrade() -> None:
-    op.execute(sa.text("DELETE FROM teachers WHERE email = 'admin@admin.nl'"))
+    email = os.getenv("SEED_ADMIN_EMAIL", "admin@admin.nl")
+    op.execute(sa.text("DELETE FROM teachers WHERE email = :email").bindparams(email=email))
     op.drop_column('teachers', 'password_hash')
