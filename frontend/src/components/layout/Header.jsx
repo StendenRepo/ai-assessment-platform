@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { GraduationCap, LogOut } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -12,8 +13,24 @@ const navItems = [
   { href: '/settings', label: 'Settings' },
 ];
 
+function initials(name = '') {
+  return name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export default function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    router.push('/');
+  };
 
   return (
     <header className="bg-card border-b border-border sticky top-0 z-40">
@@ -34,22 +51,28 @@ export default function Header() {
           </Link>
 
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div className="text-sm font-semibold text-foreground">
-                Dr. John Smith
-              </div>
-              <div className="text-xs text-muted-foreground">Lecturer</div>
-            </div>
-            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-              JS
-            </div>
-            <Link
-              href="/"
+            {user && (
+              <>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-foreground">
+                    {user.name}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {user.email}
+                  </div>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+                  {initials(user.name)}
+                </div>
+              </>
+            )}
+            <button
+              onClick={handleLogout}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
             >
               <LogOut size={13} />
               Log out
-            </Link>
+            </button>
           </div>
         </div>
 
