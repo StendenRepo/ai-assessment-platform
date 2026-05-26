@@ -13,6 +13,7 @@ class Teacher(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True)
     pin_hash = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
