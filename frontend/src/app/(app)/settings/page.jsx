@@ -11,7 +11,7 @@ import {
   Sun,
   Moon,
 } from 'lucide-react';
-import { useTheme } from '@/lib/theme';
+import { useTheme } from '@/context/ThemeContext';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
