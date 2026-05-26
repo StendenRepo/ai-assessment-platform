@@ -1,5 +1,6 @@
 import './globals.css';
-import { ThemeProvider } from '@/lib/theme';
+import { ThemeProvider } from '@/context/ThemeContext';
+import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata = {
   title: 'AssessAI',
@@ -17,7 +18,9 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
