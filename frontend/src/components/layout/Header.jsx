@@ -5,10 +5,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { GraduationCap, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
+/**
+ * exact: true  — active only on the precise path
+ * (e.g. /projects/new won't also highlight /projects)
+ * exact: false (default) — active on the path and any sub-routes,
+ * unless an exact item claims the current path
+ */
 const navItems = [
-  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/dashboard', label: 'Dashboard', exact: true },
   { href: '/projects', label: 'Projects' },
-  { href: '/projects/new', label: 'New Project' },
+  { href: '/projects/new', label: 'New Project', exact: true },
   { href: '/reports', label: 'Reports' },
   { href: '/settings', label: 'Settings' },
 ];
@@ -78,15 +84,14 @@ export default function Header() {
         </div>
 
         <nav className="flex -mb-px">
-          {navItems.map(({ href, label }) => {
-            const active =
-              href === '/dashboard'
-                ? pathname === '/dashboard'
-                : pathname === href ||
-                  (pathname.startsWith(href + '/') &&
-                    !navItems.some(
-                      (item) => item.href !== href && pathname === item.href
-                    ));
+          {navItems.map(({ href, label, exact }) => {
+            const active = exact
+              ? pathname === href
+              : pathname === href ||
+                (pathname.startsWith(href + '/') &&
+                  !navItems.some(
+                    (item) => item.exact && pathname === item.href
+                  ));
             return (
               <Link
                 key={href}
