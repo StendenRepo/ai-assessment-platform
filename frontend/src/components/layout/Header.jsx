@@ -82,7 +82,11 @@ export default function Header() {
             const active =
               href === '/dashboard'
                 ? pathname === '/dashboard'
-                : pathname === href || pathname.startsWith(href + '/');
+                : pathname === href ||
+                  (pathname.startsWith(href + '/') &&
+                    !navItems.some(
+                      (item) => item.href !== href && pathname === item.href
+                    ));
             return (
               <Link
                 key={href}
