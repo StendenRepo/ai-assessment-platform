@@ -1,4 +1,5 @@
 from app.models.enums import *
+from app.models.department import Department
 from app.models.teacher import Teacher
 from app.models.module import Module
 from app.models.project import Project
