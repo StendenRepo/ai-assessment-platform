@@ -26,6 +26,7 @@ class TeacherAdminOut(BaseModel):
     name: str
     email: str
     is_admin: bool
+    is_protected: bool = False
     department_id: Optional[str] = None
     department_name: Optional[str] = None
     created_at: datetime
