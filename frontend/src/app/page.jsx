@@ -17,9 +17,9 @@ export default function RootPage() {
 
   useEffect(() => {
     if (ready && user) {
-      router.replace('/dashboard');
+      router.replace(isAdmin && user.is_admin ? '/admin' : '/dashboard');
     }
-  }, [ready, user, router]);
+  }, [ready, user, router, isAdmin]);
 
   const handleModeSwitch = (adminMode) => {
     setIsAdmin(adminMode);
@@ -33,7 +33,7 @@ export default function RootPage() {
     try {
       const userData = await apiLogin(email, password);
       login(userData);
-      router.push('/dashboard');
+      // navigation is handled by the useEffect above
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {
