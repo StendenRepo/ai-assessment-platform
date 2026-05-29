@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Users } from 'lucide-react';
+import { Building2, Settings, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Header from '@/components/layout/Header';
 import { adminFetch } from '@/lib/adminFetch';
 import { TabBtn } from './_ui';
 import { TeachersTab } from './_TeachersTab';
 import { DepartmentsTab } from './_DepartmentsTab';
+import { SettingsTab } from './_SettingsTab';
 
 export default function AdminPage() {
   const { user, ready } = useAuth();
@@ -54,7 +55,7 @@ export default function AdminPage() {
           </p>
         </div>
 
-        <div className="flex gap-1 border-b border-border mb-6">
+        <div className="flex border-b border-border mb-6">
           <TabBtn
             active={tab === 'teachers'}
             onClick={() => setTab('teachers')}
@@ -67,6 +68,13 @@ export default function AdminPage() {
             icon={<Building2 size={14} />}
             label="Departments"
           />
+          <div className="flex-1" />
+          <TabBtn
+            active={tab === 'settings'}
+            onClick={() => setTab('settings')}
+            icon={<Settings size={14} />}
+            label="Settings"
+          />
         </div>
 
         {tab === 'teachers' && (
@@ -75,6 +83,7 @@ export default function AdminPage() {
         {tab === 'departments' && (
           <DepartmentsTab onDataChange={setDepartments} />
         )}
+        {tab === 'settings' && <SettingsTab />}
       </main>
     </div>
   );
