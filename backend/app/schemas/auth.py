@@ -15,5 +15,6 @@ class TeacherOut(BaseModel):
     id: str
     name: str
     email: str
+    is_admin: bool = False
 
     model_config = {"from_attributes": True}
