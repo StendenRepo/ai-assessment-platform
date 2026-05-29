@@ -32,6 +32,7 @@ function initials(name = '') {
 export default function Header({
   navItems = DEFAULT_NAV_ITEMS,
   subtitle = 'Group Project Evaluation Platform',
+  logoHref = '/dashboard',
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -46,7 +47,7 @@ export default function Header({
     <header className="bg-card border-b border-border sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href={logoHref} className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <GraduationCap size={16} className="text-primary-foreground" />
             </div>
