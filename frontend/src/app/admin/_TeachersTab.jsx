@@ -279,19 +279,39 @@ export function TeachersTab({ departments, currentUserId }) {
                 ))}
               </select>
             </Field>
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.is_admin}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, is_admin: e.target.checked }))
-                }
-                className="w-4 h-4 accent-primary"
-              />
-              <span className="text-sm text-foreground">
-                Administrator access
-              </span>
-            </label>
+            {(() => {
+              const adminLocked = modal.data?.id === currentUserId;
+              const seedLocked = modal.data?.is_protected;
+              const locked = adminLocked || seedLocked;
+              const hint = adminLocked
+                ? 'cannot remove your own access'
+                : seedLocked
+                  ? 'cannot remove access from the seed account'
+                  : null;
+              return (
+                <label
+                  className={`flex items-center gap-2.5 select-none ${locked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.is_admin}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, is_admin: e.target.checked }))
+                    }
+                    disabled={locked}
+                    className="w-4 h-4 accent-primary"
+                  />
+                  <span className="text-sm text-foreground">
+                    Administrator access
+                    {hint && (
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        ({hint})
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })()}
             <FormError message={formError} />
             <SaveButtons onCancel={() => setModal(null)} saving={saving} />
           </form>

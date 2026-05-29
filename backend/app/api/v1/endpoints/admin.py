@@ -178,6 +178,12 @@ def update_teacher(
     if not teacher:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
 
+    if str(admin.id) == teacher_id and not payload.is_admin:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own administrator access")
+
+    if teacher.email == SEED_ADMIN_EMAIL and not payload.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access cannot be removed from the seed account")
+
     if payload.email != teacher.email:
         if db.query(Teacher).filter(Teacher.email == payload.email, Teacher.id != teacher.id).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")

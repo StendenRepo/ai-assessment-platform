@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, Shield } from 'lucide-react';
-import { apiLogin } from '@/lib/auth';
+import { apiLogin, clearSession } from '@/lib/auth';
 import { useAuth } from '@/context/AuthContext';
 
 export default function RootPage() {
@@ -32,6 +32,11 @@ export default function RootPage() {
     setLoading(true);
     try {
       const userData = await apiLogin(email, password);
+      if (isAdmin && !userData.is_admin) {
+        clearSession();
+        setError('This account does not have administrator access.');
+        return;
+      }
       login(userData);
       // navigation is handled by the useEffect above
     } catch (err) {
