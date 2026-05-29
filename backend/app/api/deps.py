@@ -29,3 +29,11 @@ def get_current_teacher(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return teacher
+
+
+def get_current_admin(
+    teacher=Depends(get_current_teacher),
+):
+    if not teacher.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return teacher

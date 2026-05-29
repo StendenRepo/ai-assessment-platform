@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, Shield } from 'lucide-react';
-import { apiLogin } from '@/lib/auth';
+import { apiLogin, clearSession } from '@/lib/auth';
 import { useAuth } from '@/context/AuthContext';
 
 export default function RootPage() {
   const router = useRouter();
   const { user, ready, login } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,9 +17,14 @@ export default function RootPage() {
 
   useEffect(() => {
     if (ready && user) {
-      router.replace('/dashboard');
+      router.replace(isAdmin && user.is_admin ? '/admin' : '/dashboard');
     }
-  }, [ready, user, router]);
+  }, [ready, user, router, isAdmin]);
+
+  const handleModeSwitch = (adminMode) => {
+    setIsAdmin(adminMode);
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,8 +32,13 @@ export default function RootPage() {
     setLoading(true);
     try {
       const userData = await apiLogin(email, password);
+      if (isAdmin && !userData.is_admin) {
+        clearSession();
+        setError('This account does not have administrator access.');
+        return;
+      }
       login(userData);
-      router.push('/dashboard');
+      // navigation is handled by the useEffect above
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {
@@ -56,6 +67,31 @@ export default function RootPage() {
           </p>
         </div>
 
+        <div className="flex rounded-lg bg-secondary border border-border p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(false)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              !isAdmin
+                ? 'bg-background text-foreground shadow-sm border border-border'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Teacher
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(true)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              isAdmin
+                ? 'bg-background text-foreground shadow-sm border border-border'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Administrator
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">
@@ -65,7 +101,9 @@ export default function RootPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Teacher@nhlstenden.com"
+              placeholder={
+                isAdmin ? 'Admin@nhlstenden.com' : 'Teacher@nhlstenden.com'
+              }
               required
               className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
@@ -97,7 +135,9 @@ export default function RootPage() {
             disabled={loading}
             className="w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading
+              ? 'Signing in…'
+              : `Sign in as ${isAdmin ? 'Administrator' : 'Teacher'}`}
           </button>
         </form>
 

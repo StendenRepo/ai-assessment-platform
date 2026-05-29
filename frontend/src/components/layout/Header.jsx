@@ -11,12 +11,12 @@ import { useAuth } from '@/context/AuthContext';
  * exact: false (default) — active on the path and any sub-routes,
  * unless an exact item claims the current path
  */
-const navItems = [
+const DEFAULT_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', exact: true },
   { href: '/projects', label: 'Projects' },
   { href: '/projects/new', label: 'New Project', exact: true },
   { href: '/reports', label: 'Reports' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/settings', label: 'Settings', right: true },
 ];
 
 // Returns up to 2 uppercase initials from a full name, e.g. "John Smith" → "JS"
@@ -29,7 +29,11 @@ function initials(name = '') {
     .slice(0, 2);
 }
 
-export default function Header() {
+export default function Header({
+  navItems = DEFAULT_NAV_ITEMS,
+  subtitle = 'Group Project Evaluation Platform',
+  logoHref = '/dashboard',
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -43,7 +47,7 @@ export default function Header() {
     <header className="bg-card border-b border-border sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href={logoHref} className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <GraduationCap size={16} className="text-primary-foreground" />
             </div>
@@ -52,7 +56,7 @@ export default function Header() {
                 AssessAI
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                Group Project Evaluation Platform
+                {subtitle}
               </div>
             </div>
           </Link>
@@ -84,28 +88,55 @@ export default function Header() {
         </div>
 
         <nav className="flex -mb-px">
-          {navItems.map(({ href, label, exact }) => {
-            const active = exact
-              ? pathname === href
-              : pathname === href ||
-                (pathname.startsWith(href + '/') &&
-                  !navItems.some(
-                    (item) => item.exact && pathname === item.href
-                  ));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
-                  active
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                {label}
-              </Link>
-            );
-          })}
+          {navItems
+            .filter((item) => !item.right)
+            .map(({ href, label, exact }) => {
+              const active = exact
+                ? pathname === href
+                : pathname === href ||
+                  (pathname.startsWith(href + '/') &&
+                    !navItems.some(
+                      (item) => item.exact && pathname === item.href
+                    ));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          {navItems.some((item) => item.right) && <div className="flex-1" />}
+          {navItems
+            .filter((item) => item.right)
+            .map(({ href, label, exact }) => {
+              const active = exact
+                ? pathname === href
+                : pathname === href ||
+                  (pathname.startsWith(href + '/') &&
+                    !navItems.some(
+                      (item) => item.exact && pathname === item.href
+                    ));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
         </nav>
       </div>
     </header>
