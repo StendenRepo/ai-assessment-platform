@@ -11,7 +11,7 @@ import { useAuth } from '@/context/AuthContext';
  * exact: false (default) — active on the path and any sub-routes,
  * unless an exact item claims the current path
  */
-const navItems = [
+const DEFAULT_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', exact: true },
   { href: '/projects', label: 'Projects' },
   { href: '/projects/new', label: 'New Project', exact: true },
@@ -29,7 +29,10 @@ function initials(name = '') {
     .slice(0, 2);
 }
 
-export default function Header() {
+export default function Header({
+  navItems = DEFAULT_NAV_ITEMS,
+  subtitle = 'Group Project Evaluation Platform',
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
@@ -52,7 +55,7 @@ export default function Header() {
                 AssessAI
               </div>
               <div className="text-[10px] text-muted-foreground mt-0.5">
-                Group Project Evaluation Platform
+                {subtitle}
               </div>
             </div>
           </Link>
