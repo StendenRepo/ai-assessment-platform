@@ -16,7 +16,7 @@ const DEFAULT_NAV_ITEMS = [
   { href: '/projects', label: 'Projects' },
   { href: '/projects/new', label: 'New Project', exact: true },
   { href: '/reports', label: 'Reports' },
-  { href: '/settings', label: 'Settings' },
+  { href: '/settings', label: 'Settings', right: true },
 ];
 
 // Returns up to 2 uppercase initials from a full name, e.g. "John Smith" → "JS"
@@ -87,28 +87,55 @@ export default function Header({
         </div>
 
         <nav className="flex -mb-px">
-          {navItems.map(({ href, label, exact }) => {
-            const active = exact
-              ? pathname === href
-              : pathname === href ||
-                (pathname.startsWith(href + '/') &&
-                  !navItems.some(
-                    (item) => item.exact && pathname === item.href
-                  ));
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
-                  active
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                {label}
-              </Link>
-            );
-          })}
+          {navItems
+            .filter((item) => !item.right)
+            .map(({ href, label, exact }) => {
+              const active = exact
+                ? pathname === href
+                : pathname === href ||
+                  (pathname.startsWith(href + '/') &&
+                    !navItems.some(
+                      (item) => item.exact && pathname === item.href
+                    ));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          {navItems.some((item) => item.right) && <div className="flex-1" />}
+          {navItems
+            .filter((item) => item.right)
+            .map(({ href, label, exact }) => {
+              const active = exact
+                ? pathname === href
+                : pathname === href ||
+                  (pathname.startsWith(href + '/') &&
+                    !navItems.some(
+                      (item) => item.exact && pathname === item.href
+                    ));
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
         </nav>
       </div>
     </header>
