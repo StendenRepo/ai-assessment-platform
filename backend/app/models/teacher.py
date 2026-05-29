@@ -17,6 +17,7 @@ class Teacher(Base):
     pin_hash = Column(String, nullable=True)
     password_hash = Column(String, nullable=True)
     is_admin = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_seed = Column(Boolean, nullable=False, default=False, server_default="false")
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)

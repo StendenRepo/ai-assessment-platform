@@ -242,7 +242,8 @@ export function TeachersTab({ departments, currentUserId }) {
                 }
                 placeholder="jane@nhlstenden.com"
                 required
-                className={inputCls}
+                disabled={modal.data?.is_protected}
+                className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
               />
             </Field>
             <Field

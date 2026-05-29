@@ -45,7 +45,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header navItems={[]} subtitle="Admin Panel" />
+      <Header navItems={[]} subtitle="Admin Panel" logoHref="/admin" />
 
       <main className="max-w-7xl mx-auto px-8 py-8">
         <div className="mb-6">

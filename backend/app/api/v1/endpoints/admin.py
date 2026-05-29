@@ -1,4 +1,3 @@
-import os
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,8 +18,6 @@ from app.schemas.admin import (
 
 router = APIRouter()
 
-SEED_ADMIN_EMAIL = os.getenv("SEED_ADMIN_EMAIL", "admin@admin.nl")
-
 
 def _teacher_to_out(t: Teacher) -> TeacherAdminOut:
     return TeacherAdminOut(
@@ -28,7 +25,7 @@ def _teacher_to_out(t: Teacher) -> TeacherAdminOut:
         name=t.name,
         email=t.email,
         is_admin=t.is_admin,
-        is_protected=t.email == SEED_ADMIN_EMAIL,
+        is_protected=t.is_seed,
         department_id=str(t.department_id) if t.department_id else None,
         department_name=t.department.name if t.department else None,
         created_at=t.created_at,
@@ -181,8 +178,11 @@ def update_teacher(
     if str(admin.id) == teacher_id and not payload.is_admin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own administrator access")
 
-    if teacher.email == SEED_ADMIN_EMAIL and not payload.is_admin:
+    if teacher.is_seed and not payload.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access cannot be removed from the seed account")
+
+    if teacher.is_seed and payload.email != teacher.email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The seed admin account email cannot be changed")
 
     if payload.email != teacher.email:
         if db.query(Teacher).filter(Teacher.email == payload.email, Teacher.id != teacher.id).first():
@@ -224,7 +224,7 @@ def delete_teacher(
     teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
     if not teacher:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
-    if teacher.email == SEED_ADMIN_EMAIL:
+    if teacher.is_seed:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The seed admin account cannot be deleted")
     db.delete(teacher)
     db.commit()
