@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 export default function RootPage() {
   const router = useRouter();
   const { user, ready, login } = useAuth();
+  const [isAdmin, setIsAdmin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,6 +20,11 @@ export default function RootPage() {
       router.replace('/dashboard');
     }
   }, [ready, user, router]);
+
+  const handleModeSwitch = (adminMode) => {
+    setIsAdmin(adminMode);
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -54,6 +60,31 @@ export default function RootPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Sign in to your account to continue
           </p>
+        </div>
+
+        <div className="flex rounded-lg bg-secondary border border-border p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(false)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              !isAdmin
+                ? 'bg-background text-foreground shadow-sm border border-border'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Teacher
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeSwitch(true)}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+              isAdmin
+                ? 'bg-background text-foreground shadow-sm border border-border'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Administrator
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -97,7 +128,9 @@ export default function RootPage() {
             disabled={loading}
             className="w-full bg-primary text-primary-foreground rounded-md py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading
+              ? 'Signing in…'
+              : `Sign in as ${isAdmin ? 'Administrator' : 'Teacher'}`}
           </button>
         </form>
 
