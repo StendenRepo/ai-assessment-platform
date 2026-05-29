@@ -240,7 +240,7 @@ export function TeachersTab({ departments, currentUserId }) {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, email: e.target.value }))
                 }
-                placeholder="jane@example.com"
+                placeholder="jane@nhlstenden.com"
                 required
                 className={inputCls}
               />
