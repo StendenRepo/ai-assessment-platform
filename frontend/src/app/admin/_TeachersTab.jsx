@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pencil, Shield, Trash2 } from 'lucide-react';
 import { adminFetch } from '@/lib/adminFetch';
+import { isPasswordStrong, PasswordStrength } from '@/lib/password';
 import {
   DeleteConfirm,
   Field,
@@ -30,22 +31,27 @@ export function TeachersTab({ departments, currentUserId }) {
   const [form, setForm] = useState(TEACHER_DEFAULT);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-
-  const fetchTeachers = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError('');
-      setTeachers(await adminFetch('/teachers'));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    fetchTeachers();
-  }, [fetchTeachers]);
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError('');
+      try {
+        const data = await adminFetch('/teachers');
+        if (!cancelled) setTeachers(data);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   const openCreate = () => {
     setForm(TEACHER_DEFAULT);
@@ -67,8 +73,23 @@ export function TeachersTab({ departments, currentUserId }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
     setFormError('');
+
+    if (modal.mode === 'create') {
+      if (!form.password) {
+        setFormError('Password is required');
+        return;
+      }
+      if (!isPasswordStrong(form.password)) {
+        setFormError('Password does not meet the strength requirements');
+        return;
+      }
+    } else if (form.password && !isPasswordStrong(form.password)) {
+      setFormError('Password does not meet the strength requirements');
+      return;
+    }
+
+    setSaving(true);
     try {
       const payload = {
         name: form.name,
@@ -78,10 +99,6 @@ export function TeachersTab({ departments, currentUserId }) {
         ...(form.password ? { password: form.password } : {}),
       };
       if (modal.mode === 'create') {
-        if (!form.password) {
-          setFormError('Password is required');
-          return;
-        }
         await adminFetch('/teachers', {
           method: 'POST',
           body: JSON.stringify({ ...payload, password: form.password }),
@@ -93,7 +110,7 @@ export function TeachersTab({ departments, currentUserId }) {
         });
       }
       setModal(null);
-      fetchTeachers();
+      setRefreshKey((k) => k + 1);
     } catch (e) {
       setFormError(e.message);
     } finally {
@@ -105,7 +122,7 @@ export function TeachersTab({ departments, currentUserId }) {
     try {
       await adminFetch(`/teachers/${deleteTarget.id}`, { method: 'DELETE' });
       setDeleteTarget(null);
-      fetchTeachers();
+      setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(e.message);
       setDeleteTarget(null);
@@ -263,6 +280,7 @@ export function TeachersTab({ departments, currentUserId }) {
                 {...(modal.mode === 'create' ? { required: true } : {})}
                 className={inputCls}
               />
+              <PasswordStrength password={form.password} />
             </Field>
             <Field label="Department">
               <select
