@@ -28,4 +28,4 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=TeacherOut)
 def me(teacher: Teacher = Depends(get_current_teacher)):
-    return TeacherOut(id=str(teacher.id), name=teacher.name, email=teacher.email)
+    return TeacherOut(id=str(teacher.id), name=teacher.name, email=teacher.email, is_admin=teacher.is_admin)
