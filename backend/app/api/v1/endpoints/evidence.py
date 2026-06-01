@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
@@ -15,6 +15,21 @@ router = APIRouter()
 def get_supported_types():
     """Return the file extensions that are currently accepted for evidence upload."""
     return {"supported_extensions": list(SUPPORTED_EXTENSIONS.keys())}
+
+
+@router.delete(
+    "/{evidence_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an evidence record and its file on disk",
+)
+def delete_evidence(
+    evidence_id: str,
+    db: Session = Depends(get_db),
+    _: Teacher = Depends(get_current_teacher),
+):
+    """Delete the evidence record from the database and remove the file from disk."""
+    EvidenceService.delete(evidence_id, db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

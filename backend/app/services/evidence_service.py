@@ -1,7 +1,9 @@
+import io
 import os
 import uuid as _uuid
 from pathlib import Path
 
+from docx import Document as DocxDocument
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,7 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
 # ---------------------------------------------------------------------------
 SUPPORTED_EXTENSIONS: dict[str, FileType] = {
     ".md": FileType.markdown,
+    ".docx": FileType.docx,
 }
 
 
@@ -42,6 +45,36 @@ def _resolve_file_type(filename: str) -> FileType:
             detail=f"Unsupported file type '{ext}'. Allowed: {allowed}",
         )
     return file_type
+
+
+def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
+    """Extract plain-text content from *raw* bytes based on *file_type*."""
+    if file_type == FileType.markdown:
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Markdown file is not valid UTF-8 text",
+            )
+
+    if file_type == FileType.docx:
+        try:
+            doc = DocxDocument(io.BytesIO(raw))
+            return "\n".join(
+                paragraph.text for paragraph in doc.paragraphs
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Could not parse '{filename}' as a valid Word document (.docx)",
+            )
+
+    # Fallback for any future types not yet handled
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=f"Text extraction not implemented for file type '{file_type}'",
+    )
 
 
 class EvidenceService:
@@ -67,17 +100,11 @@ class EvidenceService:
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
 
-        # 3. Read content
+        # 3. Read raw bytes and extract plain-text content per file type
         raw = file.file.read()
-        try:
-            content = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="File is not valid UTF-8 text",
-            )
+        content = _extract_text(raw, file_type, filename)
 
-        # 4. Persist to disk
+        # 4. Persist to disk (always store as UTF-8 text for downstream processing)
         upload_dir = Path(settings.UPLOAD_DIR) / "evidence" / str(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -117,6 +144,27 @@ class EvidenceService:
             .order_by(Evidence.uploaded_at.desc())
             .all()
         )
+
+    # ------------------------------------------------------------------
+    # Delete an evidence record (DB + file on disk)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def delete(evidence_id: str, db: Session) -> None:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        # Remove file from disk (ignore if already gone)
+        try:
+            if os.path.exists(evidence.file_path):
+                os.remove(evidence.file_path)
+        except OSError:
+            pass  # Log in production; don't block the DB delete
+
+        db.delete(evidence)
+        db.commit()
 
     # ------------------------------------------------------------------
     # Read the raw text content of a single evidence record

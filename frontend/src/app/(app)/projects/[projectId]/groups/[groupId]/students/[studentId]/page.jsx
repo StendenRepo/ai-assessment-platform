@@ -18,6 +18,7 @@ import {
   FileText,
   CheckCircle,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import {
   mockStudents,
@@ -301,6 +302,22 @@ function EvidenceUpload({ studentId }) {
     if (file) handleFile(file);
   };
 
+  const handleDelete = async (evidenceId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/evidence/${evidenceId}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ?? `Delete failed (${res.status})`);
+      }
+      setAllEvidence((prev) => prev.filter((ev) => ev.id !== evidenceId));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   // Build the <input accept> string from the dynamic list
   const acceptAttr = allowedExtensions.join(',');
 
@@ -399,7 +416,13 @@ function EvidenceUpload({ studentId }) {
                     <span className="capitalize">{ev.embedding_status}</span>
                   </p>
                 </div>
-                <CheckCircle size={13} className="text-emerald-400 shrink-0" />
+                <button
+                  onClick={() => handleDelete(ev.id)}
+                  title="Delete evidence"
+                  className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             ))
           )}
