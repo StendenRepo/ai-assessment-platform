@@ -43,7 +43,15 @@ def _normalise(header: object) -> str:
 def _grid_from_xlsx(data: bytes) -> List[List[str]]:
     from openpyxl import load_workbook
 
-    workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    try:
+        workbook = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        # openpyxl raises its own errors (InvalidFileException, BadZipFile, ...)
+        # on a corrupt or non-xlsx file; surface a clean user-facing message.
+        raise ImportParseError(
+            "The Excel file could not be read. Make sure it is a valid, "
+            "uncorrupted .xlsx file."
+        )
     try:
         sheet = workbook.active
         return [

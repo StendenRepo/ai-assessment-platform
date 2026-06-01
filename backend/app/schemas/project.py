@@ -21,7 +21,9 @@ class StudentOut(BaseModel):
     id: str
     project_id: str
     name: str
-    student_number: Optional[str] = None
+    # Every student created through the add/import endpoints has a number, so
+    # we expose it as required rather than optional.
+    student_number: str
     status: str
     consent_given: bool = False
 

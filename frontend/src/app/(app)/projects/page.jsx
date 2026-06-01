@@ -112,7 +112,10 @@ export default function ProjectsPage() {
       ) : (
         <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
           {filtered.map((project) => {
-            const status = statusConfig[project.status] ?? statusConfig.active;
+            const status = statusConfig[project.status] ?? {
+              label: project.status || 'Unknown',
+              classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
+            };
             return (
               <div
                 key={project.id}
