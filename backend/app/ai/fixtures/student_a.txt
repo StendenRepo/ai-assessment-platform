@@ -1,0 +1,18 @@
+Applied AI Group Project — Individual Evidence (Lisa Anderson)
+
+Technical contribution:
+I designed and implemented the FastAPI backend structure for our assessment platform.
+This included setting up versioned API routes, service stubs, and health checks.
+I wrote the project_service and evidence_service modules and integrated them with SQLAlchemy models.
+
+Documentation quality:
+I maintained the README with setup instructions and documented the API endpoints.
+I created architecture notes explaining how modules, projects, and students relate.
+
+Collaboration and communication:
+I led two sprint planning sessions and coordinated code reviews with the team.
+I paired with Thomas on database migration issues and documented our decisions in the team wiki.
+
+OVERLAP_DEMO_BLOCK:
+I designed and implemented the FastAPI backend structure for our assessment platform.
+This included setting up versioned API routes, service stubs, and health checks.

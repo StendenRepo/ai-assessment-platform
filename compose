@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Use this instead of bare "docker compose" on Mac — starts GPU Ollama, then Compose.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  # Stop CPU-only Docker Ollama if it was running (frees port 11434 for Mac Ollama).
+  docker compose --profile bundled-ollama stop ollama ollama-pull 2>/dev/null || true
+  "$ROOT/scripts/ensure-ollama-mac.sh"
+fi
+
+exec docker compose "$@"

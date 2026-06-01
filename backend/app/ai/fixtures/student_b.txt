@@ -1,0 +1,17 @@
+Applied AI Group Project — Individual Evidence (Thomas Johnson)
+
+Technical contribution:
+I focused on the Next.js frontend and dashboard components.
+I built the projects list, student assessment view, and mock data integration for the UI prototype.
+
+Documentation quality:
+I maintained the README with setup instructions and documented the API endpoints.
+I added inline comments in React components explaining the assessment workflow.
+
+Collaboration and communication:
+I attended all standups and helped Maya with Tailwind layout issues.
+I shared overlap detection research notes with the team during sprint 2.
+
+OVERLAP_DEMO_BLOCK:
+I designed and implemented the FastAPI backend structure for our assessment platform.
+This included setting up versioned API routes, service stubs, and health checks.

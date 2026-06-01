@@ -243,7 +243,7 @@ EXPORT_DIR=/app/data/exports
 
 ## Backend
 
-Tests are located in `backend/tests/` and use pytest with an in-memory SQLite database — no running services required.
+Tests are in [`test/`](test/README.md): pytest (in-memory SQLite for auth), plus optional live smoke against Docker.
 
 ### Run with Docker (recommended)
 

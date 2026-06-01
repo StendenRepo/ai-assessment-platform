@@ -1,8 +1,5 @@
 import uuid as _uuid_mod
 
-# ── Patch PostgreSQL-specific types before any app model is imported ──────────
-# SQLite can't render UUID, JSONB, or INET. We swap them for generic SQLAlchemy
-# types so the in-memory test database works without touching production code.
 import sqlalchemy.dialects.postgresql as _pg
 from sqlalchemy import String, Text, TypeDecorator
 
@@ -18,23 +15,21 @@ class _SQLiteUUID(TypeDecorator):
         return _uuid_mod.UUID(str(value)) if value is not None else None
 
 
-_pg.UUID = lambda as_uuid=True: _SQLiteUUID()  # used as UUID(as_uuid=True)
-_pg.JSONB = Text    # used as bare class: Column(JSONB, ...)
-_pg.INET = String   # used as bare class: Column(INET, ...)
+_pg.UUID = lambda as_uuid=True: _SQLiteUUID()
+_pg.JSONB = Text
+_pg.INET = String
 
-# ── App imports (models now see the patched UUID) ─────────────────────────────
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
-from app.database import Base
-from app.main import app
 from app.api.deps import get_db
 from app.core.security import hash_password
+from app.database import Base
+from app.main import app
 
-# ── In-memory SQLite engine ───────────────────────────────────────────────────
 _engine = create_engine(
     "sqlite://",
     connect_args={"check_same_thread": False},
@@ -42,8 +37,6 @@ _engine = create_engine(
 )
 _Session = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
-
-# ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session", autouse=True)
 def _tables():
