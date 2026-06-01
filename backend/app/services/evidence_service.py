@@ -100,7 +100,7 @@ class EvidenceService:
         file: UploadFile,
         db: Session,
     ) -> Evidence:
-        # 1. Validate student_id is a proper UUID, then verify student exists
+        # Validate student_id is a proper UUID, then verify student exists
         _parse_uuid(student_id, "student_id")
         student = db.query(Student).filter(Student.id == student_id).first()
         if not student:
@@ -109,15 +109,15 @@ class EvidenceService:
                 detail="Student not found",
             )
 
-        # 2. Resolve & validate file type
+        # Resolve & validate file type
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
 
-        # 3. Read raw bytes and extract plain-text content per file type
+        # Read raw bytes and extract plain-text content per file type
         raw = file.file.read()
         content = _extract_text(raw, file_type, filename)
 
-        # 4. Persist to disk (always store as UTF-8 text for downstream processing)
+        # Persist to disk (always store as UTF-8 text for downstream processing)
         upload_dir = Path(settings.UPLOAD_DIR) / "evidence" / str(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -125,7 +125,7 @@ class EvidenceService:
         file_path = upload_dir / unique_name
         file_path.write_text(content, encoding="utf-8")
 
-        # 5. Create DB record
+        # Create DB record
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
