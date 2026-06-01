@@ -1,0 +1,40 @@
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, field_validator
+
+
+class StudentCreate(BaseModel):
+    name: str
+    student_number: str
+
+    @field_validator("name", "student_number")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class StudentOut(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    student_number: Optional[str] = None
+    status: str
+    consent_given: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectOut(BaseModel):
+    id: str
+    name: str
+    group_name: Optional[str] = None
+    module_id: str
+    status: str
+    created_at: Optional[datetime] = None
+    student_count: int = 0
+
+    model_config = {"from_attributes": True}

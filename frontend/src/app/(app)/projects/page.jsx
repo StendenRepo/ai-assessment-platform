@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal } from 'lucide-react';
-import { mockProjects } from '@/lib/mockData';
+import { Search, ArrowRight, SlidersHorizontal, Users } from 'lucide-react';
+import { listProjects } from '@/lib/projectsApi';
 
 const statusConfig = {
   active: {
@@ -14,28 +14,32 @@ const statusConfig = {
     label: 'Completed',
     classes: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
   },
-  overdue: {
-    label: 'Overdue',
-    classes: 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20',
+  archived: {
+    label: 'Archived',
+    classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
   },
 };
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [courseFilter, setCourseFilter] = useState('all');
 
-  const filtered = mockProjects.filter((p) => {
-    const matchSearch =
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.course.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    listProjects()
+      .then(setProjects)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = projects.filter((p) => {
+    const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === 'all' || p.status === statusFilter;
-    const matchCourse = courseFilter === 'all' || p.course === courseFilter;
-    return matchSearch && matchStatus && matchCourse;
+    return matchSearch && matchStatus;
   });
-
-  const courses = Array.from(new Set(mockProjects.map((p) => p.course)));
 
   return (
     <div className="space-y-6">
@@ -61,7 +65,7 @@ export default function ProjectsPage() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by project name or course..."
+              placeholder="Search by project name..."
               className="w-full pl-9 pr-4 py-2 bg-secondary border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
           </div>
@@ -73,27 +77,26 @@ export default function ProjectsPage() {
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
             <option value="completed">Completed</option>
-            <option value="overdue">Overdue</option>
-          </select>
-          <select
-            value={courseFilter}
-            onChange={(e) => setCourseFilter(e.target.value)}
-            className="bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-          >
-            <option value="all">All Courses</option>
-            {courses.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
+            <option value="archived">Archived</option>
           </select>
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {filtered.length} of {mockProjects.length}
+            {filtered.length} of {projects.length}
           </span>
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="rounded-lg bg-card border border-border p-12 text-center">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : error ? (
+        <div className="rounded-lg bg-card border border-border p-12 text-center">
+          <p className="text-sm font-medium text-red-400">
+            Failed to load projects
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">{error}</p>
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="rounded-lg bg-card border border-border p-12 text-center">
           <Search
             size={32}
@@ -109,7 +112,7 @@ export default function ProjectsPage() {
       ) : (
         <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
           {filtered.map((project) => {
-            const status = statusConfig[project.status];
+            const status = statusConfig[project.status] ?? statusConfig.active;
             return (
               <div
                 key={project.id}
@@ -128,32 +131,29 @@ export default function ProjectsPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{project.course}</span>
-                    <span>·</span>
-                    <span>Group {project.groupNumber}</span>
-                    <span>·</span>
-                    <span>
-                      Due{' '}
-                      {new Date(project.deadline).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
+                    {project.group_name && (
+                      <>
+                        <span>{project.group_name}</span>
+                        <span>·</span>
+                      </>
+                    )}
+                    <span className="flex items-center gap-1.5">
+                      <Users size={12} />
+                      {project.student_count}{' '}
+                      {project.student_count === 1 ? 'student' : 'students'}
                     </span>
-                  </div>
-                </div>
-                <div className="w-40 shrink-0">
-                  <div className="flex justify-between mb-1.5 text-xs">
-                    <span className="text-muted-foreground">Assessment</span>
-                    <span className="font-semibold text-foreground">
-                      {project.assessmentProgress}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${project.assessmentProgress}%` }}
-                    />
+                    {project.created_at && (
+                      <>
+                        <span>·</span>
+                        <span>
+                          Created{' '}
+                          {new Date(project.created_at).toLocaleDateString(
+                            'en-US',
+                            { month: 'short', day: 'numeric', year: 'numeric' }
+                          )}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <ArrowRight
