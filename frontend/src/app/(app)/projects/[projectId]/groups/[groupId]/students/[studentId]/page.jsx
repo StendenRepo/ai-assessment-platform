@@ -15,6 +15,10 @@ import {
   Pause,
   Play,
   Square,
+  Upload,
+  FileText,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import {
   mockStudents,
@@ -22,6 +26,7 @@ import {
   mockCriteria,
   mockAIInsights,
 } from '@/lib/mockData';
+import { authHeaders } from '@/lib/auth';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -179,6 +184,200 @@ function AIInsightsPanel({ studentId }) {
   );
 }
 
+// ─── Markdown Evidence Upload ─────────────────────────────────────────────────
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function EvidenceUpload({ studentId }) {
+  const fileInputRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [error, setError] = useState(null);
+  // Allowed extensions fetched from the backend — starts with a safe default
+  const [allowedExtensions, setAllowedExtensions] = useState(['.md']);
+
+  const isValidUUID = UUID_REGEX.test(studentId);
+
+  // Fetch supported types from the API on mount (only when we have a real UUID)
+  useEffect(() => {
+    if (!isValidUUID) return;
+    fetch(`${API_BASE}/api/v1/evidence/supported-types`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.supported_extensions)) {
+          setAllowedExtensions(data.supported_extensions);
+        }
+      })
+      .catch(() => {
+        // Keep the default if the request fails
+      });
+  }, [isValidUUID]);
+
+  // Guard: only render the upload UI when studentId is a real UUID
+  if (!isValidUUID) {
+    return (
+      <div className="rounded-lg border border-dashed border-border px-5 py-4 text-xs text-muted-foreground">
+        Evidence upload is available once this student is linked to a real
+        database record.
+      </div>
+    );
+  }
+
+  const isAllowed = (filename) => {
+    const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+    return allowedExtensions.includes(ext);
+  };
+
+  const handleFile = async (file) => {
+    setError(null);
+    if (!isAllowed(file.name)) {
+      setError(
+        `Unsupported file type. Allowed: ${allowedExtensions.join(', ')}`
+      );
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(
+        `${API_BASE}/api/v1/students/${studentId}/evidence`,
+        {
+          method: 'POST',
+          headers: authHeaders(),
+          body: formData,
+        }
+      );
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ?? `Upload failed (${res.status})`);
+      }
+
+      const data = await res.json();
+      setUploadedFiles((prev) => [data, ...prev]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onInputChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+    e.target.value = '';
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  // Build the <input accept> string from the dynamic list
+  const acceptAttr = allowedExtensions.join(',');
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-secondary/30">
+        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center">
+          <Upload size={13} className="text-primary" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            Upload Evidence
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Accepted:{' '}
+            <code className="font-mono">{allowedExtensions.join(', ')}</code>
+          </p>
+        </div>
+      </div>
+
+      <div className="p-5 space-y-4">
+        {/* Drop zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
+            dragOver
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:border-primary/50 hover:bg-secondary/50'
+          }`}
+        >
+          <Upload
+            size={22}
+            className={dragOver ? 'text-primary' : 'text-muted-foreground'}
+          />
+          <p className="text-sm font-medium text-foreground">
+            {uploading
+              ? 'Uploading…'
+              : 'Drop a file here or click to browse'}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Accepted: {allowedExtensions.join(', ')}
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptAttr}
+            className="hidden"
+            onChange={onInputChange}
+          />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
+            <XCircle size={13} className="text-red-400 shrink-0" />
+            <p className="text-xs text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Uploaded files list */}
+        {uploadedFiles.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+              Uploaded this session
+            </p>
+            {uploadedFiles.map((ev) => (
+              <div
+                key={ev.id}
+                className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
+              >
+                <FileText size={14} className="text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-foreground font-mono truncate">
+                    {ev.file_name}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {new Date(ev.uploaded_at).toLocaleString('en-US')}
+                  </p>
+                </div>
+                <CheckCircle size={13} className="text-emerald-400 shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Student Assessment Page ──────────────────────────────────────────────────
 
 const contributionTypeLabel = {
@@ -287,123 +486,129 @@ export default function StudentAssessmentPage() {
 
             <div className="p-6">
               {currentTab === 0 && (
-                <div className="space-y-3">
-                  <div className="mb-4">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Detected Contributions
-                    </h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      AI-detected contributions linked to supporting evidence
-                    </p>
-                  </div>
-                  {mockContributions.map((contrib) => (
-                    <div
-                      key={contrib.id}
-                      className="rounded-lg border border-border overflow-hidden"
-                    >
-                      <button
-                        onClick={() =>
-                          setExpanded(
-                            expanded === contrib.id ? null : contrib.id
-                          )
-                        }
-                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left"
+                <div className="space-y-6">
+                  {/* ── Upload section ── */}
+                  <EvidenceUpload studentId={studentId} />
+
+                  {/* ── Contributions list ── */}
+                  <div className="space-y-3">
+                    <div className="mb-4">
+                      <h3 className="text-sm font-semibold text-foreground">
+                        Detected Contributions
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        AI-detected contributions linked to supporting evidence
+                      </p>
+                    </div>
+                    {mockContributions.map((contrib) => (
+                      <div
+                        key={contrib.id}
+                        className="rounded-lg border border-border overflow-hidden"
                       >
-                        <span
-                          className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
+                        <button
+                          onClick={() =>
+                            setExpanded(
+                              expanded === contrib.id ? null : contrib.id
+                            )
+                          }
+                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left"
                         >
-                          {contributionTypeLabel[contrib.type]}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-foreground">
-                            {contrib.title}
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            {contrib.evidenceFiles.length} evidence file
-                            {contrib.evidenceFiles.length !== 1 ? 's' : ''}
-                          </div>
-                        </div>
-                        {contrib.aiConfidence && (
-                          <span className="text-xs rounded-full px-2.5 py-1 bg-accent/10 text-accent ring-1 ring-accent/20 font-medium shrink-0">
-                            AI {(contrib.aiConfidence * 100).toFixed(0)}%
+                          <span
+                            className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
+                          >
+                            {contributionTypeLabel[contrib.type]}
                           </span>
-                        )}
-                        {expanded === contrib.id ? (
-                          <ChevronDown
-                            size={15}
-                            className="text-muted-foreground shrink-0"
-                          />
-                        ) : (
-                          <ChevronRight
-                            size={15}
-                            className="text-muted-foreground shrink-0"
-                          />
-                        )}
-                      </button>
-                      {expanded === contrib.id && (
-                        <div className="border-t border-border bg-secondary/30 p-5 space-y-4">
-                          <p className="text-sm text-muted-foreground">
-                            {contrib.description}
-                          </p>
-                          <div>
-                            <p className="text-xs font-semibold text-foreground mb-2">
-                              Evidence ({contrib.evidenceFiles.length})
-                            </p>
-                            <div className="space-y-2">
-                              {contrib.evidenceFiles.map((ev) => (
-                                <div
-                                  key={ev.id}
-                                  className="rounded-md bg-card border border-border p-3"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-foreground font-mono">
-                                      {ev.fileName}
-                                    </span>
-                                    <button className="text-xs text-primary hover:text-primary/80 transition-colors">
-                                      View source →
-                                    </button>
-                                  </div>
-                                  {ev.excerpt && (
-                                    <div className="rounded bg-background border border-border px-3 py-2 text-xs font-mono text-muted-foreground mb-2">
-                                      {ev.excerpt}
-                                    </div>
-                                  )}
-                                  <div className="text-[10px] text-muted-foreground">
-                                    Uploaded{' '}
-                                    {new Date(ev.uploadDate).toLocaleDateString(
-                                      'en-US'
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-foreground">
+                              {contrib.title}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {contrib.evidenceFiles.length} evidence file
+                              {contrib.evidenceFiles.length !== 1 ? 's' : ''}
                             </div>
                           </div>
-                          {contrib.linkedCriteria.length > 0 && (
+                          {contrib.aiConfidence && (
+                            <span className="text-xs rounded-full px-2.5 py-1 bg-accent/10 text-accent ring-1 ring-accent/20 font-medium shrink-0">
+                              AI {(contrib.aiConfidence * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          {expanded === contrib.id ? (
+                            <ChevronDown
+                              size={15}
+                              className="text-muted-foreground shrink-0"
+                            />
+                          ) : (
+                            <ChevronRight
+                              size={15}
+                              className="text-muted-foreground shrink-0"
+                            />
+                          )}
+                        </button>
+                        {expanded === contrib.id && (
+                          <div className="border-t border-border bg-secondary/30 p-5 space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                              {contrib.description}
+                            </p>
                             <div>
                               <p className="text-xs font-semibold text-foreground mb-2">
-                                Linked Criteria
+                                Evidence ({contrib.evidenceFiles.length})
                               </p>
-                              <div className="flex flex-wrap gap-1.5">
-                                {contrib.linkedCriteria.map((cid) => {
-                                  const c = mockCriteria.find(
-                                    (x) => x.id === cid
-                                  );
-                                  return c ? (
-                                    <span
-                                      key={cid}
-                                      className="rounded-full px-2.5 py-0.5 text-xs bg-primary/10 text-primary ring-1 ring-primary/20"
-                                    >
-                                      {c.name}
-                                    </span>
-                                  ) : null;
-                                })}
+                              <div className="space-y-2">
+                                {contrib.evidenceFiles.map((ev) => (
+                                  <div
+                                    key={ev.id}
+                                    className="rounded-md bg-card border border-border p-3"
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-xs font-semibold text-foreground font-mono">
+                                        {ev.fileName}
+                                      </span>
+                                      <button className="text-xs text-primary hover:text-primary/80 transition-colors">
+                                        View source →
+                                      </button>
+                                    </div>
+                                    {ev.excerpt && (
+                                      <div className="rounded bg-background border border-border px-3 py-2 text-xs font-mono text-muted-foreground mb-2">
+                                        {ev.excerpt}
+                                      </div>
+                                    )}
+                                    <div className="text-[10px] text-muted-foreground">
+                                      Uploaded{' '}
+                                      {new Date(
+                                        ev.uploadDate
+                                      ).toLocaleDateString('en-US')}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                            {contrib.linkedCriteria.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-foreground mb-2">
+                                  Linked Criteria
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {contrib.linkedCriteria.map((cid) => {
+                                    const c = mockCriteria.find(
+                                      (x) => x.id === cid
+                                    );
+                                    return c ? (
+                                      <span
+                                        key={cid}
+                                        className="rounded-full px-2.5 py-0.5 text-xs bg-primary/10 text-primary ring-1 ring-primary/20"
+                                      >
+                                        {c.name}
+                                      </span>
+                                    ) : null;
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
