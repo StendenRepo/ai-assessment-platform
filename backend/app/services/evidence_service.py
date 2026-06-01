@@ -4,6 +4,7 @@ import uuid as _uuid
 from pathlib import Path
 
 from docx import Document as DocxDocument
+from pypdf import PdfReader
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
 SUPPORTED_EXTENSIONS: dict[str, FileType] = {
     ".md": FileType.markdown,
     ".docx": FileType.docx,
+    ".pdf": FileType.pdf,
 }
 
 
@@ -68,6 +70,17 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Could not parse '{filename}' as a valid Word document (.docx)",
+            )
+
+    if file_type == FileType.pdf:
+        try:
+            reader = PdfReader(io.BytesIO(raw))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n\n".join(pages)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Could not parse '{filename}' as a valid PDF",
             )
 
     # Fallback for any future types not yet handled
