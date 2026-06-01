@@ -11,7 +11,6 @@ import {
   Shield,
   Bot,
   Mic,
-  MicOff,
   Pause,
   Play,
   Square,
@@ -27,6 +26,11 @@ import {
   mockAIInsights,
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
+
+const API_BASE_STUDENT =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -195,7 +199,9 @@ function EvidenceUpload({ studentId }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  // All evidence for this student (existing + newly uploaded this session)
+  const [allEvidence, setAllEvidence] = useState([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
   // Allowed extensions fetched from the backend — starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(['.md']);
@@ -216,6 +222,19 @@ function EvidenceUpload({ studentId }) {
         // Keep the default if the request fails
       });
   }, [isValidUUID]);
+
+  // Fetch existing evidence for this student on mount
+  useEffect(() => {
+    if (!isValidUUID) return;
+    setEvidenceLoading(true);
+    fetch(`${API_BASE}/api/v1/students/${studentId}/evidence`, {
+      headers: authHeaders(),
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setAllEvidence(Array.isArray(data) ? data : []))
+      .catch(() => setAllEvidence([]))
+      .finally(() => setEvidenceLoading(false));
+  }, [studentId, isValidUUID]);
 
   // Guard: only render the upload UI when studentId is a real UUID
   if (!isValidUUID) {
@@ -261,7 +280,7 @@ function EvidenceUpload({ studentId }) {
       }
 
       const data = await res.json();
-      setUploadedFiles((prev) => [data, ...prev]);
+      setAllEvidence((prev) => [data, ...prev]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -348,13 +367,21 @@ function EvidenceUpload({ studentId }) {
           </div>
         )}
 
-        {/* Uploaded files list */}
-        {uploadedFiles.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-              Uploaded this session
+        {/* All evidence list */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+            Evidence ({allEvidence.length})
+          </p>
+          {evidenceLoading ? (
+            <div className="flex justify-center py-4">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : allEvidence.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              No evidence uploaded yet.
             </p>
-            {uploadedFiles.map((ev) => (
+          ) : (
+            allEvidence.map((ev) => (
               <div
                 key={ev.id}
                 className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
@@ -365,14 +392,18 @@ function EvidenceUpload({ studentId }) {
                     {ev.file_name}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {new Date(ev.uploaded_at).toLocaleString('en-US')}
+                    {new Date(ev.uploaded_at).toLocaleString('nl-NL')}
+                    {' · '}
+                    <span className="capitalize">{ev.file_type}</span>
+                    {' · '}
+                    <span className="capitalize">{ev.embedding_status}</span>
                   </p>
                 </div>
                 <CheckCircle size={13} className="text-emerald-400 shrink-0" />
               </div>
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
@@ -395,7 +426,35 @@ const contributionTypeColor = {
 
 export default function StudentAssessmentPage() {
   const { studentId } = useParams();
-  const student = mockStudents.find((s) => s.id === studentId);
+
+  // Support both mock data and real API students
+  const isRealUUID = UUID_RE.test(studentId);
+  const mockStudent = mockStudents.find((s) => s.id === studentId);
+
+  const [apiStudent, setApiStudent] = useState(null);
+  const [studentLoading, setStudentLoading] = useState(isRealUUID);
+
+  useEffect(() => {
+    if (!isRealUUID) return;
+    fetch(`${API_BASE_STUDENT}/api/v1/students/${studentId}`, {
+      headers: authHeaders(),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setApiStudent(data))
+      .catch(() => setApiStudent(null))
+      .finally(() => setStudentLoading(false));
+  }, [studentId, isRealUUID]);
+
+  const student = isRealUUID
+    ? apiStudent
+      ? {
+          name: apiStudent.name,
+          studentNumber: apiStudent.student_number,
+          email: '',
+        }
+      : null
+    : mockStudent;
+
   const [currentTab, setCurrentTab] = useState(0);
   const [expanded, setExpanded] = useState(null);
   const [scores, setScores] = useState({});
@@ -417,6 +476,13 @@ export default function StudentAssessmentPage() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRecording, isPaused]);
+
+  if (studentLoading)
+    return (
+      <div className="flex justify-center py-20">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
 
   if (!student)
     return <div className="text-muted-foreground">Student not found</div>;

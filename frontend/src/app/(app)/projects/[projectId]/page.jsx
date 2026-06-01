@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { UserPlus, Users, Upload, FileSpreadsheet } from 'lucide-react';
 import {
   getProject,
@@ -15,6 +15,7 @@ const inputClass =
 
 export default function ProjectPage() {
   const { projectId } = useParams();
+  const router = useRouter();
 
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
@@ -143,7 +144,12 @@ export default function ProjectPage() {
               {students.map((student) => (
                 <div
                   key={student.id}
-                  className="flex items-center gap-4 px-5 py-4"
+                  onClick={() =>
+                    router.push(
+                      `/projects/${projectId}/groups/${projectId}/students/${student.id}`
+                    )
+                  }
+                  className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
                     {student.name
