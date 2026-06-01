@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -38,3 +38,17 @@ class ProjectOut(BaseModel):
     student_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class ImportRowError(BaseModel):
+    row: int
+    student_number: Optional[str] = None
+    message: str
+
+
+class StudentImportResult(BaseModel):
+    imported_count: int
+    error_count: int
+    total_rows: int
+    errors: List[ImportRowError]
+    students: List[StudentOut]

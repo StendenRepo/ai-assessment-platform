@@ -3,10 +3,12 @@ import { authHeaders } from '@/lib/auth';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      // Let the browser set the multipart boundary for FormData uploads.
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders(),
       ...(options.headers ?? {}),
     },
@@ -31,3 +33,12 @@ export const addProjectStudent = (projectId, payload) =>
     method: 'POST',
     body: JSON.stringify(payload),
   });
+
+export const importProjectStudents = (projectId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(`/projects/${projectId}/students/import`, {
+    method: 'POST',
+    body: formData,
+  });
+};
