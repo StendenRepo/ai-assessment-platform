@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus, Users, Upload, FileSpreadsheet } from 'lucide-react';
 import {
   getProject,
   listProjectStudents,
   addProjectStudent,
+  importProjectStudents,
 } from '@/lib/projectsApi';
 
 const inputClass =
@@ -24,6 +25,11 @@ export default function ProjectPage() {
   const [studentNumber, setStudentNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  const fileInputRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [importError, setImportError] = useState('');
 
   useEffect(() => {
     Promise.all([getProject(projectId), listProjectStudents(projectId)])
@@ -57,6 +63,30 @@ export default function ProjectPage() {
       setFormError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError('');
+    setImportResult(null);
+    try {
+      const result = await importProjectStudents(projectId, file);
+      setImportResult(result);
+      if (result.students?.length) {
+        setStudents((prev) =>
+          [...prev, ...result.students].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+        );
+      }
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setImporting(false);
+      e.target.value = ''; // allow re-selecting the same file
     }
   };
 
@@ -177,6 +207,67 @@ export default function ProjectPage() {
               {submitting ? 'Adding…' : 'Add Student'}
             </button>
           </form>
+
+          <div className="rounded-lg bg-card border border-border p-5 mt-6 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <FileSpreadsheet size={15} />
+              Import from file
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Upload an Excel (.xlsx) or CSV file with{' '}
+              <span className="font-medium text-foreground">Name</span> and{' '}
+              <span className="font-medium text-foreground">
+                Student Number
+              </span>{' '}
+              columns.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.csv"
+              onChange={handleImport}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Upload size={15} />
+              {importing ? 'Importing…' : 'Choose file'}
+            </button>
+
+            {importError && (
+              <p className="text-xs text-red-400">{importError}</p>
+            )}
+
+            {importResult && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-medium text-emerald-400">
+                  Imported {importResult.imported_count} of{' '}
+                  {importResult.total_rows}{' '}
+                  {importResult.total_rows === 1 ? 'row' : 'rows'}.
+                </p>
+                {importResult.error_count > 0 && (
+                  <div className="rounded-md border border-border bg-secondary/50 p-3 space-y-1 max-h-48 overflow-y-auto">
+                    <p className="text-xs font-medium text-amber-400">
+                      {importResult.error_count}{' '}
+                      {importResult.error_count === 1 ? 'row' : 'rows'} skipped:
+                    </p>
+                    {importResult.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">
+                        Row {err.row}
+                        {err.student_number
+                          ? ` (${err.student_number})`
+                          : ''}: {err.message}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

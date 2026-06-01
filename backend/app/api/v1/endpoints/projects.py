@@ -1,13 +1,20 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.project import Project
 from app.models.student import Student
 from app.models.teacher import Teacher
-from app.schemas.project import ProjectOut, StudentCreate, StudentOut
+from app.schemas.project import (
+    ImportRowError,
+    ProjectOut,
+    StudentCreate,
+    StudentImportResult,
+    StudentOut,
+)
+from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
 
@@ -126,3 +133,66 @@ def add_project_student(
     db.commit()
     db.refresh(student)
     return _student_to_out(student)
+
+
+@router.post(
+    "/projects/{project_id}/students/import",
+    response_model=StudentImportResult,
+)
+async def import_project_students(
+    project_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: Teacher = Depends(get_current_teacher),
+):
+    project = _get_project_or_404(db, project_id)
+
+    contents = await file.read()
+    try:
+        rows = parse_student_file(file.filename, contents)
+    except ImportParseError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    existing_numbers = {
+        number
+        for (number,) in db.query(Student.student_number).filter(
+            Student.project_id == project.id
+        )
+        if number
+    }
+
+    seen: set[str] = set()
+    errors: List[ImportRowError] = []
+    to_add: List[Student] = []
+
+    for row in rows:
+        name = row.name.strip()
+        number = row.student_number.strip()
+
+        if not name:
+            errors.append(ImportRowError(row=row.row_number, student_number=number or None, message="Missing name"))
+            continue
+        if not number:
+            errors.append(ImportRowError(row=row.row_number, message="Missing student number"))
+            continue
+        if number in seen:
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Duplicate student number in file"))
+            continue
+        if number in existing_numbers:
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number already exists in this project"))
+            continue
+
+        seen.add(number)
+        to_add.append(Student(project_id=project.id, name=name, student_number=number))
+
+    for student in to_add:
+        db.add(student)
+    db.commit()
+
+    return StudentImportResult(
+        imported_count=len(to_add),
+        error_count=len(errors),
+        total_rows=len(rows),
+        errors=errors,
+        students=[_student_to_out(s) for s in to_add],
+    )
