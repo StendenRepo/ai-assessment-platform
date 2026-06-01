@@ -1,9 +1,11 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
+from app.models.module import Module
 from app.models.project import Project
 from app.models.student import Student
 from app.models.teacher import Teacher
@@ -17,6 +19,8 @@ from app.schemas.project import (
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
+
+_DUPLICATE_DETAIL = "A student with that student number already exists in this project"
 
 
 def _student_to_out(s: Student) -> StudentOut:
@@ -42,8 +46,22 @@ def _project_to_out(p: Project, student_count: int) -> ProjectOut:
     )
 
 
-def _get_project_or_404(db: Session, project_id: str) -> Project:
-    project = db.query(Project).filter(Project.id == project_id).first()
+def _owned_projects_query(db: Session, teacher: Teacher):
+    """Projects belonging to the given teacher (project -> module -> teacher)."""
+    return (
+        db.query(Project)
+        .join(Module, Project.module_id == Module.id)
+        .filter(Module.teacher_id == teacher.id)
+    )
+
+
+def _get_owned_project_or_404(db: Session, project_id: str, teacher: Teacher) -> Project:
+    """Fetch a project the teacher owns.
+
+    Returns 404 (not 403) for both missing and not-owned projects so we don't
+    leak the existence of other teachers' projects.
+    """
+    project = _owned_projects_query(db, teacher).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
@@ -53,12 +71,12 @@ def _get_project_or_404(db: Session, project_id: str) -> Project:
 # Projects
 # ---------------------------------------------------------------------------
 
-@router.get("/projects", response_model=List[ProjectOut])
+@router.get("", response_model=List[ProjectOut])
 def list_projects(
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    projects = db.query(Project).order_by(Project.created_at.desc()).all()
+    projects = _owned_projects_query(db, current_teacher).order_by(Project.created_at.desc()).all()
     result = []
     for p in projects:
         count = db.query(Student).filter(Student.project_id == p.id).count()
@@ -66,13 +84,13 @@ def list_projects(
     return result
 
 
-@router.get("/projects/{project_id}", response_model=ProjectOut)
+@router.get("/{project_id}", response_model=ProjectOut)
 def get_project(
     project_id: str,
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    project = _get_project_or_404(db, project_id)
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
     count = db.query(Student).filter(Student.project_id == project.id).count()
     return _project_to_out(project, count)
 
@@ -81,13 +99,13 @@ def get_project(
 # Students
 # ---------------------------------------------------------------------------
 
-@router.get("/projects/{project_id}/students", response_model=List[StudentOut])
+@router.get("/{project_id}/students", response_model=List[StudentOut])
 def list_project_students(
     project_id: str,
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    _get_project_or_404(db, project_id)
+    _get_owned_project_or_404(db, project_id, current_teacher)
     students = (
         db.query(Student)
         .filter(Student.project_id == project_id)
@@ -98,7 +116,7 @@ def list_project_students(
 
 
 @router.post(
-    "/projects/{project_id}/students",
+    "/{project_id}/students",
     response_model=StudentOut,
     status_code=status.HTTP_201_CREATED,
 )
@@ -106,9 +124,9 @@ def add_project_student(
     project_id: str,
     payload: StudentCreate,
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    project = _get_project_or_404(db, project_id)
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
 
     duplicate = (
         db.query(Student)
@@ -119,10 +137,7 @@ def add_project_student(
         .first()
     )
     if duplicate:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A student with that student number already exists in this project",
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
 
     student = Student(
         project_id=project.id,
@@ -130,22 +145,28 @@ def add_project_student(
         student_number=payload.student_number,
     )
     db.add(student)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Backstop for a concurrent insert that slipped past the check above;
+        # the (project_id, student_number) unique constraint catches it.
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
     return _student_to_out(student)
 
 
 @router.post(
-    "/projects/{project_id}/students/import",
+    "/{project_id}/students/import",
     response_model=StudentImportResult,
 )
 async def import_project_students(
     project_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    project = _get_project_or_404(db, project_id)
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
 
     contents = await file.read()
     try:
@@ -187,7 +208,14 @@ async def import_project_students(
 
     for student in to_add:
         db.add(student)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Import conflicted with a concurrent change. Please try again.",
+        )
 
     return StudentImportResult(
         imported_count=len(to_add),

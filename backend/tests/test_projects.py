@@ -193,3 +193,65 @@ class TestListProjects:
     def test_list_without_token_returns_401(self, client):
         res = client.get(PROJECTS_URL)
         assert res.status_code == 401
+
+
+class TestAuthorizationScoping:
+    """A teacher may only see and touch projects they own (project -> module
+    -> teacher). Other teachers' projects must look like they don't exist."""
+
+    def _other_teachers_project(self, db):
+        from app.core.security import hash_password
+        from app.models.module import Module
+        from app.models.project import Project
+        from app.models.teacher import Teacher
+
+        other = Teacher(
+            id=uuid.uuid4(),
+            name="Other Teacher",
+            email="other@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(other)
+        db.commit()
+        module = Module(id=uuid.uuid4(), teacher_id=other.id, name="Other Module")
+        db.add(module)
+        db.commit()
+        project = Project(id=uuid.uuid4(), module_id=module.id, name="Other Project")
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+        return other, module, project
+
+    def test_other_teachers_project_is_hidden(self, client, teacher, db):
+        from app.models.module import Module
+        from app.models.project import Project
+        from app.models.student import Student
+        from app.models.teacher import Teacher
+
+        other, module, project = self._other_teachers_project(db)
+        headers = _auth_headers(client)  # logs in as the fixture teacher
+        try:
+            # Not listed
+            listed = client.get(PROJECTS_URL, headers=headers).json()
+            assert str(project.id) not in [p["id"] for p in listed]
+            # Direct access is 404 (not 403 — don't leak existence)
+            assert client.get(f"{PROJECTS_URL}/{project.id}", headers=headers).status_code == 404
+            assert (
+                client.get(f"{PROJECTS_URL}/{project.id}/students", headers=headers).status_code
+                == 404
+            )
+            # Cannot add or import into someone else's project
+            assert (
+                client.post(
+                    f"{PROJECTS_URL}/{project.id}/students",
+                    json={"name": "X", "student_number": "S1"},
+                    headers=headers,
+                ).status_code
+                == 404
+            )
+        finally:
+            db.query(Student).filter(Student.project_id == project.id).delete()
+            db.query(Project).filter(Project.id == project.id).delete()
+            db.query(Module).filter(Module.id == module.id).delete()
+            db.query(Teacher).filter(Teacher.id == other.id).delete()
+            db.commit()

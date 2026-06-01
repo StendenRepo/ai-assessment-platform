@@ -152,6 +152,13 @@ class TestImportXlsx:
         res = _upload(client, project, headers, b"not a spreadsheet", filename="students.txt")
         assert res.status_code == 400
 
+    def test_corrupt_xlsx_returns_400(self, client, project):
+        headers = _auth_headers(client)
+        # .xlsx extension but garbage bytes -> openpyxl raises; should be a
+        # clean 400, not a 500.
+        res = _upload(client, project, headers, b"PK\x03\x04 totally not a real workbook")
+        assert res.status_code == 400
+
 
 class TestImportCsv:
     def test_valid_csv_imported(self, client, project):
