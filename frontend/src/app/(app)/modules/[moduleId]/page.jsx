@@ -302,188 +302,243 @@ export default function ModulePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-3">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <FolderPlus size={16} />
-            Groups ({groups.length})
-          </h2>
+        <div className="col-span-2 space-y-6">
+          <div className="space-y-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <FolderPlus size={16} />
+              Groups ({groups.length})
+            </h2>
 
-          {groups.length === 0 ? (
-            <div className="rounded-lg bg-card border border-border p-10 text-center">
-              <FolderPlus
-                size={28}
-                className="mx-auto text-muted-foreground mb-3 opacity-50"
-              />
-              <p className="text-sm font-medium text-foreground">
-                No groups yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Create a project group or keep using the default individual
-                student group.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-              {groups.map((group) => (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
-                    )
-                  }
-                  className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">
-                      {group.name}
+            {groups.length === 0 ? (
+              <div className="rounded-lg bg-card border border-border p-10 text-center">
+                <FolderPlus
+                  size={28}
+                  className="mx-auto text-muted-foreground mb-3 opacity-50"
+                />
+                <p className="text-sm font-medium text-foreground">
+                  No groups yet
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Create a project group or keep using the default individual
+                  student group.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
+                {groups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
+                      )
+                    }
+                    className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">
+                        {group.name}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                        <span className="flex items-center gap-1.5 leading-none">
+                          <Users size={13} />
+                          {group.student_count}{' '}
+                          {group.student_count === 1 ? 'student' : 'students'}
+                        </span>
+                        <span className="flex items-center gap-1.5 leading-none">
+                          <FileText size={13} />
+                          {group.file_count ?? 0}{' '}
+                          {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
-                      <span className="flex items-center gap-1.5 leading-none">
-                        <Users size={13} />
-                        {group.student_count}{' '}
-                        {group.student_count === 1 ? 'student' : 'students'}
-                      </span>
-                      <span className="flex items-center gap-1.5 leading-none">
-                        <FileText size={13} />
-                        {group.file_count ?? 0}{' '}
-                        {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
-                      </span>
+                    <span className="text-xs text-muted-foreground">
+                      Open group →
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <Users size={16} />
+              Students ({students.length})
+            </h2>
+
+            {students.length === 0 ? (
+              <div className="rounded-lg bg-card border border-border p-10 text-center">
+                <Users
+                  size={28}
+                  className="mx-auto text-muted-foreground mb-3 opacity-50"
+                />
+                <p className="text-sm font-medium text-foreground">
+                  No students yet
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add students using the form to set up the assessment
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
+                {students.map((student) => (
+                  <div
+                    key={student.id}
+                    onClick={() =>
+                      router.push(
+                        `${APP_PATHS.modules}/${moduleId}/groups/${student.project_id}/students/${student.id}?from=module`
+                      )
+                    }
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                      {student.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-foreground">
+                        {student.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+                        {student.student_number}
+                      </div>
                     </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    Open group →
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="col-span-1 space-y-6">
-          <div className="rounded-lg bg-card border border-border p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <FileText size={15} />
-                Rubric File
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <FileText size={16} />
+              Rubric File
+            </h3>
+            <div className="rounded-lg bg-card border border-border p-5 space-y-4">
+              <p className="text-xs text-muted-foreground">
                 Attach a rubric so the AI knows the grading criteria for this
                 module. Only{' '}
-                <span className="font-semibold text-foreground">
-                  {ALLOWED_RUBRIC_LABEL}
-                </span>{' '}
-                files are accepted.
+                <span className="font-semibold text-foreground">PDF</span> or{' '}
+                <span className="font-semibold text-foreground">Excel</span>{' '}
+                (.xlsx) files are accepted.
               </p>
-            </div>
 
-            {rubric ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <FileText size={16} className="text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground truncate">
-                        {rubric.file_name || 'rubric'}
-                      </span>
-                      <CheckCircle2
-                        size={13}
-                        className="text-emerald-400 shrink-0"
-                      />
+              {rubric ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <FileText size={16} className="text-primary" />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      {rubric.file_type && (
-                        <span className="uppercase font-mono">
-                          {rubric.file_type}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground truncate">
+                          {rubric.file_name || 'rubric'}
                         </span>
-                      )}
-                      {rubric.size_bytes && (
-                        <span>{formatBytes(rubric.size_bytes)}</span>
-                      )}
-                      {rubric.uploaded_at && (
-                        <span>Uploaded {formatDate(rubric.uploaded_at)}</span>
-                      )}
+                        <CheckCircle2
+                          size={13}
+                          className="text-emerald-400 shrink-0"
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        {rubric.file_type && (
+                          <span className="uppercase font-mono">
+                            {rubric.file_type}
+                          </span>
+                        )}
+                        {rubric.size_bytes && (
+                          <span>{formatBytes(rubric.size_bytes)}</span>
+                        )}
+                        {rubric.uploaded_at && (
+                          <span>Uploaded {formatDate(rubric.uploaded_at)}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => rubricInputRef.current?.click()}
+                      disabled={uploadingRubric}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} /> Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRubricDelete}
+                      disabled={deletingRubric}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />{' '}
+                      {deletingRubric ? 'Removing…' : 'Remove'}
+                    </button>
+                  </div>
+                  <input
+                    ref={rubricInputRef}
+                    type="file"
+                    accept=".pdf,.xlsx"
+                    onChange={(e) => handleRubricFile(e.target.files?.[0])}
+                    className="hidden"
+                  />
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => rubricInputRef.current?.click()}
-                    disabled={uploadingRubric}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
-                  >
-                    <RefreshCw size={12} /> Replace
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRubricDelete}
-                    disabled={deletingRubric}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
-                  >
-                    <Trash2 size={12} /> {deletingRubric ? 'Removing…' : 'Remove'}
-                  </button>
-                </div>
-                <input
-                  ref={rubricInputRef}
-                  type="file"
-                  accept=".pdf,.xlsx"
-                  onChange={(e) => handleRubricFile(e.target.files?.[0])}
-                  className="hidden"
-                />
-              </div>
-            ) : (
-              <div
-                onDragEnter={handleRubricDrag}
-                onDragLeave={handleRubricDrag}
-                onDragOver={handleRubricDrag}
-                onDrop={handleRubricDrop}
-                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
-                  rubricDragActive
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/40'
-                }`}
-              >
-                <Upload
-                  size={24}
-                  className="mx-auto text-muted-foreground mb-2"
-                />
-                <p className="text-sm font-medium text-foreground mb-1">
-                  {uploadingRubric ? 'Uploading…' : 'Drop your rubric here'}
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  <span className="font-semibold text-foreground">
-                    {ALLOWED_RUBRIC_LABEL}
-                  </span>{' '}
-                  only
-                </p>
-                <input
-                  ref={rubricInputRef}
-                  type="file"
-                  accept=".pdf,.xlsx"
-                  onChange={(e) => handleRubricFile(e.target.files?.[0])}
-                  className="hidden"
-                  id="rubric-upload"
-                />
-                <label
-                  htmlFor="rubric-upload"
-                  className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
-                    uploadingRubric ? 'opacity-50 pointer-events-none' : ''
+              ) : (
+                <div
+                  onDragEnter={handleRubricDrag}
+                  onDragLeave={handleRubricDrag}
+                  onDragOver={handleRubricDrag}
+                  onDrop={handleRubricDrop}
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                    rubricDragActive
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40'
                   }`}
                 >
-                  Browse files
-                </label>
-              </div>
-            )}
+                  <Upload
+                    size={24}
+                    className="mx-auto text-muted-foreground mb-2"
+                  />
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    {uploadingRubric ? 'Uploading…' : 'Drop your rubric here'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    <span className="font-semibold text-foreground">PDF</span>{' '}
+                    or{' '}
+                    <span className="font-semibold text-foreground">Excel</span>{' '}
+                    (.xlsx) only
+                  </p>
+                  <input
+                    ref={rubricInputRef}
+                    type="file"
+                    accept=".pdf,.xlsx"
+                    onChange={(e) => handleRubricFile(e.target.files?.[0])}
+                    className="hidden"
+                    id="rubric-upload"
+                  />
+                  <label
+                    htmlFor="rubric-upload"
+                    className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
+                      uploadingRubric ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                  >
+                    Browse files
+                  </label>
+                </div>
+              )}
 
-            {rubricError && (
-              <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-                {rubricError}
-              </div>
-            )}
+              {rubricError && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                  {rubricError}
+                </div>
+              )}
+            </div>
           </div>
 
           <form
@@ -514,64 +569,6 @@ export default function ModulePage() {
               {groupSubmitting ? 'Creating…' : 'Create Group'}
             </button>
           </form>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-3">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <Users size={16} />
-            Students ({students.length})
-          </h2>
-
-          {students.length === 0 ? (
-            <div className="rounded-lg bg-card border border-border p-10 text-center">
-              <Users
-                size={28}
-                className="mx-auto text-muted-foreground mb-3 opacity-50"
-              />
-              <p className="text-sm font-medium text-foreground">
-                No students yet
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Add students using the form to set up the assessment
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-              {students.map((student) => (
-                <div
-                  key={student.id}
-                  onClick={() =>
-                    router.push(
-                      `${APP_PATHS.modules}/${moduleId}/groups/${student.project_id}/students/${student.id}?from=module`
-                    )
-                  }
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                    {student.name
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-foreground">
-                      {student.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-                      {student.student_number}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="col-span-1">
           <form
             onSubmit={handleAdd}
             className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
@@ -629,7 +626,7 @@ export default function ModulePage() {
             </button>
           </form>
 
-          <div className="rounded-lg bg-card border border-border p-5 mt-6 space-y-3">
+          <div className="rounded-lg bg-card border border-border p-5 space-y-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <FileSpreadsheet size={15} />
               Import from file
@@ -693,7 +690,7 @@ export default function ModulePage() {
           {groups.length > 0 && students.length > 0 && (
             <form
               onSubmit={handleAssign}
-              className="rounded-lg bg-card border border-border p-5 mt-6 space-y-4"
+              className="rounded-lg bg-card border border-border p-5 space-y-4"
             >
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <UserCheck size={15} />
