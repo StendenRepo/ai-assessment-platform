@@ -23,23 +23,47 @@ export function DepartmentsTab({ onDataChange }) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
+  const requestDepartments = useCallback(async () => {
+    const data = await adminFetch('/departments');
+    onDataChange?.(data);
+    return data;
+  }, [onDataChange]);
+
   const fetchDepartments = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      const data = await adminFetch('/departments');
+      const data = await requestDepartments();
       setDepartments(data);
-      onDataChange?.(data);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [onDataChange]);
+  }, [requestDepartments]);
 
   useEffect(() => {
-    fetchDepartments();
-  }, [fetchDepartments]);
+    let active = true;
+
+    requestDepartments()
+      .then((data) => {
+        if (!active) return;
+        setDepartments(data);
+        setError('');
+      })
+      .catch((e) => {
+        if (!active) return;
+        setError(e.message);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [requestDepartments]);
 
   const openCreate = () => {
     setForm({ name: '' });
