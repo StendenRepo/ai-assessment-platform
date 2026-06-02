@@ -199,6 +199,64 @@ git push origin feature/feature-name
 
 ---
 
+# CI/CD & OTAP
+
+This project uses GitHub Actions for continuous integration and an OTAP pipeline. All workflows are located in `.github/workflows/`.
+
+## Workflows
+
+### `ci.yml` — Continuous Integration
+Runs on **every push** and **every pull request** (all branches).
+
+| Job | What it does |
+|-----|-------------|
+| Frontend build | `npm ci` → `npm run build` |
+| Backend check | `pip install -r requirements.txt` → import check on `app.main` |
+
+---
+
+### `otap-develop.yml` — Development (`dev` branch)
+Runs on push to `dev`.
+
+1. Runs the CI checks (see above)
+2. Builds the Docker images for backend and frontend (`ai-assessment-backend:dev`, `ai-assessment-frontend:dev`)
+3. Builds the full stack via `docker compose build`
+
+---
+
+### `otap-test.yml` — Test (`test` branch)
+Runs on push to `test`.
+
+1. Runs the CI checks
+2. Runs all **backend tests** with pytest + coverage (`backend/tests/`)
+3. Runs **frontend tests** if a `test` script is present in `package.json`
+
+---
+
+### `otap-main.yml` — Production (`main` branch)
+Runs on push to `main`.
+
+1. Runs the CI checks
+2. Automatically generates a version tag (`v<year>.<month>.<day>-<short-sha>`)
+3. Generates a changelog based on commits since the last tag
+4. Creates a **GitHub Release** with the changelog and commit information
+
+---
+
+## OTAP Branch Strategy
+
+```
+feature/* → dev → test → main
+```
+
+| Branch | OTAP stage | Workflow |
+|--------|-----------|----------|
+| `dev` | Development | CI + Docker build |
+| `test` | Test | CI + all tests |
+| `main` | Production | CI + GitHub Release |
+
+---
+
 # Code Formatting
 
 This project uses Prettier for code formatting. To ensure consistent styling:

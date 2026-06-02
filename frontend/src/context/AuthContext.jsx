@@ -1,26 +1,17 @@
 'use client';
 
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-} from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import { getStoredUser, getToken, clearSession } from '@/lib/auth';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
+  const [user, setUser] = useState(() => {
     const token = getToken();
     const stored = getStoredUser();
-    if (token && stored) setUser(stored);
-    setReady(true);
-  }, []);
+    return token && stored ? stored : null;
+  });
+  const ready = true;
 
   const login = useCallback((userData) => {
     setUser(userData);
