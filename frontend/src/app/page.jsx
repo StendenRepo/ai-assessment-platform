@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GraduationCap, Shield } from 'lucide-react';
 import { apiLogin, clearSession } from '@/lib/auth';
 import { useAuth } from '@/context/AuthContext';
+import { APP_PATHS } from '@/lib/routes';
 
 export default function RootPage() {
   const router = useRouter();
@@ -17,7 +18,9 @@ export default function RootPage() {
 
   useEffect(() => {
     if (ready && user) {
-      router.replace(isAdmin && user.is_admin ? '/admin' : '/dashboard');
+      router.replace(
+        isAdmin && user.is_admin ? APP_PATHS.admin : APP_PATHS.dashboard
+      );
     }
   }, [ready, user, router, isAdmin]);
 
