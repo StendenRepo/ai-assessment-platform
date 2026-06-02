@@ -22,7 +22,7 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-export const listProjects = () => request(API_PATHS.modules);
+export const listModules = () => request(API_PATHS.modules);
 
 export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
@@ -48,6 +48,12 @@ export const addProjectStudent = (projectId, payload) =>
   request(API_PATHS.moduleStudents(projectId), {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+
+export const moveStudentToGroup = (moduleId, studentId, projectId) =>
+  request(API_PATHS.moduleStudent(moduleId, studentId), {
+    method: 'PATCH',
+    body: JSON.stringify({ project_id: projectId }),
   });
 
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {

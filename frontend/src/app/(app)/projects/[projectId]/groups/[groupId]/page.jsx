@@ -97,7 +97,7 @@ export default function GroupDetailPage() {
         <div className="grid grid-cols-3 divide-x divide-border">
           {[
             { label: 'Class', value: group.class },
-            { label: 'Project', value: group.projectName },
+            { label: 'Module', value: group.projectName },
             {
               label: 'Deadline',
               value: new Date(group.deadline).toLocaleDateString('en-US', {
@@ -133,7 +133,7 @@ export default function GroupDetailPage() {
                   key={student.id}
                   onClick={() =>
                     router.push(
-                      `/projects/${projectId}/groups/${groupId}/students/${student.id}`
+                      `/modules/${projectId}/groups/${groupId}/students/${student.id}`
                     )
                   }
                   className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors group"
@@ -172,7 +172,7 @@ export default function GroupDetailPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       router.push(
-                        `/projects/${projectId}/groups/${groupId}/students/${student.id}`
+                        `/modules/${projectId}/groups/${groupId}/students/${student.id}`
                       );
                     }}
                     className="shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
