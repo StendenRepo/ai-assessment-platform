@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.project import ProjectOut
 
 
 class ModuleCreate(BaseModel):
@@ -42,5 +44,10 @@ class ModuleOut(BaseModel):
     created_at: datetime
     project_count: int = 0
     student_count: int = 0
+    has_rubric: bool = False
+    has_module_guide: bool = False
+    criteria: list[dict] = Field(default_factory=list)
+    criteria_count: int = 0
+    projects: list[ProjectOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

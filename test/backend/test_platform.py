@@ -13,8 +13,8 @@ STUDENT_B = "student-2"
 
 @pytest.fixture
 def platform_store(tmp_path, monkeypatch):
-    import app.api.v1.endpoints.dev_platform as dev_platform
-    import app.api.v1.platform as platform_api
+    import app.api.v1.endpoints.modules as modules_api
+    import app.api.v1.endpoints.platform as platform_api
     import app.audit as audit_mod
     import app.store as store_mod
 
@@ -36,7 +36,7 @@ def platform_store(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod, "DATA_DIR", data_dir)
     monkeypatch.setattr(store_mod, "STORE_FILE", store_file)
     fresh = store_mod.PlatformStore()
-    for mod in (store_mod, platform_api, dev_platform, audit_mod):
+    for mod in (store_mod, modules_api, platform_api, audit_mod):
         monkeypatch.setattr(mod, "store", fresh)
     return fresh
 
@@ -44,7 +44,7 @@ def platform_store(tmp_path, monkeypatch):
 def _wait_for_analysis(client, project: str, group: str, timeout: float = 90.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        res = client.get(f"/api/v1/projects/{project}/groups/{group}/analyze/status")
+        res = client.get(f"/api/v1/modules/{project}/projects/{group}/analyze/status")
         assert res.status_code == 200
         body = res.json()
         if body.get("status") == "completed":
@@ -88,7 +88,7 @@ class TestPlatformRoutes:
 
 class TestDevBridge:
     def test_ensure_fixture_students(self, client, platform_store):
-        res = client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
+        res = client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
         assert res.status_code == 200
         body = res.json()
         ids = {s["id"] for s in body["students"]}
@@ -98,10 +98,10 @@ class TestDevBridge:
 
     def test_analyze_and_insights(self, client, platform_store):
         assert (
-            client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure").status_code
+            client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure").status_code
             == 200
         )
-        start = client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/analyze")
+        start = client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/analyze")
         assert start.json()["status"] == "started"
         assert _wait_for_analysis(client, PROJECT, GROUP)["status"] == "completed"
 
@@ -116,7 +116,7 @@ class TestDevBridge:
             assert all(d.get("student") == other_s.name for d in other_drafts)
 
         insights = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/students/{STUDENT_A}/ai-insights"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/students/{STUDENT_A}/ai-insights"
         )
         data = insights.json()
         assert data["student_id"] == STUDENT_A

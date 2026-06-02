@@ -4,13 +4,13 @@ Standalone tests for branch `feature/integrate-poc-dev-ui`: POC AI backend merge
 
 ## What was integrated (summary for reporting)
 
-| Layer | Change |
-|-------|--------|
-| **Backend** | POC pipeline (TF-IDF, overlap, Ollama/templates), JSON platform store, `/api/v1/modules/...` routes |
-| **Bridge API** | Dev URL shape: `projectId` → module, `groupId` → project, mock student ids → fixture evidence |
-| **Database** | Existing Postgres + JWT auth/admin unchanged |
-| **Frontend** | Unchanged (mock data); no new UI wiring |
-| **Docker** | Platform data volume, Ollama via `host.docker.internal`, single Uvicorn worker for store consistency |
+| Layer          | Change                                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| **Backend**    | POC pipeline (TF-IDF, overlap, Ollama/templates), JSON platform store, `/api/v1/modules/...` routes  |
+| **Bridge API** | Dev URL shape: `projectId` → module, `groupId` → project, mock student ids → fixture evidence        |
+| **Database**   | Existing Postgres + JWT auth/admin unchanged                                                         |
+| **Frontend**   | Unchanged (mock data); no new UI wiring                                                              |
+| **Docker**     | Platform data volume, Ollama via `host.docker.internal`, single Uvicorn worker for store consistency |
 
 ## What these tests prove
 
@@ -24,7 +24,7 @@ Standalone tests for branch `feature/integrate-poc-dev-ui`: POC AI backend merge
 ## Prerequisites
 
 1. From repo root: `docker compose up -d --build` (Postgres migrations create seed user).
-2. Optional: Ollama on the host for LLM drafts (`scripts/ensure-ollama-mac.sh` on macOS). Tests pass without it (TF-IDF + templates).
+2. Optional: Ollama for LLM drafts (Docker-managed in this project). Tests pass without it (TF-IDF + templates).
 3. **Seed login (live smoke):** `admin@admin.nl` / `admin`
 
 - **API-only** (`./test/run.sh --api-only`): running `backend` container **or** local `pip install -r backend/requirements.txt` + `PYTHONPATH=backend pytest ...`
@@ -83,12 +83,12 @@ test/
 
 ## API reference (bridge)
 
-| Method | Path |
-|--------|------|
-| POST | `/api/v1/projects/{projectId}/groups/{groupId}/ensure` |
-| POST | `/api/v1/projects/{projectId}/groups/{groupId}/analyze` |
-| GET | `/api/v1/projects/{projectId}/groups/{groupId}/analyze/status` |
-| GET | `/api/v1/projects/{projectId}/groups/{groupId}/students/{studentId}/ai-insights` |
-| GET | `/api/v1/llm-status` |
+| Method | Path                                                                               |
+| ------ | ---------------------------------------------------------------------------------- |
+| POST   | `/api/v1/modules/{moduleId}/projects/{projectId}/ensure`                           |
+| POST   | `/api/v1/modules/{moduleId}/projects/{projectId}/analyze`                          |
+| GET    | `/api/v1/modules/{moduleId}/projects/{projectId}/analyze/status`                   |
+| GET    | `/api/v1/modules/{moduleId}/projects/{projectId}/students/{studentId}/ai-insights` |
+| GET    | `/api/v1/llm-status`                                                               |
 
 Default smoke IDs: `proj-1`, `group-1`, `student-1` (Lisa Anderson fixture; overlap with `student-2`).

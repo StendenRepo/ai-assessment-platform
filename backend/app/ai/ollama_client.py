@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+OLLAMA_MODEL_BACKUP = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "90"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "320"))
 OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
@@ -23,7 +24,37 @@ def get_config() -> dict:
     return {
         "base_url": OLLAMA_BASE_URL,
         "model": OLLAMA_MODEL,
+        "backup_model": OLLAMA_MODEL_BACKUP,
+        "active_model": _resolve_model_name(),
     }
+
+
+def _models_to_try() -> list[str]:
+    candidates = [OLLAMA_MODEL, OLLAMA_MODEL_BACKUP]
+    seen: set[str] = set()
+    out: list[str] = []
+    for model in candidates:
+        normalized = (model or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+    return out
+
+
+def _resolve_model_name() -> str | None:
+    data = _tags_payload()
+    if not data:
+        return None
+    names = [m.get("name", "") for m in data.get("models", [])]
+    for preferred in _models_to_try():
+        if preferred in names:
+            return preferred
+        prefix = preferred.split(":")[0]
+        alternate = next((n for n in names if n.startswith(f"{prefix}:")), None)
+        if alternate:
+            return alternate
+    return None
 
 
 @contextmanager
@@ -67,21 +98,17 @@ def is_available() -> bool:
 
 
 def model_is_pulled() -> bool:
-    data = _tags_payload()
-    if not data:
-        return False
-    names = [m.get("name", "") for m in data.get("models", [])]
-    prefix = OLLAMA_MODEL.split(":")[0]
-    return any(n == OLLAMA_MODEL or n.startswith(f"{prefix}:") for n in names)
+    return _resolve_model_name() is not None
 
 
 def chat(system: str, user: str, *, num_predict: int | None = None) -> Optional[str]:
     """Call local Ollama chat API. Returns None if unavailable or on error."""
-    if not is_available():
+    selected_model = _resolve_model_name()
+    if not selected_model:
         return None
 
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": selected_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -107,11 +134,12 @@ def chat(system: str, user: str, *, num_predict: int | None = None) -> Optional[
 
 def chat_stream(system: str, user: str, *, num_predict: int | None = None) -> Iterator[str]:
     """Yield assistant text chunks from Ollama streaming API."""
-    if not is_available():
+    selected_model = _resolve_model_name()
+    if not selected_model:
         return
 
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": selected_model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user", "content": user},

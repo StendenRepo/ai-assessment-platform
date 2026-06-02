@@ -10,9 +10,9 @@ GROUP = "group-1"
 
 @pytest.fixture
 def platform_store(tmp_path, monkeypatch):
-    import app.api.v1.endpoints.dev_platform as dev_platform
+    import app.api.v1.endpoints.modules as modules_api
     import app.api.v1.endpoints.overlaps as overlaps_api
-    import app.api.v1.platform as platform_api
+    import app.api.v1.endpoints.platform as platform_api
     import app.audit as audit_mod
     import app.services.overlap_service as overlap_svc
     import app.store as store_mod
@@ -35,7 +35,7 @@ def platform_store(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod, "DATA_DIR", data_dir)
     monkeypatch.setattr(store_mod, "STORE_FILE", store_file)
     fresh = store_mod.PlatformStore()
-    for mod in (store_mod, platform_api, dev_platform, audit_mod, overlaps_api):
+    for mod in (store_mod, modules_api, platform_api, audit_mod, overlaps_api):
         monkeypatch.setattr(mod, "store", fresh)
     monkeypatch.setattr(overlap_svc, "store", fresh)
     return fresh
@@ -43,9 +43,9 @@ def platform_store(tmp_path, monkeypatch):
 
 class TestOverlapDetection:
     def test_detect_within_group(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
         res = client.post(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect"
         )
         assert res.status_code == 200
         body = res.json()
@@ -53,15 +53,15 @@ class TestOverlapDetection:
         assert body["scanned_students"] >= 2
 
     def test_list_confirmed_and_possible_separate(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect")
 
         confirmed = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps",
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps",
             params={"status": "confirmed", "sort": "similarity", "order": "desc"},
         )
         possible = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps",
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps",
             params={"status": "possible"},
         )
         assert confirmed.status_code == 200
@@ -73,13 +73,13 @@ class TestOverlapDetection:
         assert "similarity_percent" in (confirmed.json()["items"][0] if confirmed.json()["items"] else {})
 
     def test_detail_side_by_side(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
         detect = client.post(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect"
         )
         overlap_id = detect.json()["items"][0]["id"]
         detail = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/{overlap_id}"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/{overlap_id}"
         )
         assert detail.status_code == 200
         body = detail.json()
@@ -89,10 +89,10 @@ class TestOverlapDetection:
         assert body["student_b_name"]
 
     def test_sort_by_similarity(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect")
         res = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps",
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps",
             params={"sort": "similarity", "order": "desc"},
         )
         scores = [i["similarity"] for i in res.json()["items"]]
@@ -101,8 +101,8 @@ class TestOverlapDetection:
     def test_cross_group_detect(self, client, platform_store):
         """G2-123: overlaps between group-1 and group-2."""
         for gid in ("group-1", "group-2"):
-            client.post(f"/api/v1/projects/{PROJECT}/groups/{gid}/ensure")
-        res = client.post(f"/api/v1/projects/{PROJECT}/overlaps/cross-group/detect")
+            client.post(f"/api/v1/modules/{PROJECT}/projects/{gid}/ensure")
+        res = client.post(f"/api/v1/modules/{PROJECT}/overlaps/cross-group/detect")
         assert res.status_code == 200
         body = res.json()
         cross = [i for i in body["items"] if i["scope"] == "cross_group"]
@@ -111,22 +111,22 @@ class TestOverlapDetection:
 
     def test_detect_all_project(self, client, platform_store):
         for gid in ("group-1", "group-2"):
-            client.post(f"/api/v1/projects/{PROJECT}/groups/{gid}/ensure")
-        res = client.post(f"/api/v1/projects/{PROJECT}/overlaps/detect-all")
+            client.post(f"/api/v1/modules/{PROJECT}/projects/{gid}/ensure")
+        res = client.post(f"/api/v1/modules/{PROJECT}/overlaps/detect-all")
         assert res.status_code == 200
         body = res.json()
         assert body["within_group_count"] >= 1
         assert body["cross_group_count"] >= 1
 
     def test_confirmed_and_possible_routes(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect")
 
         confirmed = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/confirmed"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/confirmed"
         )
         possible = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/possible"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/possible"
         )
         assert confirmed.status_code == 200
         assert possible.status_code == 200
@@ -136,10 +136,10 @@ class TestOverlapDetection:
             assert item["status"] == "possible"
 
     def test_export_zip(self, client, platform_store):
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/ensure")
-        client.post(f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/detect")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/ensure")
+        client.post(f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/detect")
         res = client.get(
-            f"/api/v1/projects/{PROJECT}/groups/{GROUP}/overlaps/export/zip"
+            f"/api/v1/modules/{PROJECT}/projects/{GROUP}/overlaps/export/zip"
         )
         assert res.status_code == 200
         assert res.headers["content-type"] == "application/zip"

@@ -4,14 +4,18 @@ async function req(path, options = {}) {
   const res = await fetch(`${API}${path}`, {
     ...options,
     headers: {
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options.body instanceof FormData
+        ? {}
+        : { 'Content-Type': 'application/json' }),
       ...options.headers,
     },
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = err.detail ?? err.error ?? res.statusText;
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    throw new Error(
+      typeof detail === 'string' ? detail : JSON.stringify(detail)
+    );
   }
   if (res.headers.get('content-type')?.includes('application/json')) {
     return res.json();
@@ -25,7 +29,7 @@ function mod(projectId) {
 }
 
 export const platformApi = {
-  // --- Module / project (POC platform store) ---
+  // --- Module / project ---
   listModules: () => req('/api/v1/modules'),
 
   createModule: (name, academicYear) =>
@@ -39,13 +43,16 @@ export const platformApi = {
   uploadRubric: (projectId, file) => {
     const fd = new FormData();
     fd.append('file', file);
-    return req(`${mod(projectId)}/upload-rubric`, { method: 'POST', body: fd });
+    return req(`${mod(projectId)}/rubric`, { method: 'POST', body: fd });
   },
 
   uploadModuleGuide: (projectId, file) => {
     const fd = new FormData();
     fd.append('file', file);
-    return req(`${mod(projectId)}/upload-module-guide`, { method: 'POST', body: fd });
+    return req(`${mod(projectId)}/module-guide`, {
+      method: 'POST',
+      body: fd,
+    });
   },
 
   removeRubric: (projectId) =>
@@ -55,7 +62,7 @@ export const platformApi = {
     req(`${mod(projectId)}/module-guide`, { method: 'DELETE' }),
 
   createGroup: (projectId, name) =>
-    req(`${mod(projectId)}/projects`, {
+    req(`${mod(projectId)}/groups`, {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
@@ -89,9 +96,11 @@ export const platformApi = {
       { method: 'DELETE' }
     ),
 
-  // --- Dev bridge ---
+  // --- Analysis ---
   ensureGroup: (projectId, groupId) =>
-    req(`/api/v1/projects/${projectId}/groups/${groupId}/ensure`, { method: 'POST' }),
+    req(`/api/v1/modules/${projectId}/projects/${groupId}/ensure`, {
+      method: 'POST',
+    }),
 
   startAnalysis: (projectId, groupId) =>
     req(`${mod(projectId)}/projects/${groupId}/analyze`, { method: 'POST' }),
@@ -113,7 +122,9 @@ export const platformApi = {
   },
 
   getInsights: (projectId, groupId, studentId) =>
-    req(`/api/v1/projects/${projectId}/groups/${groupId}/students/${studentId}/ai-insights`),
+    req(
+      `/api/v1/modules/${projectId}/projects/${groupId}/students/${studentId}/ai-insights`
+    ),
 
   getStudentWorkspace: (projectId, groupId, studentId) =>
     req(`${mod(projectId)}/projects/${groupId}/students/${studentId}`),
@@ -145,7 +156,13 @@ export const platformApi = {
       body: JSON.stringify({ message }),
     }),
 
-  async chatStream(projectId, groupId, studentId, message, { onToken, onDone, onError } = {}) {
+  async chatStream(
+    projectId,
+    groupId,
+    studentId,
+    message,
+    { onToken, onDone, onError } = {}
+  ) {
     const res = await fetch(
       `${API}${mod(projectId)}/projects/${groupId}/students/${studentId}/chat/stream`,
       {

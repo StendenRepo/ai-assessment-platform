@@ -16,26 +16,30 @@ async function req(path, options = {}) {
 
 export const overlapApi = {
   detect: (projectId, groupId) =>
-    req(`/api/v1/projects/${projectId}/groups/${groupId}/overlaps/detect`, {
+    req(`/api/v1/modules/${projectId}/projects/${groupId}/overlaps/detect`, {
       method: 'POST',
     }),
 
   detectAll: (projectId) =>
-    req(`/api/v1/projects/${projectId}/overlaps/detect-all`, { method: 'POST' }),
+    req(`/api/v1/modules/${projectId}/overlaps/detect-all`, { method: 'POST' }),
 
   detectCrossGroup: (projectId) =>
-    req(`/api/v1/projects/${projectId}/overlaps/cross-group/detect`, {
+    req(`/api/v1/modules/${projectId}/overlaps/cross-group/detect`, {
       method: 'POST',
     }),
 
-  list: (projectId, groupId, { status, scope, sort = 'similarity', order = 'desc' } = {}) => {
+  list: (
+    projectId,
+    groupId,
+    { status, scope, sort = 'similarity', order = 'desc' } = {}
+  ) => {
     const q = new URLSearchParams();
     if (status) q.set('status', status);
     if (scope) q.set('scope', scope);
     q.set('sort', sort);
     q.set('order', order);
     return req(
-      `/api/v1/projects/${projectId}/groups/${groupId}/overlaps?${q}`
+      `/api/v1/modules/${projectId}/projects/${groupId}/overlaps?${q}`
     );
   },
 
@@ -43,17 +47,20 @@ export const overlapApi = {
     overlapApi.list(projectId, groupId, { ...opts, status: 'confirmed' }),
 
   listPossible: (projectId, groupId, opts = {}) => {
-    const q = new URLSearchParams({ sort: opts.sort || 'similarity', order: opts.order || 'desc' });
+    const q = new URLSearchParams({
+      sort: opts.sort || 'similarity',
+      order: opts.order || 'desc',
+    });
     return req(
-      `/api/v1/projects/${projectId}/groups/${groupId}/overlaps/possible?${q}`
+      `/api/v1/modules/${projectId}/projects/${groupId}/overlaps/possible?${q}`
     );
   },
 
   detail: (projectId, groupId, overlapId) =>
     req(
-      `/api/v1/projects/${projectId}/groups/${groupId}/overlaps/${overlapId}`
+      `/api/v1/modules/${projectId}/projects/${groupId}/overlaps/${overlapId}`
     ),
 
   exportZip: (projectId, groupId) =>
-    `${API}/api/v1/projects/${projectId}/groups/${groupId}/overlaps/export/zip`,
+    `${API}/api/v1/modules/${projectId}/projects/${groupId}/overlaps/export/zip`,
 };
