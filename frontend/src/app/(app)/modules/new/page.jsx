@@ -122,7 +122,7 @@ export default function NewProjectPage() {
               type="date"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} cursor-pointer`}
             />
           </div>
           <div className="space-y-1.5">
@@ -146,7 +146,7 @@ export default function NewProjectPage() {
               onClick={() =>
                 setStudents([...students, { email: '', studentNumber: '' }])
               }
-              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
             >
               <Plus size={13} /> Add student
             </button>
@@ -269,7 +269,7 @@ export default function NewProjectPage() {
           <button
             onClick={handleCreateModule}
             disabled={saving}
-            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {saving ? 'Creating…' : 'Create Module →'}
           </button>
