@@ -301,114 +301,6 @@ export default function ModulePage() {
         </p>
       </div>
 
-      <div className="rounded-lg bg-card border border-border p-6 space-y-5">
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">Rubric File</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Attach a rubric so the AI knows the grading criteria for this
-            module. Only {ALLOWED_RUBRIC_LABEL} files are accepted.
-          </p>
-        </div>
-
-        {rubric ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 rounded-lg bg-secondary border border-border px-4 py-3">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <FileText size={16} className="text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground truncate">
-                    {rubric.file_name || 'rubric'}
-                  </span>
-                  <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-                  {rubric.file_type && (
-                    <span className="uppercase font-mono">
-                      {rubric.file_type}
-                    </span>
-                  )}
-                  {rubric.size_bytes && (
-                    <span>{formatBytes(rubric.size_bytes)}</span>
-                  )}
-                  {rubric.uploaded_at && (
-                    <span>Uploaded {formatDate(rubric.uploaded_at)}</span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => rubricInputRef.current?.click()}
-                  disabled={uploadingRubric}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
-                >
-                  <RefreshCw size={12} /> Replace
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRubricDelete}
-                  disabled={deletingRubric}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
-                >
-                  <Trash2 size={12} /> {deletingRubric ? 'Removing…' : 'Remove'}
-                </button>
-              </div>
-            </div>
-            <input
-              ref={rubricInputRef}
-              type="file"
-              accept=".pdf,.xlsx"
-              onChange={(e) => handleRubricFile(e.target.files?.[0])}
-              className="hidden"
-            />
-          </div>
-        ) : (
-          <div
-            onDragEnter={handleRubricDrag}
-            onDragLeave={handleRubricDrag}
-            onDragOver={handleRubricDrag}
-            onDrop={handleRubricDrop}
-            className={`border-2 border-dashed rounded-lg p-10 text-center transition-all ${
-              rubricDragActive
-                ? 'border-primary bg-primary/5'
-                : 'border-border hover:border-primary/40'
-            }`}
-          >
-            <Upload size={28} className="mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm font-medium text-foreground mb-1">
-              {uploadingRubric ? 'Uploading…' : 'Drop your rubric here'}
-            </p>
-            <p className="text-xs text-muted-foreground mb-4">
-              {ALLOWED_RUBRIC_LABEL} only
-            </p>
-            <input
-              ref={rubricInputRef}
-              type="file"
-              accept=".pdf,.xlsx"
-              onChange={(e) => handleRubricFile(e.target.files?.[0])}
-              className="hidden"
-              id="rubric-upload"
-            />
-            <label
-              htmlFor="rubric-upload"
-              className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
-                uploadingRubric ? 'opacity-50 pointer-events-none' : ''
-              }`}
-            >
-              Browse files
-            </label>
-          </div>
-        )}
-
-        {rubricError && (
-          <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-            {rubricError}
-          </div>
-        )}
-      </div>
-
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-3">
           <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
@@ -469,10 +361,134 @@ export default function ModulePage() {
           )}
         </div>
 
-        <div className="col-span-1 pt-9">
+        <div className="col-span-1 space-y-6">
+          <div className="rounded-lg bg-card border border-border p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <FileText size={15} />
+                Rubric File
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Attach a rubric so the AI knows the grading criteria for this
+                module. Only{' '}
+                <span className="font-semibold text-foreground">
+                  {ALLOWED_RUBRIC_LABEL}
+                </span>{' '}
+                files are accepted.
+              </p>
+            </div>
+
+            {rubric ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <FileText size={16} className="text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground truncate">
+                        {rubric.file_name || 'rubric'}
+                      </span>
+                      <CheckCircle2
+                        size={13}
+                        className="text-emerald-400 shrink-0"
+                      />
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      {rubric.file_type && (
+                        <span className="uppercase font-mono">
+                          {rubric.file_type}
+                        </span>
+                      )}
+                      {rubric.size_bytes && (
+                        <span>{formatBytes(rubric.size_bytes)}</span>
+                      )}
+                      {rubric.uploaded_at && (
+                        <span>Uploaded {formatDate(rubric.uploaded_at)}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => rubricInputRef.current?.click()}
+                    disabled={uploadingRubric}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} /> Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRubricDelete}
+                    disabled={deletingRubric}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 size={12} /> {deletingRubric ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+                <input
+                  ref={rubricInputRef}
+                  type="file"
+                  accept=".pdf,.xlsx"
+                  onChange={(e) => handleRubricFile(e.target.files?.[0])}
+                  className="hidden"
+                />
+              </div>
+            ) : (
+              <div
+                onDragEnter={handleRubricDrag}
+                onDragLeave={handleRubricDrag}
+                onDragOver={handleRubricDrag}
+                onDrop={handleRubricDrop}
+                className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                  rubricDragActive
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/40'
+                }`}
+              >
+                <Upload
+                  size={24}
+                  className="mx-auto text-muted-foreground mb-2"
+                />
+                <p className="text-sm font-medium text-foreground mb-1">
+                  {uploadingRubric ? 'Uploading…' : 'Drop your rubric here'}
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  <span className="font-semibold text-foreground">
+                    {ALLOWED_RUBRIC_LABEL}
+                  </span>{' '}
+                  only
+                </p>
+                <input
+                  ref={rubricInputRef}
+                  type="file"
+                  accept=".pdf,.xlsx"
+                  onChange={(e) => handleRubricFile(e.target.files?.[0])}
+                  className="hidden"
+                  id="rubric-upload"
+                />
+                <label
+                  htmlFor="rubric-upload"
+                  className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
+                    uploadingRubric ? 'opacity-50 pointer-events-none' : ''
+                  }`}
+                >
+                  Browse files
+                </label>
+              </div>
+            )}
+
+            {rubricError && (
+              <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                {rubricError}
+              </div>
+            )}
+          </div>
+
           <form
             onSubmit={handleCreateGroup}
-            className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
+            className="rounded-lg bg-card border border-border p-5 space-y-4"
           >
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <FolderPlus size={15} />
