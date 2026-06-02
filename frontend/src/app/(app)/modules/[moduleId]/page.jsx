@@ -253,7 +253,7 @@ export default function ModulePage() {
                       `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
                     )
                   }
-                  className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
+                  className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors cursor-pointer"
                 >
                   <div>
                     <div className="text-sm font-semibold text-foreground">
@@ -305,7 +305,7 @@ export default function ModulePage() {
             <button
               type="submit"
               disabled={groupSubmitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {groupSubmitting ? 'Creating…' : 'Create Group'}
             </button>
@@ -405,7 +405,7 @@ export default function ModulePage() {
               <select
                 value={selectedGroupId}
                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} cursor-pointer`}
               >
                 <option value="">Default individual group</option>
                 {groups.map((group) => (
@@ -419,7 +419,7 @@ export default function ModulePage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {submitting ? 'Adding…' : 'Add Student'}
             </button>
@@ -449,7 +449,7 @@ export default function ModulePage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               <Upload size={15} />
               {importing ? 'Importing…' : 'Choose file'}
@@ -502,7 +502,7 @@ export default function ModulePage() {
                 <select
                   value={assignStudentId}
                   onChange={(e) => setAssignStudentId(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer`}
                 >
                   <option value="">— Select student —</option>
                   {students.map((s) => (
@@ -519,7 +519,7 @@ export default function ModulePage() {
                 <select
                   value={assignGroupId}
                   onChange={(e) => setAssignGroupId(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer`}
                 >
                   <option value="">— Select group —</option>
                   {groups.map((g) => (
@@ -535,7 +535,7 @@ export default function ModulePage() {
               <button
                 type="submit"
                 disabled={assigning}
-                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {assigning ? 'Assigning…' : 'Assign'}
               </button>
