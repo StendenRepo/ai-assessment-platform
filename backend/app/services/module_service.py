@@ -75,14 +75,10 @@ class ModuleService:
         file_path = upload_dir / unique_name
         file_path.write_bytes(raw)
 
-        # Remove the old rubric file from disk if one exists
+        # Hold reference to old record so we can delete it after the FK is updated
+        old_record = None
         if module.rubric_file_id:
             old_record = db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
-            if old_record:
-                old_path = Path(old_record.path)
-                if old_path.exists():
-                    old_path.unlink(missing_ok=True)
-                db.delete(old_record)
 
         record = FileRecord(
             file_name=filename,
@@ -94,7 +90,16 @@ class ModuleService:
         db.add(record)
         db.flush()
 
+        # Update FK to new record first, then delete the old one
         module.rubric_file_id = record.id
+        db.flush()
+
+        if old_record:
+            old_path = Path(old_record.path)
+            if old_path.exists():
+                old_path.unlink(missing_ok=True)
+            db.delete(old_record)
+
         db.commit()
         db.refresh(module)
         return module
