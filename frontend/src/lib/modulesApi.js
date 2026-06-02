@@ -1,4 +1,5 @@
 import { authHeaders } from '@/lib/auth';
+import { normalizeErrorDetail } from '@/lib/apiErrors';
 import { API_PATHS } from '@/lib/routes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -16,7 +17,9 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Request failed (${res.status})`);
+    const message =
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`;
+    throw new Error(message);
   }
   if (res.status === 204) return null;
   return res.json();
