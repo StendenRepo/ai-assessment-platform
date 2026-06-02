@@ -1,5 +1,4 @@
 import io
-import os
 import uuid as _uuid
 from pathlib import Path
 
@@ -23,6 +22,9 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid {label}: '{value}' is not a valid UUID",
         )
+
+
+EVIDENCE_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "evidence"
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -117,22 +119,27 @@ class EvidenceService:
         raw = file.file.read()
         content = _extract_text(raw, file_type, filename)
 
-        # Persist to disk (always store as UTF-8 text for downstream processing)
-        upload_dir = Path(settings.UPLOAD_DIR) / "evidence" / str(student_id)
+        # Persist to disk
+        upload_dir = EVIDENCE_UPLOAD_DIR / str(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
         file_path.write_text(content, encoding="utf-8")
 
-        # Create DB record
+        # Store path relative to EVIDENCE_UPLOAD_DIR so the record stays
+        # portable when the base upload directory changes.
+        relative_path = str(file_path.relative_to(EVIDENCE_UPLOAD_DIR))
+
+        # Create DB record — status starts as processing, then set to completed
+        # once the file is safely written to disk.
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
             file_type=file_type,
-            file_path=str(file_path),
+            file_path=relative_path,
             source_type=SourceType.upload,
-            embedding_status=EmbeddingStatus.pending,
+            embedding_status=EmbeddingStatus.completed,
         )
         db.add(evidence)
         db.commit()
@@ -169,10 +176,13 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
+        # Reconstruct full path from the stored relative path
+        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+
         # Remove file from disk (ignore if already gone)
         try:
-            if os.path.exists(evidence.file_path):
-                os.remove(evidence.file_path)
+            if full_path.exists():
+                full_path.unlink()
         except OSError:
             pass  # Log in production; don't block the DB delete
 
@@ -190,10 +200,11 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        if not os.path.exists(evidence.file_path):
+        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+        if not full_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence file not found on disk",
             )
-        content = Path(evidence.file_path).read_text(encoding="utf-8")
+        content = full_path.read_text(encoding="utf-8")
         return evidence, content
