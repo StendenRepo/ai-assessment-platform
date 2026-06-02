@@ -38,6 +38,7 @@ class ProjectOut(BaseModel):
     status: str
     created_at: Optional[datetime] = None
     student_count: int = 0
+    file_count: int = 0
 
     model_config = {"from_attributes": True}
 

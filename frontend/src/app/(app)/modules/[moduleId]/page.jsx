@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   FileSpreadsheet,
+  FileText,
   FolderPlus,
   UserCheck,
   UserPlus,
@@ -258,9 +259,17 @@ export default function ModulePage() {
                     <div className="text-sm font-semibold text-foreground">
                       {group.name}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {group.group_name || 'Group'} · {group.student_count}{' '}
-                      {group.student_count === 1 ? 'student' : 'students'}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                      <span className="flex items-center gap-1.5 leading-none">
+                        <Users size={13} />
+                        {group.student_count}{' '}
+                        {group.student_count === 1 ? 'student' : 'students'}
+                      </span>
+                      <span className="flex items-center gap-1.5 leading-none">
+                        <FileText size={13} />
+                        {group.file_count ?? 0}{' '}
+                        {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
+                      </span>
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground">
