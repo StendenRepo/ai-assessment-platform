@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, SlidersHorizontal, Users } from 'lucide-react';
-import { listProjects } from '@/lib/projectsApi';
+import { listModules } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
@@ -21,7 +21,7 @@ const statusConfig = {
   },
 };
 
-export default function ProjectsPage() {
+export default function ModulesPage() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    listProjects()
+    listModules()
       .then(setProjects)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
