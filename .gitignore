@@ -64,3 +64,6 @@ backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.env
 backend/data/platform_store.json
+
+# Local dev overrides (hot reload, pgadmin port)
+docker-compose.override.yml

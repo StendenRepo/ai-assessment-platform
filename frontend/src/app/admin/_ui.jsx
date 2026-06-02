@@ -2,8 +2,7 @@
 
 import { X } from 'lucide-react';
 
-export const inputCls =
-  'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
+export { inputCls, selectCls, selectFullCls, selectInlineCls } from '@/lib/formStyles';
 
 export function Field({ label, children }) {
   return (

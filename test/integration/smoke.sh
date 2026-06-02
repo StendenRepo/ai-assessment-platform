@@ -69,5 +69,26 @@ ok "insights ($(cat "$TMP/insight_count.txt") findings)"
 curl -sf "$BASE/api/v1/modules" >/dev/null
 ok "modules list"
 
+echo "==> Overlap detect (G2-122)"
+curl -sf -X POST "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps/detect" >"$TMP/overlaps.json"
+python3 -c "import json; d=json.load(open('$TMP/overlaps.json')); assert d['confirmed_count']+d['possible_count']>=1"
+ok "overlap detect"
+
+echo "==> Overlap list + detail (G2-126 / G2-125)"
+OID=$(python3 -c "import json; print(json.load(open('$TMP/overlaps.json'))['items'][0]['id'])")
+curl -sf "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps?status=confirmed&sort=similarity" >/dev/null
+curl -sf "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps/$OID" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('passage_a') and d.get('passage_b')"
+ok "overlap list and detail"
+
+echo "==> Cross-group + export (G2-123 / G2-129)"
+curl -sf -X POST "$BASE/api/v1/projects/$PROJECT_ID/groups/group-2/ensure" >/dev/null
+curl -sf -X POST "$BASE/api/v1/projects/$PROJECT_ID/overlaps/cross-group/detect" >"$TMP/cross.json"
+python3 -c "import json; d=json.load(open('$TMP/cross.json')); assert d.get('cross_group_count',0)>=1"
+curl -sf "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps/confirmed" >/dev/null
+curl -sf "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps/possible" >/dev/null
+curl -sf -o "$TMP/overlap.zip" "$BASE/api/v1/projects/$PROJECT_ID/groups/$GROUP_ID/overlaps/export/zip"
+test -s "$TMP/overlap.zip" || fail "overlap export zip empty"
+ok "cross-group, confirmed/possible routes, export zip"
+
 echo ""
 echo "Integration smoke passed."

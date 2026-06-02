@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 
 from app.ai import ollama_client
+
+logger = logging.getLogger(__name__)
 
 SYSTEM = """You assist university lecturers with group project assessments.
 AI suggests only — never final grades. Be concise.
@@ -73,5 +76,6 @@ def _parse_json(raw: str) -> dict | None:
         text = m.group(0)
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.warning("LLM batch JSON parse failed: %s — snippet: %s", exc, text[:200])
         return None

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal } from 'lucide-react';
+import { Search, ArrowRight, SlidersHorizontal, Loader2 } from 'lucide-react';
 import { mockProjects } from '@/lib/mockData';
+import { platformApi } from '@/lib/platformApi';
+import { selectInlineCls } from '@/lib/formStyles';
 
 const statusConfig = {
   active: {
@@ -20,13 +22,44 @@ const statusConfig = {
   },
 };
 
+function mapModuleToProject(m) {
+  return {
+    id: m.id,
+    name: m.name,
+    course: m.academic_year || 'Module',
+    groupNumber: m.projects_count ?? 1,
+    deadline: m.created_at || new Date().toISOString(),
+    status: 'active',
+    assessmentProgress: Math.min(90, 20 + (m.criteria_count || 0) * 15),
+    fromApi: true,
+  };
+}
+
 export default function ProjectsPage() {
   const router = useRouter();
+  const [projects, setProjects] = useState(mockProjects);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [courseFilter, setCourseFilter] = useState('all');
 
-  const filtered = mockProjects.filter((p) => {
+  useEffect(() => {
+    platformApi
+      .listModules()
+      .then((modules) => {
+        const apiProjects = modules.map(mapModuleToProject);
+        const mockIds = new Set(mockProjects.map((p) => p.id));
+        const merged = [
+          ...apiProjects.filter((p) => !mockIds.has(p.id)),
+          ...mockProjects,
+        ];
+        setProjects(merged);
+      })
+      .catch(() => setProjects(mockProjects))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = projects.filter((p) => {
     const matchSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.course.toLowerCase().includes(searchTerm.toLowerCase());
@@ -35,14 +68,14 @@ export default function ProjectsPage() {
     return matchSearch && matchStatus && matchCourse;
   });
 
-  const courses = Array.from(new Set(mockProjects.map((p) => p.course)));
+  const courses = Array.from(new Set(projects.map((p) => p.course)));
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Projects</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Browse and manage all group projects
+          Browse modules from the API plus dev wireframe projects
         </p>
       </div>
 
@@ -62,13 +95,13 @@ export default function ProjectsPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by project name or course..."
-              className="w-full pl-9 pr-4 py-2 bg-secondary border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+              className="w-full h-10 min-h-10 pl-9 pr-4 py-2 bg-secondary border border-border rounded-md text-sm leading-normal text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+            className={selectInlineCls}
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
@@ -78,7 +111,7 @@ export default function ProjectsPage() {
           <select
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
-            className="bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+            className={selectInlineCls}
           >
             <option value="all">All Courses</option>
             {courses.map((c) => (
@@ -88,12 +121,16 @@ export default function ProjectsPage() {
             ))}
           </select>
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {filtered.length} of {mockProjects.length}
+            {filtered.length} of {projects.length}
           </span>
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="py-12 flex justify-center">
+          <Loader2 className="animate-spin text-muted-foreground" size={24} />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="rounded-lg bg-card border border-border p-12 text-center">
           <Search
             size={32}
@@ -126,6 +163,11 @@ export default function ProjectsPage() {
                     >
                       {status.label}
                     </span>
+                    {project.fromApi && (
+                      <span className="text-[10px] uppercase tracking-wide text-primary">
+                        API
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span>{project.course}</span>

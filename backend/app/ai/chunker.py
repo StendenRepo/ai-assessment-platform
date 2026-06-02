@@ -1,4 +1,9 @@
 def chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> list[str]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must be >= 0 and < chunk_size")
+
     text = " ".join(text.split())
     if not text:
         return []

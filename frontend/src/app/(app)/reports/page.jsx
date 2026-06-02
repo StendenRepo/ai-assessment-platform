@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Download,
   FileText,
@@ -9,8 +9,12 @@ import {
   Archive,
   Shield,
   ChevronRight,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { mockProjects } from '@/lib/mockData';
+import { platformApi } from '@/lib/platformApi';
+import { inputCls, selectFullCls } from '@/lib/formStyles';
 
 const reportTypes = [
   {
@@ -60,13 +64,26 @@ const recentReports = [
   },
 ];
 
-const inputClass =
-  'bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
-
 export default function ReportsPage() {
   const [selectedProject, setSelectedProject] = useState('');
   const [reportType, setReportType] = useState('individual');
   const [exportFormat, setExportFormat] = useState('pdf');
+  const [auditEntries, setAuditEntries] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditFilter, setAuditFilter] = useState('');
+
+  const loadAudit = () => {
+    setAuditLoading(true);
+    platformApi
+      .audit({ limit: 50, q: auditFilter || undefined })
+      .then((data) => setAuditEntries(data.events || []))
+      .catch(() => setAuditEntries([]))
+      .finally(() => setAuditLoading(false));
+  };
+
+  useEffect(() => {
+    loadAudit();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -91,7 +108,7 @@ export default function ReportsPage() {
               <select
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
-                className={`w-full ${inputClass}`}
+                className={selectFullCls}
               >
                 <option value="">— Choose a project —</option>
                 {mockProjects.map((p) => (
@@ -191,9 +208,77 @@ export default function ReportsPage() {
           </div>
 
           <div className="rounded-lg bg-card border border-border overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  Platform audit log
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Live events from POC backend (uploads, analysis, consent)
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={auditFilter}
+                  onChange={(e) => setAuditFilter(e.target.value)}
+                  placeholder="Filter…"
+                  className={`w-36 ${inputCls}`}
+                />
+                <button
+                  type="button"
+                  onClick={loadAudit}
+                  className="p-2 rounded-md border border-border hover:bg-secondary"
+                  title="Refresh"
+                >
+                  <RefreshCw size={14} />
+                </button>
+              </div>
+            </div>
+            {auditLoading ? (
+              <div className="py-10 flex justify-center">
+                <Loader2 className="animate-spin text-muted-foreground" size={20} />
+              </div>
+            ) : auditEntries.length === 0 ? (
+              <p className="px-6 py-8 text-sm text-muted-foreground text-center">
+                No audit events yet. Upload evidence or run analysis to generate entries.
+              </p>
+            ) : (
+              <div className="divide-y divide-border max-h-80 overflow-y-auto">
+                {auditEntries.map((entry, i) => (
+                  <div key={i} className="px-6 py-3 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-foreground font-mono">
+                        {entry.action}
+                      </span>
+                      <span className="text-muted-foreground shrink-0">
+                        {entry.timestamp
+                          ? new Date(entry.timestamp).toLocaleString('en-US')
+                          : '—'}
+                      </span>
+                    </div>
+                    {entry.teacher && (
+                      <p className="text-muted-foreground mt-0.5">
+                        {entry.teacher}
+                      </p>
+                    )}
+                    {entry.detail && (
+                      <p className="text-muted-foreground mt-1 font-mono truncate">
+                        {typeof entry.detail === 'string'
+                          ? entry.detail
+                          : JSON.stringify(entry.detail)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg bg-card border border-border overflow-hidden">
             <div className="px-6 py-4 border-b border-border">
               <h2 className="text-sm font-semibold text-foreground">
-                Recent Reports
+                Recent Reports (wireframe)
               </h2>
             </div>
             <div className="divide-y divide-border">

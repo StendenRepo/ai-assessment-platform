@@ -1,32 +1,33 @@
-# POC ↔ Dev UI integration (`feature/integrate-poc-dev-ui`)
+# POC ↔ Dev UI integration
 
-## What this branch does
+Branch: `feature/G2-overlap-detection` → PR to `dev`
 
-- Keeps **dev** wireframe UI (projects → groups → students, admin, JWT auth).
-- Adds **POC AI pipeline** (TF-IDF, overlap, Ollama, JSON platform store) from `proof-of-concept-2`.
-- Maps dev routes to the platform store:
-  - `projectId` → module id (e.g. `proj-1`)
-  - `groupId` → project id (e.g. `group-1`)
-  - `studentId` → student id (e.g. `student-1`, `student-2` with fixture evidence)
+## What this delivers
 
-## Frontend
+- **POC AI backend** (TF-IDF, overlap, Ollama, JSON platform store) integrated with **dev wireframe UI**
+- Dev route mapping: `projectId` → module, `groupId` → project, `studentId` → student
+- **G2-122 – G2-129** dedicated overlap review API + dev UI pages
+- PR [#15](https://github.com/StendenRepo/ai-assessment-platform/pull/15) review comments addressed on this branch
 
-Dev wireframe UI is **unchanged** (still mock data for projects/groups/AI insights). No new buttons or panels were added.
+## Wired UI (dev styling)
 
-Wire the UI later via the dev-shaped API below when screens are ready.
+| Screen | Features |
+|--------|----------|
+| Projects list | `listModules` merged with dev mock projects |
+| New project | `createModule` → `createGroup` → students → evidence → criteria |
+| Project groups | `getModule` groups; link to overlaps |
+| Criteria | Rubric + module guide upload (POC); student criteria tab stays wireframe mock |
+| Group page | Evidence upload/remove, add/remove students, **Run AI analysis**, overlaps |
+| Student page | **AI insights**, **draft**, **oral questions**, **chat** (FAB/SSE), **export**, consent + transcript, workspace evidence |
+| Overlaps list/detail | Scan, confirmed/possible tabs, side-by-side, export |
+| Reports | Live **audit log** from `/api/v1/audit` |
+| Settings → AI | Live **LLM status** from `/api/v1/llm-status` |
 
-## Verification
+POC workspace UI (`modules/…`, tabs) is **not** ported — only API logic.
 
-Automated tests live in [`test/`](../test/README.md). From repo root:
+## API
 
-```bash
-docker compose up -d --build
-./test/run.sh
-```
-
-Ollama (optional): set `OLLAMA_BASE_URL` in `.env` (see `backend/.env.example`). Without Ollama, analysis uses TF-IDF + templates.
-
-## API (dev-shaped)
+### Dev bridge
 
 | Method | Path |
 |--------|------|
@@ -34,6 +35,26 @@ Ollama (optional): set `OLLAMA_BASE_URL` in `.env` (see `backend/.env.example`).
 | POST | `/api/v1/projects/{projectId}/groups/{groupId}/analyze` |
 | GET | `/api/v1/projects/{projectId}/groups/{groupId}/analyze/status` |
 | GET | `/api/v1/projects/{projectId}/groups/{groupId}/students/{studentId}/ai-insights` |
-| GET | `/api/v1/llm-status` |
 
-Full platform CRUD remains under `/api/v1/modules/...` (JSON store).
+### Platform (used by frontend via `platformApi.js`)
+
+| Method | Path |
+|--------|------|
+| POST | `/api/v1/modules/{moduleId}/projects/{projectId}/analyze` |
+| GET | `…/students/{studentId}` (workspace) |
+| PATCH | `…/students/{studentId}/draft` |
+| POST | `…/students/{studentId}/chat/stream` |
+| GET | `…/export/zip`, `…/export/eml` |
+
+### Overlaps (G2)
+
+See [`G2-OVERLAP-STORIES.md`](G2-OVERLAP-STORIES.md).
+
+## Verify
+
+```bash
+docker compose up -d --build
+./test/run.sh
+```
+
+Manual: login `admin@admin.nl` / `admin` → project → group → **Run AI analysis** → student → insights/drafts/chat → overlaps.

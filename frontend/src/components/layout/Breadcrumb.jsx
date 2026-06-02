@@ -6,7 +6,7 @@ import { ChevronRight } from 'lucide-react';
 
 function buildCrumbs(pathname, params) {
   const crumbs = [{ label: 'Dashboard', href: '/dashboard' }];
-  const { projectId, groupId, studentId } = params || {};
+  const { projectId, groupId, studentId, overlapId } = params || {};
 
   if (pathname.startsWith('/projects/new')) {
     crumbs.push({ label: 'Projects', href: '/projects' });
@@ -20,7 +20,15 @@ function buildCrumbs(pathname, params) {
         label: 'Group',
         href: `/projects/${projectId}/groups/${groupId}`,
       });
-    if (studentId) {
+    if (pathname.includes('/overlaps/') && overlapId) {
+      crumbs.push({
+        label: 'Overlaps',
+        href: `/projects/${projectId}/groups/${groupId}/overlaps`,
+      });
+      crumbs.push({ label: 'Detail', href: null });
+    } else if (pathname.includes('/overlaps')) {
+      crumbs.push({ label: 'Overlaps', href: null });
+    } else if (studentId) {
       crumbs.push({ label: 'Assessment', href: null });
     } else if (pathname.includes('/criteria')) {
       crumbs.push({ label: 'Criteria & Rubrics', href: null });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   User,
   Brain,
@@ -10,8 +10,12 @@ import {
   XCircle,
   Sun,
   Moon,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { platformApi } from '@/lib/platformApi';
+import { inputCls, selectFullCls } from '@/lib/formStyles';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
@@ -19,9 +23,6 @@ const tabs = [
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
 ];
-
-const inputClass =
-  'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 
 function Toggle({ defaultChecked, disabled }) {
   const [on, setOn] = useState(defaultChecked ?? false);
@@ -50,6 +51,21 @@ function SectionCard({ title, children }) {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
+  const [llm, setLlm] = useState(null);
+  const [llmLoading, setLlmLoading] = useState(false);
+
+  const refreshLlm = () => {
+    setLlmLoading(true);
+    platformApi
+      .llmStatus()
+      .then(setLlm)
+      .catch(() => setLlm(null))
+      .finally(() => setLlmLoading(false));
+  };
+
+  useEffect(() => {
+    if (activeTab === 'ai') refreshLlm();
+  }, [activeTab]);
 
   return (
     <div className="space-y-6">
@@ -87,7 +103,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       defaultValue="John"
-                      className={inputClass}
+                      className={inputCls}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -97,7 +113,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       defaultValue="Smith"
-                      className={inputClass}
+                      className={inputCls}
                     />
                   </div>
                 </div>
@@ -108,7 +124,7 @@ export default function SettingsPage() {
                   <input
                     type="email"
                     defaultValue="j.smith@university.edu"
-                    className={inputClass}
+                    className={inputCls}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -118,7 +134,7 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     defaultValue="Computer Science"
-                    className={inputClass}
+                    className={inputCls}
                   />
                 </div>
               </SectionCard>
@@ -129,7 +145,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Language
                     </label>
-                    <select className={inputClass}>
+                    <select className={selectFullCls}>
                       <option value="en">English</option>
                       <option value="nl">Nederlands</option>
                       <option value="de">Deutsch</option>
@@ -139,7 +155,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Timezone
                     </label>
-                    <select className={inputClass}>
+                    <select className={selectFullCls}>
                       <option>Europe/Amsterdam (UTC+1)</option>
                       <option>Europe/London (UTC+0)</option>
                       <option>America/New York (UTC-5)</option>
@@ -149,7 +165,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Date Format
                     </label>
-                    <select className={inputClass}>
+                    <select className={selectFullCls}>
                       <option>DD-MM-YYYY</option>
                       <option>MM-DD-YYYY</option>
                       <option>YYYY-MM-DD</option>
@@ -228,6 +244,50 @@ export default function SettingsPage() {
 
           {activeTab === 'ai' && (
             <>
+              <SectionCard title="Ollama / LLM status (POC)">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-2 flex-1">
+                    {llmLoading ? (
+                      <Loader2 className="animate-spin text-muted-foreground" size={18} />
+                    ) : llm ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          {llm.ready ? (
+                            <CheckCircle size={16} className="text-emerald-400" />
+                          ) : (
+                            <XCircle size={16} className="text-red-400" />
+                          )}
+                          <span className="text-sm font-semibold text-foreground">
+                            {llm.ready ? 'Ready for analysis' : 'Not ready'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Model: <span className="font-mono">{llm.model || '—'}</span>
+                          {' · '}
+                          Host: <span className="font-mono">{llm.base_url || '—'}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Ollama reachable: {llm.ollama_reachable ? 'yes' : 'no'}
+                          {' · '}
+                          Model pulled: {llm.model_ready ? 'yes' : 'no'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Could not reach LLM status endpoint. Is the API running?
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={refreshLlm}
+                    className="p-2 rounded-md border border-border hover:bg-secondary"
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                </div>
+              </SectionCard>
+
               <SectionCard title="Model Configuration">
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs font-medium">
@@ -257,7 +317,7 @@ export default function SettingsPage() {
                     min="0"
                     max="100"
                     defaultValue="75"
-                    className={inputClass}
+                    className={inputCls}
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Suggestions below this threshold are suppressed
@@ -267,7 +327,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Automatic Evidence Linking
                   </label>
-                  <select className={inputClass}>
+                  <select className={selectFullCls}>
                     <option value="aggressive">
                       Aggressive — Link all possible matches
                     </option>
@@ -320,7 +380,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Data Retention Period
                   </label>
-                  <select className={inputClass}>
+                  <select className={selectFullCls}>
                     <option>30 days after project completion</option>
                     <option>90 days after project completion</option>
                     <option>180 days after project completion</option>
@@ -332,7 +392,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Automatic Anonymization
                   </label>
-                  <select className={inputClass}>
+                  <select className={selectFullCls}>
                     <option>Never</option>
                     <option>After 30 days</option>
                     <option>After 90 days</option>

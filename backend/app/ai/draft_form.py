@@ -1,4 +1,8 @@
+import logging
+
 from app.ai import ollama_client
+
+logger = logging.getLogger(__name__)
 
 DRAFT_SYSTEM = """You assist university lecturers assessing group projects.
 You provide draft assessment suggestions only — never final grades or pass/fail.
@@ -51,6 +55,15 @@ def _llm_drafts_for_student(student: str, matches: list[dict]) -> dict[str, str]
 
     if current_criterion and buffer:
         parsed[current_criterion] = " ".join(buffer).strip()
+
+    expected = {m["criterion"] for m in matches}
+    missing = expected - set(parsed.keys())
+    if missing:
+        logger.warning(
+            "Ollama draft parse missing criteria for %s: %s",
+            student,
+            ", ".join(sorted(missing)),
+        )
 
     return parsed
 

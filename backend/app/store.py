@@ -62,6 +62,7 @@ class Project:
     name: str
     students: list[Student] = field(default_factory=list)
     phase: str = "configure"
+    overlaps: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -74,6 +75,7 @@ class Module:
     created_at: str = ""
     rubric_text: str = ""
     module_guide_text: str = ""
+    cross_group_overlaps: list[dict] = field(default_factory=list)
 
 
 class PlatformStore:
@@ -104,6 +106,7 @@ class PlatformStore:
         return str(uuid.uuid4())[:8]
 
     def save(self) -> None:
+        """Persist JSON store (prototype: single-process / single-worker only)."""
         payload = {
             "modules": self._serialize_modules(),
             "audit_log": self.audit_log[-500:],
@@ -112,7 +115,10 @@ class PlatformStore:
             "evidence_content": self._evidence_content,
         }
         payload["analysis_jobs"] = self._analysis_jobs
-        STORE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = STORE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.replace(STORE_FILE)
         if STORE_FILE.exists():
             self._file_mtime = STORE_FILE.stat().st_mtime
 
@@ -153,6 +159,7 @@ class PlatformStore:
                         name=p["name"],
                         students=students,
                         phase=p.get("phase", "configure"),
+                        overlaps=p.get("overlaps", []),
                     )
                 )
             self.modules[m["id"]] = Module(
@@ -164,6 +171,7 @@ class PlatformStore:
                 created_at=m.get("created_at", ""),
                 rubric_text=m.get("rubric_text", ""),
                 module_guide_text=m.get("module_guide_text", ""),
+                cross_group_overlaps=m.get("cross_group_overlaps", []),
             )
         self._file_mtime = STORE_FILE.stat().st_mtime
 
@@ -461,6 +469,34 @@ class PlatformStore:
             if student.id == student_id:
                 return student
         return None
+
+    def set_group_overlaps(
+        self, module_id: str, group_id: str, overlaps: list[dict]
+    ) -> None:
+        project = self._find_project(module_id, group_id)
+        if not project:
+            return
+        project.overlaps = overlaps
+        self.save()
+
+    def get_group_overlaps(self, module_id: str, group_id: str) -> list[dict]:
+        project = self._find_project(module_id, group_id)
+        if not project:
+            return []
+        return list(project.overlaps or [])
+
+    def set_cross_group_overlaps(self, module_id: str, overlaps: list[dict]) -> None:
+        module = self.modules.get(module_id)
+        if not module:
+            return
+        module.cross_group_overlaps = overlaps
+        self.save()
+
+    def get_cross_group_overlaps(self, module_id: str) -> list[dict]:
+        module = self.modules.get(module_id)
+        if not module:
+            return []
+        return list(module.cross_group_overlaps or [])
 
 
 store = PlatformStore()

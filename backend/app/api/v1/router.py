@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.v1.endpoints import admin, auth, dev_platform, health
+from app.api.v1.endpoints import admin, auth, dev_platform, health, overlaps
 from app.api.v1 import platform as platform_routes
 from app.store import store
 
@@ -19,5 +19,9 @@ api_router.include_router(
 )
 api_router.include_router(
     dev_platform.router,
+    dependencies=[Depends(sync_platform_store)],
+)
+api_router.include_router(
+    overlaps.router,
     dependencies=[Depends(sync_platform_store)],
 )

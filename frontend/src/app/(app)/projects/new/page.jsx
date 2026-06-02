@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, X, Plus, FileText } from 'lucide-react';
-
-const inputClass =
-  'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
+import { Upload, X, Plus, FileText, Loader2 } from 'lucide-react';
+import { platformApi } from '@/lib/platformApi';
+import { inputCls } from '@/lib/formStyles';
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -17,6 +16,8 @@ export default function NewProjectPage() {
   const [students, setStudents] = useState([{ email: '', studentNumber: '' }]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState(null);
 
   const updateStudent = (i, field, val) => {
     const updated = [...students];
@@ -38,6 +39,62 @@ export default function NewProjectPage() {
       setUploadedFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
   };
 
+  const createProject = async () => {
+    if (!projectName.trim()) {
+      setError('Project name is required');
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    try {
+      const mod = await platformApi.createModule(
+        projectName.trim(),
+        course.trim() || className.trim() || '2025-2026'
+      );
+      const moduleId = mod.id;
+      const group = await platformApi.createGroup(
+        moduleId,
+        className.trim() || 'Group 1'
+      );
+      const groupId = group.id;
+
+      const validStudents = students.filter(
+        (s) => s.email.trim() || s.studentNumber.trim()
+      );
+      let firstStudentId = null;
+      for (const s of validStudents) {
+        const name =
+          s.email.split('@')[0]?.replace(/\./g, ' ') ||
+          `Student ${s.studentNumber || '?'}`;
+        const added = await platformApi.addStudent(
+          moduleId,
+          groupId,
+          name,
+          s.studentNumber || ''
+        );
+        if (!firstStudentId) firstStudentId = added.id;
+      }
+
+      if (uploadedFiles.length > 0 && firstStudentId) {
+        for (const file of uploadedFiles) {
+          await platformApi.uploadEvidence(
+            moduleId,
+            groupId,
+            firstStudentId,
+            file
+          );
+        }
+      }
+
+      await platformApi.ensureGroup(moduleId, groupId).catch(() => {});
+
+      router.push(`/projects/${moduleId}/criteria`);
+    } catch (e) {
+      setError(e.message);
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -45,9 +102,15 @@ export default function NewProjectPage() {
           Create New Project
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure a group project for assessment
+          Creates a module and group in the POC backend, then opens criteria setup
         </p>
       </div>
+
+      {error && (
+        <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-4 py-2">
+          {error}
+        </p>
+      )}
 
       <div className="max-w-3xl space-y-5">
         <div className="rounded-lg bg-card border border-border p-6 space-y-5">
@@ -62,42 +125,42 @@ export default function NewProjectPage() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="e.g. E-Commerce Platform"
-              className={inputClass}
+              className={inputCls}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Course *
+                Course / academic year
               </label>
               <input
                 value={course}
                 onChange={(e) => setCourse(e.target.value)}
-                placeholder="e.g. Advanced Web Development"
-                className={inputClass}
+                placeholder="e.g. 2025-2026"
+                className={inputCls}
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Class *
+                Group name
               </label>
               <input
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                placeholder="e.g. CS401-A"
-                className={inputClass}
+                placeholder="e.g. Group 1"
+                className={inputCls}
               />
             </div>
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              Deadline *
+              Deadline (display only)
             </label>
             <input
               type="date"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className={inputClass}
+              className={inputCls}
             />
           </div>
           <div className="space-y-1.5">
@@ -109,7 +172,7 @@ export default function NewProjectPage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="Brief description of the project..."
-              className={`${inputClass} resize-none`}
+              className={`${inputCls} resize-none`}
             />
           </div>
         </div>
@@ -118,6 +181,7 @@ export default function NewProjectPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Students</h2>
             <button
+              type="button"
               onClick={() =>
                 setStudents([...students, { email: '', studentNumber: '' }])
               }
@@ -146,6 +210,7 @@ export default function NewProjectPage() {
                 />
                 {students.length > 1 && (
                   <button
+                    type="button"
                     onClick={() =>
                       setStudents(students.filter((_, j) => j !== i))
                     }
@@ -163,6 +228,9 @@ export default function NewProjectPage() {
           <h2 className="text-sm font-semibold text-foreground">
             Evidence Sources
           </h2>
+          <p className="text-xs text-muted-foreground">
+            Files upload to the first student after creation
+          </p>
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -200,7 +268,7 @@ export default function NewProjectPage() {
           {uploadedFiles.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
-                Uploaded ({uploadedFiles.length})
+                Queued ({uploadedFiles.length})
               </p>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {uploadedFiles.map((file, i) => (
@@ -218,6 +286,7 @@ export default function NewProjectPage() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() =>
                         setUploadedFiles((f) => f.filter((_, j) => j !== i))
                       }
@@ -233,13 +302,21 @@ export default function NewProjectPage() {
         </div>
 
         <div className="flex gap-3 justify-end">
-          <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-            Save Draft
+          <button
+            type="button"
+            disabled={creating}
+            onClick={() => router.push('/projects')}
+            className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          >
+            Cancel
           </button>
           <button
-            onClick={() => router.push(`/projects/proj-${Date.now()}/criteria`)}
-            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            type="button"
+            disabled={creating}
+            onClick={createProject}
+            className="flex items-center gap-2 px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
+            {creating ? <Loader2 size={14} className="animate-spin" /> : null}
             Create Project →
           </button>
         </div>

@@ -1,0 +1,9 @@
+Applied AI Group Project — Individual Evidence (Maya Patel, Group 2)
+
+Technical contribution:
+I coordinated frontend integration with the assessment API and wrote overlap review screens.
+I implemented list filtering by similarity score and export hooks for the dossier.
+
+OVERLAP_DEMO_BLOCK:
+I designed and implemented the FastAPI backend structure for our assessment platform.
+This included setting up versioned API routes, service stubs, and health checks.

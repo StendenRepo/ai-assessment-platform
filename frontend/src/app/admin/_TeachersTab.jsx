@@ -12,6 +12,7 @@ import {
   SaveButtons,
   Spinner,
   inputCls,
+  selectFullCls,
 } from './_ui';
 
 const TEACHER_DEFAULT = {
@@ -288,7 +289,7 @@ export function TeachersTab({ departments, currentUserId }) {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, department_id: e.target.value }))
                 }
-                className={inputCls}
+                className={selectFullCls}
               >
                 <option value="">— No department —</option>
                 {departments.map((d) => (

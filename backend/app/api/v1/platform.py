@@ -240,12 +240,39 @@ def delete_evidence(
 # --- Analysis ---
 
 
+def _analysis_for_student(result: dict, student_name: str) -> dict:
+    """Return a student-scoped view of project-level analysis."""
+    return {
+        "disclaimer": result.get("disclaimer"),
+        "processing": result.get("processing"),
+        "llm": result.get("llm"),
+        "evidence_matches": [
+            m
+            for m in result.get("evidence_matches", [])
+            if m.get("student") == student_name
+        ],
+        "overlaps": [
+            o
+            for o in result.get("overlaps", [])
+            if student_name in (o.get("student_a"), o.get("student_b"))
+        ],
+        "draft_suggestions": [
+            d
+            for d in result.get("draft_suggestions", [])
+            if d.get("student") == student_name
+        ],
+        "questions": [
+            q for q in result.get("questions", []) if q.get("student") == student_name
+        ],
+    }
+
+
 def _apply_analysis_to_project(module_id: str, project_id: str, result: dict) -> None:
     project = store._find_project(module_id, project_id)
     if not project:
         return
     for s in project.students:
-        s.analysis = result
+        s.analysis = _analysis_for_student(result, s.name)
         s.draft_form = [
             {
                 "criterion": d["criterion"],
@@ -537,7 +564,7 @@ def export_zip(module_id: str, project_id: str, student_id: str):
     s = store._find_student(module_id, project_id, student_id)
     if not module or not project or not s:
         raise HTTPException(404, "Not found")
-    data = build_student_dossier_zip(module, project.name, s)
+    data = build_student_dossier_zip(module, project_id, project.name, s)
     log_event("export_zip", module_id=module_id, project_id=project_id, student_id=student_id)
     return Response(
         content=data,

@@ -108,6 +108,12 @@ class TestDevBridge:
         for sid in (STUDENT_A, STUDENT_B):
             s = platform_store._find_student(PROJECT, GROUP, sid)
             assert s.analysis and "overlaps" in s.analysis
+            for d in s.analysis.get("draft_suggestions", []):
+                assert d.get("student") == s.name
+            other = STUDENT_B if sid == STUDENT_A else STUDENT_A
+            other_s = platform_store._find_student(PROJECT, GROUP, other)
+            other_drafts = other_s.analysis.get("draft_suggestions", [])
+            assert all(d.get("student") == other_s.name for d in other_drafts)
 
         insights = client.get(
             f"/api/v1/projects/{PROJECT}/groups/{GROUP}/students/{STUDENT_A}/ai-insights"
@@ -132,6 +138,15 @@ class TestDevBridge:
         platform_store.save()
         res = client.post("/api/v1/modules/empty-mod/projects/empty-group/analyze")
         assert res.status_code == 400
+
+
+class TestChunker:
+    def test_rejects_invalid_overlap(self):
+        import pytest
+        from app.ai.chunker import chunk_text
+
+        with pytest.raises(ValueError):
+            chunk_text("hello world", chunk_size=10, overlap=10)
 
 
 class TestAuthWithPlatform:

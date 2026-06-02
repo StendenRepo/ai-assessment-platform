@@ -11,6 +11,7 @@ from app.store import Module, Student, store
 
 def build_student_dossier_zip(
     module: Module,
+    project_id: str,
     project_name: str,
     student: Student,
 ) -> bytes:
@@ -44,6 +45,18 @@ def build_student_dossier_zip(
             "overlap_signals.json",
             json.dumps(analysis.get("overlaps", []), indent=2),
         )
+        try:
+            from app.services.overlap_service import collect_overlaps_for_export
+            from app.export.overlap_report import (
+                build_overlap_dossier_zip,
+                format_overlap_report_md,
+            )
+
+            report = collect_overlaps_for_export(module.id, project_id)
+            zf.writestr("overlap_report.md", format_overlap_report_md(report))
+            zf.writestr("overlap_report.json", json.dumps(report, indent=2))
+        except Exception:
+            pass
     buf.seek(0)
     return buf.read()
 
@@ -69,11 +82,15 @@ def build_eml(
 def _format_draft(student: Student, analysis: dict) -> str:
     lines = [f"Draft assessment — {student.name}", "=" * 40, ""]
     for d in analysis.get("draft_suggestions", []):
+        if d.get("student") not in (None, student.name):
+            continue
         lines.append(f"## {d.get('criterion', '')}")
         lines.append(d.get("suggestion", ""))
         lines.append(f"(Suggestion strength: {d.get('suggestion_strength', 'n/a')}%)")
         lines.append("")
     lines.append("Questions for oral assessment:")
     for q in analysis.get("questions", []):
+        if q.get("student") not in (None, student.name):
+            continue
         lines.append(f"- {q.get('question', '')}")
     return "\n".join(lines)

@@ -17,8 +17,9 @@ Standalone tests for branch `feature/integrate-poc-dev-ui`: POC AI backend merge
 1. **Auth** — JWT login from `dev` still works next to platform routes.
 2. **Platform** — modules CRUD, seed-demo, LLM status.
 3. **Dev bridge** — ensure → analyze → status → per-student `ai-insights` (overlap/suggestions from fixtures).
-4. **Live stack** — same flow against `docker compose` on `:8000`.
-5. **Frontend** — main pages return HTTP 200 (smoke only; no UI/API coupling).
+4. **Overlaps (G2-122/124/126)** — detect, list (confirmed/possible, sort), side-by-side detail API.
+5. **Live stack** — same flow against `docker compose` on `:8000`.
+6. **Frontend** — main pages return HTTP 200 (smoke only; no UI/API coupling).
 
 ## Prerequisites
 

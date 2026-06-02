@@ -79,8 +79,9 @@ ai-assessment-platform/
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── docker-compose.yml         # Production stack
-├── docker-compose.dev.yml     # Development overrides (pgAdmin, hot-reload)
+├── docker-compose.yml         # Base stack
+├── docker-compose.override.yml# Auto-loaded dev overrides (pgAdmin, hot-reload)
+├── docker-compose.dev.yml     # Legacy dev compose file
 └── README.md
 ```
 
@@ -104,10 +105,10 @@ git clone <repository-url>
 cd ai-assessment-platform
 ```
 
-Copy the backend environment template:
+Copy the root environment template:
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
 The default values in `.env` work out of the box with Docker Compose. Edit the file if you need custom credentials.
@@ -121,7 +122,7 @@ The default values in `.env` work out of the box with Docker Compose. Edit the f
 Starts all services with hot-reload for the frontend and pgAdmin for database management:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose up -d
 ```
 
 | Service  | URL                   |
@@ -136,7 +137,7 @@ Connect to the database using host `postgres`, port `5432`, database `ai_assessm
 ## Production
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d
 ```
 
 ---
@@ -256,7 +257,7 @@ docker exec backend python -m pytest tests/ -v
 If the stack is not running:
 
 ```bash
-docker compose -f docker-compose.dev.yml run --rm backend python -m pytest tests/ -v
+docker compose run --rm backend python -m pytest tests/ -v
 ```
 
 With coverage report:
@@ -285,37 +286,37 @@ Run Alembic inside the backend container.
 1. Start services:
 
     ```bash
-    docker compose -f docker-compose.dev.yml up -d --build
+    docker compose up -d
     ```
 
 2. Create a new migration after model changes:
 
     ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic revision --autogenerate -m "describe change"
+    docker compose exec backend alembic revision --autogenerate -m "describe change"
     ```
 
 3. Upgrade to the latest revision:
 
     ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
+    docker compose exec backend alembic upgrade head
     ```
 
 4. Check the current revision:
 
     ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic current -v
+    docker compose exec backend alembic current -v
     ```
 
 5. Downgrade one revision:
 
     ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic downgrade -1
+    docker compose exec backend alembic downgrade -1
     ```
 
 6. View migration history:
 
     ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic history --indicate-current
+    docker compose exec backend alembic history --indicate-current
     ```
 
 Use the same commands with docker-compose.yml for non-dev environments.

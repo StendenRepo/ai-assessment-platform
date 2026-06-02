@@ -9,20 +9,26 @@ from datetime import datetime, timezone
 
 FIXTURES = Path(__file__).resolve().parent.parent / "ai" / "fixtures"
 
-# Dev UI mock student ids → display name, number, optional fixture file
 DEV_STUDENTS: dict[str, tuple[str, str, str | None]] = {
     "student-1": ("Lisa Anderson", "S2034567", "student_a.txt"),
     "student-2": ("Thomas Johnson", "S2034789", "student_b.txt"),
-    "student-3": ("Maya Patel", "S2035012", None),
+    "student-3": ("Maya Patel", "S2035012", "student_c.txt"),
     "student-4": ("Mark Davis", "S2034891", None),
 }
 
+GROUP_STUDENTS: dict[str, list[str]] = {
+    "group-1": ["student-1", "student-2"],
+    "group-2": ["student-3", "student-4"],
+}
+
+
+def ensure_dev_module(store: PlatformStore, module_id: str) -> None:
+    """Ensure module with demo groups for within- and cross-group overlap tests."""
+    for group_id in GROUP_STUDENTS:
+        ensure_dev_context(store, module_id, group_id)
+
 
 def ensure_dev_context(store: PlatformStore, module_id: str, project_id: str) -> None:
-    """
-    module_id = dev projectId (e.g. proj-1)
-    project_id = dev groupId (e.g. group-1)
-    """
     module = store.modules.get(module_id)
     if not module:
         from app.store import DEFAULT_CRITERIA, Module
@@ -43,10 +49,12 @@ def ensure_dev_context(store: PlatformStore, module_id: str, project_id: str) ->
         project = Project(id=project_id, name=f"Group {project_id}", phase="ingest")
         module.projects.append(project)
 
+    allowed = set(GROUP_STUDENTS.get(project_id, list(DEV_STUDENTS.keys())))
     existing_ids = {s.id for s in project.students}
-    for sid, (name, number, fixture) in DEV_STUDENTS.items():
+    for sid in allowed:
         if sid in existing_ids:
             continue
+        name, number, fixture = DEV_STUDENTS[sid]
         student = Student(id=sid, name=name, student_number=number, phase="ingest")
         if fixture:
             fpath = FIXTURES / fixture
@@ -68,11 +76,6 @@ def ensure_dev_context(store: PlatformStore, module_id: str, project_id: str) ->
     if project.students:
         project.phase = "ingest"
     store.save()
-
-
-def student_name_for_id(student_id: str) -> str | None:
-    row = DEV_STUDENTS.get(student_id)
-    return row[0] if row else None
 
 
 def analysis_to_insights(analysis: dict | None, student_id: str, student_name: str) -> list[dict]:
@@ -110,17 +113,19 @@ def analysis_to_insights(analysis: dict | None, student_id: str, student_name: s
     for match in analysis.get("evidence_matches") or []:
         if match.get("student") != student_name:
             continue
-        score = float(match.get("score") or 0)
-        if score >= 0.35:
+        similarity = float(match.get("similarity", match.get("score", 0)) or 0)
+        if similarity >= 0.35:
             continue
         idx += 1
+        quote = match.get("quote") or match.get("snippet") or ""
         insights.append(
             {
                 "id": f"ai-match-{idx}",
                 "type": "suggestion",
                 "severity": "medium",
                 "title": f"Weak evidence for: {match.get('criterion', 'criterion')}",
-                "description": match.get("snippet") or "Low TF-IDF match — additional evidence may be needed.",
+                "description": quote
+                or "Low TF-IDF match — additional evidence may be needed.",
                 "affectedStudents": [student_id],
                 "evidence": [],
                 "sourceFiles": [match.get("source_file") or "unknown"],

@@ -20,6 +20,22 @@ def run_analysis(
     """
     students: { name: { "source_file": str, "text": str } }
     """
+    with ollama_client.analysis_session():
+        return _run_analysis_body(
+            rubric_criteria,
+            students,
+            use_batch_llm=use_batch_llm,
+            on_progress=on_progress,
+        )
+
+
+def _run_analysis_body(
+    rubric_criteria: list[str],
+    students: dict[str, dict],
+    *,
+    use_batch_llm: bool,
+    on_progress: ProgressCallback | None,
+) -> dict:
     if on_progress:
         on_progress("Matching evidence to rubric criteria", 12)
 

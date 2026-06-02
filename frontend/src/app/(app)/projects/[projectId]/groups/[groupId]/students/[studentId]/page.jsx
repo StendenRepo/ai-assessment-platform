@@ -20,8 +20,10 @@ import {
   mockStudents,
   mockContributions,
   mockCriteria,
-  mockAIInsights,
 } from '@/lib/mockData';
+import { platformApi } from '@/lib/platformApi';
+import AssessmentChatWidget from '@/components/assessment/AssessmentChatWidget';
+import DraftSuggestionsPanel from '@/components/assessment/DraftSuggestionsPanel';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -55,10 +57,7 @@ const insightConfig = {
   },
 };
 
-function AIInsightsPanel({ studentId }) {
-  const insights = mockAIInsights.filter((i) =>
-    i.affectedStudents.includes(studentId)
-  );
+function AIInsightsPanel({ insights = [] }) {
   const [expanded, setExpanded] = useState(null);
 
   return (
@@ -195,14 +194,20 @@ const contributionTypeColor = {
 };
 
 export default function StudentAssessmentPage() {
-  const { studentId } = useParams();
+  const { projectId, groupId, studentId } = useParams();
   const student = mockStudents.find((s) => s.id === studentId);
+  const [aiInsights, setAiInsights] = useState([]);
+  const [workspace, setWorkspace] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [currentTab, setCurrentTab] = useState(0);
   const [expanded, setExpanded] = useState(null);
   const [scores, setScores] = useState({});
   const [comments, setComments] = useState({});
   const [showConsent, setShowConsent] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
+  const [consentSaving, setConsentSaving] = useState(false);
+  const [transcriptNote, setTranscriptNote] = useState(null);
+  const transcriptInputRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -218,6 +223,31 @@ export default function StudentAssessmentPage() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [isRecording, isPaused]);
+
+  const loadAiData = () => {
+    platformApi
+      .ensureGroup(projectId, groupId)
+      .catch(() => {})
+      .finally(() => {
+        Promise.all([
+          platformApi.getInsights(projectId, groupId, studentId),
+          platformApi.getStudentWorkspace(projectId, groupId, studentId),
+        ])
+          .then(([ins, ws]) => {
+            setAiInsights(ins.insights || []);
+            setWorkspace(ws);
+            setConsentGiven(Boolean(ws.consent_given));
+            setLoadError(null);
+          })
+          .catch((e) => setLoadError(e.message));
+      });
+  };
+
+  useEffect(() => {
+    loadAiData();
+  }, [projectId, groupId, studentId]);
+
+  const oralQuestions = workspace?.analysis?.questions || [];
 
   if (!student)
     return <div className="text-muted-foreground">Student not found</div>;
@@ -259,19 +289,39 @@ export default function StudentAssessmentPage() {
               {overallScore}
             </div>
           </div>
-          {!isRecording && (
-            <button
-              onClick={() => setShowConsent(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0"
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <a
+              href={platformApi.exportZipUrl(projectId, groupId, studentId)}
+              className="px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
             >
-              <Mic size={15} /> Start Assessment
-            </button>
-          )}
+              Export ZIP
+            </a>
+            <a
+              href={platformApi.exportEmlUrl(projectId, groupId, studentId)}
+              className="px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary transition-colors"
+            >
+              Export EML
+            </a>
+            {!isRecording && (
+              <button
+                onClick={() => setShowConsent(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <Mic size={15} /> Start Assessment
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
+      {loadError && (
+        <p className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md px-4 py-2">
+          {loadError} — run analysis on the group page first.
+        </p>
+      )}
+
       <div className="grid grid-cols-3 gap-6">
-        <div className={isRecording ? 'col-span-2' : 'col-span-3'}>
+        <div className="col-span-2">
           <div className="rounded-lg bg-card border border-border overflow-hidden">
             <div className="flex border-b border-border">
               {['Contributions & Evidence', 'Assessment'].map((tab, i) => (
@@ -290,12 +340,39 @@ export default function StudentAssessmentPage() {
                 <div className="space-y-3">
                   <div className="mb-4">
                     <h3 className="text-sm font-semibold text-foreground">
-                      Detected Contributions
+                      Evidence & contributions
                     </h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      AI-detected contributions linked to supporting evidence
+                      Uploaded evidence from the group workspace; mock contributions below when no analysis yet
                     </p>
                   </div>
+                  {workspace?.evidence?.length > 0 && (
+                    <div className="rounded-lg border border-border divide-y divide-border mb-4">
+                      {workspace.evidence.map((ev) => (
+                        <div key={ev.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                          <span className="text-xs font-mono text-foreground truncate">
+                            {ev.filename}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {ev.file_type}
+                            {ev.uploaded_at
+                              ? ` · ${new Date(ev.uploaded_at).toLocaleDateString('en-US')}`
+                              : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {workspace?.transcript && (
+                    <div className="rounded-md bg-secondary border border-border p-3 mb-4">
+                      <p className="text-xs font-semibold text-foreground mb-1">
+                        Session transcript
+                      </p>
+                      <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4">
+                        {workspace.transcript}
+                      </p>
+                    </div>
+                  )}
                   {mockContributions.map((contrib) => (
                     <div
                       key={contrib.id}
@@ -408,8 +485,54 @@ export default function StudentAssessmentPage() {
               )}
 
               {currentTab === 1 && (
-                <div className="space-y-4">
-                  <div className="mb-4">
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        AI draft suggestions
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Edit AI-generated text before scoring criteria
+                      </p>
+                    </div>
+                    <DraftSuggestionsPanel
+                      projectId={projectId}
+                      groupId={groupId}
+                      studentId={studentId}
+                      draftForm={workspace?.draft_form}
+                      onSaved={loadAiData}
+                    />
+                  </div>
+                  {oralQuestions.length > 0 && (
+                    <div className="space-y-3 pt-2 border-t border-border">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Oral exam questions
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Suggested questions from analysis
+                        </p>
+                      </div>
+                      <ul className="space-y-3">
+                        {oralQuestions.map((q, i) => (
+                          <li
+                            key={i}
+                            className="rounded-lg border border-border p-4"
+                          >
+                            <p className="text-sm text-foreground leading-relaxed">
+                              {q.question}
+                            </p>
+                            {q.criterion && (
+                              <span className="inline-flex mt-2 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-secondary text-muted-foreground ring-1 ring-border">
+                                {q.criterion}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="pt-4 border-t border-border">
                     <h3 className="text-sm font-semibold text-foreground">
                       Assessment Criteria
                     </h3>
@@ -489,8 +612,8 @@ export default function StudentAssessmentPage() {
           </div>
         </div>
 
-        {isRecording && (
-          <div className="col-span-1 space-y-4">
+        <div className="col-span-1 space-y-4">
+          {isRecording && (
             <div className="rounded-lg bg-card border border-border p-5 space-y-4 sticky top-4">
               <h3 className="text-sm font-semibold text-foreground">
                 Recording
@@ -514,8 +637,53 @@ export default function StudentAssessmentPage() {
                   {isPaused ? <Play size={14} /> : <Pause size={14} />}
                   {isPaused ? 'Resume' : 'Pause'}
                 </button>
+                <input
+                  ref={transcriptInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".txt,.md"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      await platformApi.uploadTranscript(
+                        projectId,
+                        groupId,
+                        studentId,
+                        file
+                      );
+                      setTranscriptNote('Transcript uploaded');
+                      loadAiData();
+                    } catch (err) {
+                      setTranscriptNote(err.message);
+                    }
+                    e.target.value = '';
+                  }}
+                />
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    const duration = formatTime(elapsed);
+                    const blob = new Blob(
+                      [
+                        `Assessment session recording note\nDuration: ${duration}\nStudent: ${student.name}\nRecorded at: ${new Date().toISOString()}\n`,
+                      ],
+                      { type: 'text/plain' }
+                    );
+                    const file = new File([blob], `session-${studentId}.txt`, {
+                      type: 'text/plain',
+                    });
+                    try {
+                      await platformApi.uploadTranscript(
+                        projectId,
+                        groupId,
+                        studentId,
+                        file
+                      );
+                      setTranscriptNote(`Session saved (${duration})`);
+                      loadAiData();
+                    } catch (err) {
+                      setTranscriptNote(err.message);
+                    }
                     setIsRecording(false);
                     setElapsed(0);
                     setIsPaused(false);
@@ -524,6 +692,16 @@ export default function StudentAssessmentPage() {
                 >
                   <Square size={14} /> Stop & Save
                 </button>
+                <button
+                  type="button"
+                  onClick={() => transcriptInputRef.current?.click()}
+                  className="w-full text-xs text-primary hover:text-primary/80"
+                >
+                  Upload transcript file instead
+                </button>
+                {transcriptNote && (
+                  <p className="text-[11px] text-muted-foreground">{transcriptNote}</p>
+                )}
               </div>
               <div className="flex items-start gap-2 rounded-md bg-secondary border border-border p-3">
                 <Shield
@@ -536,10 +714,17 @@ export default function StudentAssessmentPage() {
                 </p>
               </div>
             </div>
-            <AIInsightsPanel studentId={studentId} />
-          </div>
-        )}
+          )}
+          <AIInsightsPanel insights={aiInsights} />
+        </div>
       </div>
+
+      <AssessmentChatWidget
+        projectId={projectId}
+        groupId={groupId}
+        studentId={studentId}
+        studentName={student.name}
+      />
 
       {showConsent && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -587,14 +772,29 @@ export default function StudentAssessmentPage() {
                 Cancel
               </button>
               <button
-                disabled={!consentGiven}
-                onClick={() => {
-                  setShowConsent(false);
-                  setIsRecording(true);
+                disabled={!consentGiven || consentSaving}
+                onClick={async () => {
+                  setConsentSaving(true);
+                  try {
+                    await platformApi.recordConsent(
+                      projectId,
+                      groupId,
+                      studentId,
+                      true,
+                      'Dev UI oral assessment'
+                    );
+                    setShowConsent(false);
+                    setIsRecording(true);
+                  } catch (err) {
+                    setLoadError(err.message);
+                  } finally {
+                    setConsentSaving(false);
+                  }
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven && !consentSaving ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
               >
-                <Mic size={14} /> Start Recording
+                <Mic size={14} />{' '}
+                {consentSaving ? 'Saving…' : 'Start Recording'}
               </button>
             </div>
           </div>
