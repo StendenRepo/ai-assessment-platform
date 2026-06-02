@@ -1,4 +1,5 @@
 import { authHeaders } from '@/lib/auth';
+import { API_PATHS } from '@/lib/routes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -21,23 +22,38 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-export const listProjects = () => request('/projects');
+export const listProjects = () => request(API_PATHS.modules);
 
-export const getProject = (projectId) => request(`/projects/${projectId}`);
+export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
-export const listProjectStudents = (projectId) =>
-  request(`/projects/${projectId}/students`);
-
-export const addProjectStudent = (projectId, payload) =>
-  request(`/projects/${projectId}/students`, {
+export const createModule = (payload) =>
+  request(API_PATHS.modules, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 
-export const importProjectStudents = (projectId, file) => {
+export const listProjectGroups = (projectId) =>
+  request(API_PATHS.moduleGroups(projectId));
+
+export const createProjectGroup = (projectId, payload) =>
+  request(API_PATHS.moduleGroups(projectId), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const listProjectStudents = (projectId) =>
+  request(API_PATHS.moduleStudents(projectId));
+
+export const addProjectStudent = (projectId, payload) =>
+  request(API_PATHS.moduleStudents(projectId), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
   formData.append('file', file);
-  return request(`/projects/${projectId}/students/import`, {
+  return request(API_PATHS.moduleStudentImports(projectId, targetGroupId), {
     method: 'POST',
     body: formData,
   });

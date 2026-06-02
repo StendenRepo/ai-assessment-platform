@@ -1,36 +1,3 @@
-export const mockProjects = [
-  {
-    id: 'proj-1',
-    name: 'E-Commerce Platform',
-    course: 'Advanced Web Development',
-    groupNumber: 3,
-    students: [],
-    deadline: '2026-06-15',
-    status: 'active',
-    assessmentProgress: 35,
-  },
-  {
-    id: 'proj-2',
-    name: 'Machine Learning Model',
-    course: 'Data Science',
-    groupNumber: 7,
-    students: [],
-    deadline: '2026-05-30',
-    status: 'active',
-    assessmentProgress: 80,
-  },
-  {
-    id: 'proj-3',
-    name: 'Mobile App Prototype',
-    course: 'App Development',
-    groupNumber: 5,
-    students: [],
-    deadline: '2026-05-20',
-    status: 'overdue',
-    assessmentProgress: 60,
-  },
-];
-
 export const mockStudents = [
   {
     id: 'student-1',

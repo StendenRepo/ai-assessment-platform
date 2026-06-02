@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 class StudentCreate(BaseModel):
     name: str
     student_number: str
+    project_id: Optional[str] = None
 
     @field_validator("name", "student_number")
     @classmethod
@@ -21,11 +22,10 @@ class StudentOut(BaseModel):
     id: str
     project_id: str
     name: str
-    # Every student created through the add/import endpoints has a number, so
-    # we expose it as required rather than optional.
     student_number: str
     status: str
     consent_given: bool = False
+    assessment_status: str = "not-started"
 
     model_config = {"from_attributes": True}
 
@@ -38,6 +38,7 @@ class ProjectOut(BaseModel):
     status: str
     created_at: Optional[datetime] = None
     student_count: int = 0
+    file_count: int = 0
 
     model_config = {"from_attributes": True}
 
