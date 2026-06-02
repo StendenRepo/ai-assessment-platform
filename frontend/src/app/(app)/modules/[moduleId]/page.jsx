@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   FileSpreadsheet,
+  FileText,
   FolderPlus,
+  UserCheck,
   UserPlus,
   Users,
   Upload,
@@ -16,14 +18,15 @@ import {
   addProjectStudent,
   importProjectStudents,
   createProjectGroup,
-} from '@/lib/projectsApi';
+  moveStudentToGroup,
+} from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 
-export default function ProjectPage() {
-  const { projectId } = useParams();
+export default function ModulePage() {
+  const { moduleId } = useParams();
   const router = useRouter();
 
   const [project, setProject] = useState(null);
@@ -42,6 +45,11 @@ export default function ProjectPage() {
   const [groupSubmitting, setGroupSubmitting] = useState(false);
   const [groupError, setGroupError] = useState('');
 
+  const [assignStudentId, setAssignStudentId] = useState('');
+  const [assignGroupId, setAssignGroupId] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState('');
+
   const fileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -49,9 +57,9 @@ export default function ProjectPage() {
 
   useEffect(() => {
     Promise.all([
-      getProject(projectId),
-      listProjectStudents(projectId),
-      listProjectGroups(projectId),
+      getProject(moduleId),
+      listProjectStudents(moduleId),
+      listProjectGroups(moduleId),
     ])
       .then(([proj, list, groupList]) => {
         setProject(proj);
@@ -60,7 +68,7 @@ export default function ProjectPage() {
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [moduleId]);
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -71,7 +79,7 @@ export default function ProjectPage() {
     }
     setSubmitting(true);
     try {
-      const student = await addProjectStudent(projectId, {
+      const student = await addProjectStudent(moduleId, {
         name: name.trim(),
         student_number: studentNumber.trim(),
         project_id: selectedGroupId || null,
@@ -96,7 +104,7 @@ export default function ProjectPage() {
     setImportResult(null);
     try {
       const result = await importProjectStudents(
-        projectId,
+        moduleId,
         file,
         selectedGroupId
       );
@@ -116,6 +124,53 @@ export default function ProjectPage() {
     }
   };
 
+  const handleAssign = async (e) => {
+    e.preventDefault();
+    setAssignError('');
+    if (!assignStudentId || !assignGroupId) {
+      setAssignError('Select both a student and a group.');
+      return;
+    }
+    setAssigning(true);
+    try {
+      const updated = await moveStudentToGroup(
+        moduleId,
+        assignStudentId,
+        assignGroupId
+      );
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === assignStudentId
+            ? { ...s, project_id: updated.project_id }
+            : s
+        )
+      );
+      setAssignStudentId('');
+      setAssignGroupId('');
+    } catch (err) {
+      setAssignError(err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleMoveStudent = async (studentId, newProjectId) => {
+    try {
+      const updated = await moveStudentToGroup(
+        moduleId,
+        studentId,
+        newProjectId
+      );
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === studentId ? { ...s, project_id: updated.project_id } : s
+        )
+      );
+    } catch {
+      // keep existing state on failure
+    }
+  };
+
   const handleCreateGroup = async (e) => {
     e.preventDefault();
     setGroupError('');
@@ -125,7 +180,7 @@ export default function ProjectPage() {
     }
     setGroupSubmitting(true);
     try {
-      const group = await createProjectGroup(projectId, {
+      const group = await createProjectGroup(moduleId, {
         name: groupName.trim(),
       });
       setGroups((prev) => [group, ...prev]);
@@ -195,7 +250,7 @@ export default function ProjectPage() {
                   type="button"
                   onClick={() =>
                     router.push(
-                      `${APP_PATHS.modules}/${projectId}/groups/${group.id}`
+                      `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
                     )
                   }
                   className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
@@ -204,9 +259,17 @@ export default function ProjectPage() {
                     <div className="text-sm font-semibold text-foreground">
                       {group.name}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {group.group_name || 'Group'} · {group.student_count}{' '}
-                      {group.student_count === 1 ? 'student' : 'students'}
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                      <span className="flex items-center gap-1.5 leading-none">
+                        <Users size={13} />
+                        {group.student_count}{' '}
+                        {group.student_count === 1 ? 'student' : 'students'}
+                      </span>
+                      <span className="flex items-center gap-1.5 leading-none">
+                        <FileText size={13} />
+                        {group.file_count ?? 0}{' '}
+                        {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
+                      </span>
                     </div>
                   </div>
                   <span className="text-xs text-muted-foreground">
@@ -218,7 +281,7 @@ export default function ProjectPage() {
           )}
         </div>
 
-        <div className="col-span-1">
+        <div className="col-span-1 pt-9">
           <form
             onSubmit={handleCreateGroup}
             className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
@@ -275,7 +338,12 @@ export default function ProjectPage() {
               {students.map((student) => (
                 <div
                   key={student.id}
-                  className="flex items-center gap-4 px-5 py-4"
+                  onClick={() =>
+                    router.push(
+                      `${APP_PATHS.modules}/${moduleId}/groups/${student.project_id}/students/${student.id}?from=module`
+                    )
+                  }
+                  className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
                     {student.name
@@ -417,6 +485,62 @@ export default function ProjectPage() {
               </div>
             )}
           </div>
+
+          {groups.length > 0 && students.length > 0 && (
+            <form
+              onSubmit={handleAssign}
+              className="rounded-lg bg-card border border-border p-5 mt-6 space-y-4"
+            >
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <UserCheck size={15} />
+                Assign to Group
+              </h3>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Student *
+                </label>
+                <select
+                  value={assignStudentId}
+                  onChange={(e) => setAssignStudentId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">— Select student —</option>
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.student_number})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Group *
+                </label>
+                <select
+                  value={assignGroupId}
+                  onChange={(e) => setAssignGroupId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">— Select group —</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {assignError && (
+                <p className="text-xs text-red-400">{assignError}</p>
+              )}
+              <button
+                type="submit"
+                disabled={assigning}
+                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {assigning ? 'Assigning…' : 'Assign'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

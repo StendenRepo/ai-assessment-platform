@@ -6,6 +6,7 @@ import { Building2, Settings, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Header from '@/components/layout/Header';
 import { adminFetch } from '@/lib/adminFetch';
+import { APP_PATHS } from '@/lib/routes';
 import { TabBtn } from './_ui';
 import { TeachersTab } from './_TeachersTab';
 import { DepartmentsTab } from './_DepartmentsTab';
@@ -20,11 +21,11 @@ export default function AdminPage() {
   useEffect(() => {
     if (!ready) return;
     if (!user) {
-      router.replace('/');
+      router.replace(APP_PATHS.root);
       return;
     }
     if (!user.is_admin) {
-      router.replace('/dashboard');
+      router.replace(APP_PATHS.dashboard);
     }
   }, [ready, user, router]);
 
@@ -45,7 +46,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header navItems={[]} subtitle="Admin Panel" logoHref="/admin" />
+      <Header navItems={[]} subtitle="Admin Panel" logoHref={APP_PATHS.admin} />
 
       <main className="max-w-7xl mx-auto px-8 py-8">
         <div className="mb-6">
