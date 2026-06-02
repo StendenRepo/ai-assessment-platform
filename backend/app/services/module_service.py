@@ -24,6 +24,11 @@ def _check_extension(filename: str) -> str:
     return ext
 
 
+def _rubric_path(module_id: str, stored_name: str) -> Path:
+    """Rebuild the absolute path on disk from the filename stored in the DB."""
+    return RUBRIC_UPLOAD_DIR / str(module_id) / stored_name
+
+
 def _get_module_or_404(module_id: str, teacher_id, db: Session) -> Module:
     module = (
         db.query(Module)
@@ -82,7 +87,7 @@ class ModuleService:
 
         record = FileRecord(
             file_name=filename,
-            path=str(file_path),
+            path=unique_name,
             file_type=Path(filename).suffix.lstrip(".").lower(),
             size_bytes=size,
             hash=file_hash,
@@ -95,7 +100,7 @@ class ModuleService:
         db.flush()
 
         if old_record:
-            old_path = Path(old_record.path)
+            old_path = _rubric_path(module_id, old_record.path)
             if old_path.exists():
                 old_path.unlink(missing_ok=True)
             db.delete(old_record)
@@ -116,7 +121,7 @@ class ModuleService:
 
         record = db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
         if record:
-            file_path = Path(record.path)
+            file_path = _rubric_path(module_id, record.path)
             if file_path.exists():
                 file_path.unlink(missing_ok=True)
             db.delete(record)
