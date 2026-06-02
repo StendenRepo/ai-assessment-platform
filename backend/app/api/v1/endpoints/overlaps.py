@@ -18,7 +18,6 @@ from app.services.overlap_service import (
     get_overlap,
     list_confirmed_overlaps,
     list_group_overlaps,
-    list_module_overlaps,
     list_possible_overlaps,
     run_cross_group_scan,
     run_full_overlap_scan,

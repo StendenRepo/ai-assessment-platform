@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.ai.orchestrator import run_analysis
 from app.ai import ollama_client

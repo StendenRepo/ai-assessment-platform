@@ -4,8 +4,6 @@ import json
 
 import pytest
 
-from app.services.dev_ui_bridge import ensure_dev_context
-
 PROJECT = "proj-1"
 GROUP = "group-1"
 

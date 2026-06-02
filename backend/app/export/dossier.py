@@ -6,7 +6,7 @@ import zipfile
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
-from app.store import Module, Student, store
+from app.store import Module, Student
 
 
 def build_student_dossier_zip(
@@ -47,10 +47,7 @@ def build_student_dossier_zip(
         )
         try:
             from app.services.overlap_service import collect_overlaps_for_export
-            from app.export.overlap_report import (
-                build_overlap_dossier_zip,
-                format_overlap_report_md,
-            )
+            from app.export.overlap_report import format_overlap_report_md
 
             report = collect_overlaps_for_export(module.id, project_id)
             zf.writestr("overlap_report.md", format_overlap_report_md(report))
