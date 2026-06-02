@@ -20,16 +20,16 @@ _pg.UUID = lambda as_uuid=True: _SQLiteUUID()
 _pg.JSONB = Text
 _pg.INET = String
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.api.deps import get_db
-from app.core.security import hash_password
-from app.database import Base
-from app.main import app
+from app.api.deps import get_db  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.database import Base  # noqa: E402
+from app.main import app  # noqa: E402
 
 _engine = create_engine(
     "sqlite://",

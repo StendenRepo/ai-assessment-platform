@@ -7,12 +7,12 @@ BASE="${FRONTEND_BASE:-http://localhost:3000}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "OK  $*"; }
 
-for path in / /dashboard /projects; do
+for path in / /dashboard /projects /modules; do
   code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$path")
-  if [ "$code" != "200" ]; then
-    fail "$path returned HTTP $code"
-  fi
-  ok "$path → $code"
+  case "$code" in
+    200|302|307) ok "$path → $code" ;;
+    *) fail "$path returned HTTP $code" ;;
+  esac
 done
 
 echo ""

@@ -23,7 +23,7 @@ Branch: `feature/G2-overlap-detection` → PR to `dev`
 | Reports | Live **audit log** from `/api/v1/audit` |
 | Settings → AI | Live **LLM status** from `/api/v1/llm-status` |
 
-POC workspace UI (`modules/…`, tabs) is **not** ported — only API logic.
+POC workspace shell is **not** ported. Dev **`/modules`** (SQL + JWT) remains; POC store uses the same `/api/v1/modules` paths and is registered **first** in the API router so wireframe `/projects` flows keep working. Use module UI for DB-backed modules and `/projects` for POC demos (`proj-1`, `group-1`).
 
 ## API
 
