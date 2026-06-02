@@ -1,30 +1,46 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { UserPlus, Users, Upload, FileSpreadsheet } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import {
+  FileSpreadsheet,
+  FolderPlus,
+  UserPlus,
+  Users,
+  Upload,
+} from 'lucide-react';
 import {
   getProject,
+  listProjectGroups,
   listProjectStudents,
   addProjectStudent,
   importProjectStudents,
+  createProjectGroup,
 } from '@/lib/projectsApi';
+import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 
 export default function ProjectPage() {
   const { projectId } = useParams();
+  const router = useRouter();
 
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const [name, setName] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+
+  const [groupName, setGroupName] = useState('');
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [groupError, setGroupError] = useState('');
 
   const fileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
@@ -32,10 +48,15 @@ export default function ProjectPage() {
   const [importError, setImportError] = useState('');
 
   useEffect(() => {
-    Promise.all([getProject(projectId), listProjectStudents(projectId)])
-      .then(([proj, list]) => {
+    Promise.all([
+      getProject(projectId),
+      listProjectStudents(projectId),
+      listProjectGroups(projectId),
+    ])
+      .then(([proj, list, groupList]) => {
         setProject(proj);
         setStudents(list);
+        setGroups(groupList);
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
@@ -53,6 +74,7 @@ export default function ProjectPage() {
       const student = await addProjectStudent(projectId, {
         name: name.trim(),
         student_number: studentNumber.trim(),
+        project_id: selectedGroupId || null,
       });
       setStudents((prev) =>
         [...prev, student].sort((a, b) => a.name.localeCompare(b.name))
@@ -73,7 +95,11 @@ export default function ProjectPage() {
     setImportError('');
     setImportResult(null);
     try {
-      const result = await importProjectStudents(projectId, file);
+      const result = await importProjectStudents(
+        projectId,
+        file,
+        selectedGroupId
+      );
       setImportResult(result);
       if (result.students?.length) {
         setStudents((prev) =>
@@ -90,6 +116,28 @@ export default function ProjectPage() {
     }
   };
 
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    setGroupError('');
+    if (!groupName.trim()) {
+      setGroupError('Group name is required.');
+      return;
+    }
+    setGroupSubmitting(true);
+    try {
+      const group = await createProjectGroup(projectId, {
+        name: groupName.trim(),
+      });
+      setGroups((prev) => [group, ...prev]);
+      setGroupName('');
+      setSelectedGroupId(group.id);
+    } catch (err) {
+      setGroupError(err.message);
+    } finally {
+      setGroupSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -102,7 +150,7 @@ export default function ProjectPage() {
     return (
       <div className="rounded-lg bg-card border border-border p-12 text-center">
         <p className="text-sm font-medium text-red-400">
-          Failed to load project
+          Failed to load module
         </p>
         <p className="text-xs text-muted-foreground mt-1">{loadError}</p>
       </div>
@@ -114,8 +162,92 @@ export default function ProjectPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">{project?.name}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage the students in this project to set up the assessment
+          Manage the students in this module to set up the assessment
         </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-3">
+          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+            <FolderPlus size={16} />
+            Groups ({groups.length})
+          </h2>
+
+          {groups.length === 0 ? (
+            <div className="rounded-lg bg-card border border-border p-10 text-center">
+              <FolderPlus
+                size={28}
+                className="mx-auto text-muted-foreground mb-3 opacity-50"
+              />
+              <p className="text-sm font-medium text-foreground">
+                No groups yet
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Create a project group or keep using the default individual
+                student group.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
+              {groups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `${APP_PATHS.modules}/${projectId}/groups/${group.id}`
+                    )
+                  }
+                  className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">
+                      {group.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {group.group_name || 'Group'} · {group.student_count}{' '}
+                      {group.student_count === 1 ? 'student' : 'students'}
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Open group →
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="col-span-1">
+          <form
+            onSubmit={handleCreateGroup}
+            className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
+          >
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <FolderPlus size={15} />
+              Add Group
+            </h3>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Group name *
+              </label>
+              <input
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder="e.g. Group 1"
+                className={inputClass}
+              />
+            </div>
+            {groupError && <p className="text-xs text-red-400">{groupError}</p>}
+            <button
+              type="submit"
+              disabled={groupSubmitting}
+              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {groupSubmitting ? 'Creating…' : 'Create Group'}
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -197,6 +329,23 @@ export default function ProjectPage() {
                 placeholder="e.g. S2034567"
                 className={`${inputClass} font-mono`}
               />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Group (optional)
+              </label>
+              <select
+                value={selectedGroupId}
+                onChange={(e) => setSelectedGroupId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Default individual group</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
             </div>
             {formError && <p className="text-xs text-red-400">{formError}</p>}
             <button

@@ -1,4 +1,6 @@
 import { authHeaders } from '@/lib/auth';
+import { normalizeErrorDetail } from '@/lib/apiErrors';
+import { API_PATHS } from '@/lib/routes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -7,6 +9,7 @@ async function request(path, options = {}) {
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...options,
     headers: {
+      // Let the browser set the multipart boundary for FormData uploads.
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders(),
       ...(options.headers ?? {}),
@@ -14,24 +17,65 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Request failed (${res.status})`);
+    const message =
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`;
+    throw new Error(message);
   }
   if (res.status === 204) return null;
   return res.json();
 }
 
-export const listModules = () => request('/modules');
+export const listModules = () => request(API_PATHS.modules);
 
-export const getModule = (moduleId) => request(`/modules/${moduleId}`);
+export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
 export const createModule = (payload) =>
-  request('/modules', { method: 'POST', body: JSON.stringify(payload) });
+  request(API_PATHS.modules, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const listProjectGroups = (projectId) =>
+  request(API_PATHS.moduleGroups(projectId));
+
+export const createProjectGroup = (projectId, payload) =>
+  request(API_PATHS.moduleGroups(projectId), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const listProjectStudents = (projectId) =>
+  request(API_PATHS.moduleStudents(projectId));
+
+export const addProjectStudent = (projectId, payload) =>
+  request(API_PATHS.moduleStudents(projectId), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+
+export const moveStudentToGroup = (moduleId, studentId, projectId) =>
+  request(API_PATHS.moduleStudent(moduleId, studentId), {
+    method: 'PATCH',
+    body: JSON.stringify({ project_id: projectId }),
+  });
+
+export const importProjectStudents = (projectId, file, targetGroupId = '') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(API_PATHS.moduleStudentImports(projectId, targetGroupId), {
+    method: 'POST',
+    body: formData,
+  });
+};
 
 export const uploadRubric = (moduleId, file) => {
   const formData = new FormData();
   formData.append('file', file);
-  return request(`/modules/${moduleId}/rubric`, { method: 'POST', body: formData });
+  return request(API_PATHS.moduleRubric(moduleId), {
+    method: 'POST',
+    body: formData,
+  });
 };
 
 export const deleteRubric = (moduleId) =>
-  request(`/modules/${moduleId}/rubric`, { method: 'DELETE' });
+  request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });

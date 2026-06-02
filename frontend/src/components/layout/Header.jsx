@@ -4,20 +4,20 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { GraduationCap, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { APP_PATHS } from '@/lib/routes';
 
 /**
  * exact: true  — active only on the precise path
- * (e.g. /projects/new won't also highlight /projects)
+ * (e.g. /modules/new won't also highlight /modules)
  * exact: false (default) — active on the path and any sub-routes,
  * unless an exact item claims the current path
  */
 const DEFAULT_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', exact: true },
-  { href: '/modules', label: 'Modules' },
-  { href: '/projects', label: 'Projects' },
-  { href: '/projects/new', label: 'New Project', exact: true },
-  { href: '/reports', label: 'Reports' },
-  { href: '/settings', label: 'Settings', right: true },
+  { href: APP_PATHS.dashboard, label: 'Dashboard', exact: true },
+  { href: APP_PATHS.modules, label: 'Modules' },
+  { href: APP_PATHS.moduleNew, label: 'New Module', exact: true },
+  { href: APP_PATHS.reports, label: 'Reports' },
+  { href: APP_PATHS.settings, label: 'Settings', right: true },
 ];
 
 // Returns up to 2 uppercase initials from a full name, e.g. "John Smith" → "JS"
@@ -32,8 +32,8 @@ function initials(name = '') {
 
 export default function Header({
   navItems = DEFAULT_NAV_ITEMS,
-  subtitle = 'Group Project Evaluation Platform',
-  logoHref = '/dashboard',
+  subtitle = 'Module-Based Evaluation Platform',
+  logoHref = APP_PATHS.dashboard,
 }) {
   const pathname = usePathname();
   const router = useRouter();

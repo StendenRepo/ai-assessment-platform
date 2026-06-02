@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, SlidersHorizontal, Users } from 'lucide-react';
 import { listProjects } from '@/lib/projectsApi';
+import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
   active: {
@@ -44,9 +45,9 @@ export default function ProjectsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Projects</h1>
+        <h1 className="text-2xl font-bold text-foreground">Modules</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Browse and manage all group projects
+          Browse and manage all teaching modules
         </p>
       </div>
 
@@ -65,7 +66,7 @@ export default function ProjectsPage() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by project name..."
+              placeholder="Search by module name..."
               className="w-full pl-9 pr-4 py-2 bg-secondary border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
           </div>
@@ -92,7 +93,7 @@ export default function ProjectsPage() {
       ) : error ? (
         <div className="rounded-lg bg-card border border-border p-12 text-center">
           <p className="text-sm font-medium text-red-400">
-            Failed to load projects
+            Failed to load modules
           </p>
           <p className="text-xs text-muted-foreground mt-1">{error}</p>
         </div>
@@ -103,7 +104,7 @@ export default function ProjectsPage() {
             className="mx-auto text-muted-foreground mb-3 opacity-50"
           />
           <p className="text-sm font-medium text-foreground">
-            No projects found
+            No modules found
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             Try adjusting your filters or search term
@@ -119,7 +120,9 @@ export default function ProjectsPage() {
             return (
               <div
                 key={project.id}
-                onClick={() => router.push(`/projects/${project.id}`)}
+                onClick={() =>
+                  router.push(`${APP_PATHS.modules}/${project.id}`)
+                }
                 className="flex items-center gap-6 px-6 py-5 hover:bg-secondary/50 cursor-pointer transition-colors group"
               >
                 <div className="flex-1 min-w-0 space-y-2">
@@ -134,12 +137,17 @@ export default function ProjectsPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {project.group_name && (
+                    {project.academic_year && (
                       <>
-                        <span>{project.group_name}</span>
+                        <span>{project.academic_year}</span>
                         <span>·</span>
                       </>
                     )}
+                    <span>
+                      {project.project_count}{' '}
+                      {project.project_count === 1 ? 'group' : 'groups'}
+                    </span>
+                    <span>·</span>
                     <span className="flex items-center gap-1.5">
                       <Users size={12} />
                       {project.student_count}{' '}

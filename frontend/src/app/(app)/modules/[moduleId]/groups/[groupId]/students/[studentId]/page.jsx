@@ -11,17 +11,16 @@ import {
   Shield,
   Bot,
   Mic,
-  MicOff,
   Pause,
   Play,
   Square,
 } from 'lucide-react';
 import {
-  mockStudents,
   mockContributions,
   mockCriteria,
   mockAIInsights,
 } from '@/lib/mockData';
+import { listProjectStudents } from '@/lib/modulesApi';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -195,8 +194,9 @@ const contributionTypeColor = {
 };
 
 export default function StudentAssessmentPage() {
-  const { studentId } = useParams();
-  const student = mockStudents.find((s) => s.id === studentId);
+  const { moduleId, studentId } = useParams();
+  const [student, setStudent] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
   const [expanded, setExpanded] = useState(null);
   const [scores, setScores] = useState({});
@@ -209,6 +209,16 @@ export default function StudentAssessmentPage() {
   const timerRef = useRef(null);
 
   useEffect(() => {
+    listProjectStudents(moduleId)
+      .then((students) => {
+        const found = students.find((s) => s.id === studentId);
+        if (found) setStudent(found);
+        else setLoadError('Student not found in this module.');
+      })
+      .catch((e) => setLoadError(e.message));
+  }, [moduleId, studentId]);
+
+  useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
     } else {
@@ -219,8 +229,15 @@ export default function StudentAssessmentPage() {
     };
   }, [isRecording, isPaused]);
 
+  if (loadError)
+    return <div className="text-sm text-red-400 p-4">{loadError}</div>;
+
   if (!student)
-    return <div className="text-muted-foreground">Student not found</div>;
+    return (
+      <div className="flex justify-center py-20">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
 
   const overallScore =
     Object.values(scores).length > 0
@@ -248,7 +265,7 @@ export default function StudentAssessmentPage() {
               {student.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {student.studentNumber} · {student.email}
+              {student.student_number}
             </p>
           </div>
           <div className="text-center border-l border-border pl-6 shrink-0">

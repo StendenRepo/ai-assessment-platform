@@ -2,153 +2,186 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BookOpen, Plus, ArrowRight, FileText } from 'lucide-react';
-import { listModules, createModule } from '@/lib/modulesApi';
+import { Search, ArrowRight, SlidersHorizontal, Users, FileText } from 'lucide-react';
+import { listModules } from '@/lib/modulesApi';
+import { APP_PATHS } from '@/lib/routes';
 
-const inputClass =
-  'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
+const statusConfig = {
+  active: {
+    label: 'Active',
+    classes: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
+  },
+  completed: {
+    label: 'Completed',
+    classes: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
+  },
+  archived: {
+    label: 'Archived',
+    classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
+  },
+};
 
 export default function ModulesPage() {
   const router = useRouter();
-  const [modules, setModules] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', academic_year: '' });
-  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     listModules()
-      .then(setModules)
+      .then(setProjects)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const handleCreate = async () => {
-    if (!form.name.trim()) return;
-    setSaving(true);
-    try {
-      const created = await createModule({
-        name: form.name.trim(),
-        academic_year: form.academic_year.trim() || null,
-      });
-      setModules((prev) => [created, ...prev]);
-      setShowForm(false);
-      setForm({ name: '', academic_year: '' });
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const filtered = projects.filter((p) => {
+    const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchStatus = statusFilter === 'all' || p.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Modules</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your modules and their rubrics
-          </p>
-        </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
-        >
-          <Plus size={13} /> New Module
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Modules</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Browse and manage all teaching modules
+        </p>
       </div>
 
-      {showForm && (
-        <div className="max-w-lg rounded-lg bg-card border border-border p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">New Module</h3>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Module Name *
-            </label>
+      <div className="rounded-lg bg-card border border-border p-4">
+        <div className="flex gap-3 items-center">
+          <SlidersHorizontal
+            size={15}
+            className="text-muted-foreground shrink-0"
+          />
+          <div className="relative flex-1">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
             <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. Advanced Web Development"
-              className={inputClass}
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by module name..."
+              className="w-full pl-9 pr-4 py-2 bg-secondary border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Academic Year
-            </label>
-            <input
-              value={form.academic_year}
-              onChange={(e) => setForm({ ...form, academic_year: e.target.value })}
-              placeholder="e.g. 2025-2026"
-              className={inputClass}
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={() => { setShowForm(false); setForm({ name: '', academic_year: '' }); }}
-              className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={!form.name.trim() || saving}
-              className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {saving ? 'Creating...' : 'Create'}
-            </button>
-          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+          >
+            <option value="all">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="completed">Completed</option>
+            <option value="archived">Archived</option>
+          </select>
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {filtered.length} of {projects.length}
+          </span>
         </div>
-      )}
-
-      {error && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="rounded-lg bg-card border border-border p-12 text-center">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
         </div>
-      ) : modules.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <BookOpen size={32} className="text-muted-foreground mb-3" />
-          <p className="text-sm font-medium text-foreground">No modules yet</p>
+      ) : error ? (
+        <div className="rounded-lg bg-card border border-border p-12 text-center">
+          <p className="text-sm font-medium text-red-400">
+            Failed to load modules
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">{error}</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-lg bg-card border border-border p-12 text-center">
+          <Search
+            size={32}
+            className="mx-auto text-muted-foreground mb-3 opacity-50"
+          />
+          <p className="text-sm font-medium text-foreground">
+            No modules found
+          </p>
           <p className="text-xs text-muted-foreground mt-1">
-            Create your first module to get started
+            Try adjusting your filters or search term
           </p>
         </div>
       ) : (
         <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-          {modules.map((mod) => (
-            <div
-              key={mod.id}
-              onClick={() => router.push(`/modules/${mod.id}`)}
-              className="flex items-center gap-5 px-6 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
-            >
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <BookOpen size={16} className="text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground truncate">
-                  {mod.name}
-                </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                  {mod.academic_year && <span>{mod.academic_year}</span>}
-                  {mod.rubric_file ? (
-                    <span className="flex items-center gap-1 text-emerald-400">
-                      <FileText size={11} /> Rubric attached
+          {filtered.map((project) => {
+            const status = statusConfig[project.status] ?? {
+              label: project.status || 'Unknown',
+              classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
+            };
+            return (
+              <div
+                key={project.id}
+                onClick={() =>
+                  router.push(`${APP_PATHS.modules}/${project.id}`)
+                }
+                className="flex items-center gap-6 px-6 py-5 hover:bg-secondary/50 cursor-pointer transition-colors group"
+              >
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      {project.name}
                     </span>
-                  ) : (
-                    <span className="text-amber-400">No rubric</span>
-                  )}
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${status.classes}`}
+                    >
+                      {status.label}
+                    </span>
+                    {project.rubric_file ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                        <FileText size={11} />
+                        Rubric attached
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-400">No rubric</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {project.academic_year && (
+                      <>
+                        <span>{project.academic_year}</span>
+                        <span>·</span>
+                      </>
+                    )}
+                    <span>
+                      {project.project_count}{' '}
+                      {project.project_count === 1 ? 'group' : 'groups'}
+                    </span>
+                    <span>·</span>
+                    <span className="flex items-center gap-1.5">
+                      <Users size={12} />
+                      {project.student_count}{' '}
+                      {project.student_count === 1 ? 'student' : 'students'}
+                    </span>
+                    {project.created_at && (
+                      <>
+                        <span>·</span>
+                        <span>
+                          Created{' '}
+                          {new Date(project.created_at).toLocaleDateString(
+                            'en-US',
+                            { month: 'short', day: 'numeric', year: 'numeric' }
+                          )}
+                        </span>
+                      </>
+                    )}
+                  </div>
                 </div>
+                <ArrowRight
+                  size={15}
+                  className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0"
+                />
               </div>
-              <ArrowRight size={14} className="text-muted-foreground shrink-0" />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
