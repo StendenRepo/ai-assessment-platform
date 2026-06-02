@@ -281,7 +281,7 @@ export default function ModulePage() {
           )}
         </div>
 
-        <div className="col-span-1 pt-6">
+        <div className="col-span-1 pt-9">
           <form
             onSubmit={handleCreateGroup}
             className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
