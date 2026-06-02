@@ -16,7 +16,6 @@ import {
   Square,
   Upload,
   FileText,
-  CheckCircle,
   XCircle,
   Trash2,
 } from 'lucide-react';
@@ -227,14 +226,22 @@ function EvidenceUpload({ studentId }) {
   // Fetch existing evidence for this student on mount
   useEffect(() => {
     if (!isValidUUID) return;
-    setEvidenceLoading(true);
-    fetch(`${API_BASE}/api/v1/students/${studentId}/evidence`, {
-      headers: authHeaders(),
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setAllEvidence(Array.isArray(data) ? data : []))
-      .catch(() => setAllEvidence([]))
-      .finally(() => setEvidenceLoading(false));
+    const load = async () => {
+      setEvidenceLoading(true);
+      try {
+        const r = await fetch(
+          `${API_BASE}/api/v1/students/${studentId}/evidence`,
+          { headers: authHeaders() }
+        );
+        const data = r.ok ? await r.json() : [];
+        setAllEvidence(Array.isArray(data) ? data : []);
+      } catch {
+        setAllEvidence([]);
+      } finally {
+        setEvidenceLoading(false);
+      }
+    };
+    load();
   }, [studentId, isValidUUID]);
 
   // Guard: only render the upload UI when studentId is a real UUID
@@ -459,13 +466,20 @@ export default function StudentAssessmentPage() {
 
   useEffect(() => {
     if (!isRealUUID) return;
-    fetch(`${API_BASE_STUDENT}/api/v1/students/${studentId}`, {
-      headers: authHeaders(),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setApiStudent(data))
-      .catch(() => setApiStudent(null))
-      .finally(() => setStudentLoading(false));
+    const load = async () => {
+      try {
+        const r = await fetch(
+          `${API_BASE_STUDENT}/api/v1/students/${studentId}`,
+          { headers: authHeaders() }
+        );
+        setApiStudent(r.ok ? await r.json() : null);
+      } catch {
+        setApiStudent(null);
+      } finally {
+        setStudentLoading(false);
+      }
+    };
+    load();
   }, [studentId, isRealUUID]);
 
   const student = isRealUUID
