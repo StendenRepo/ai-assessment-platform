@@ -422,7 +422,7 @@ export default function ModulePage() {
               <FileText size={16} />
               Rubric File
             </h3>
-            <div className="rounded-lg bg-card border border-border p-5 space-y-4">
+            <div className="rounded-lg bg-card border border-border px-5 pt-5 pb-0 space-y-4">
               <p className="text-xs text-muted-foreground">
                 Attach a rubric so the AI knows the grading criteria for this
                 module. Only{' '}
@@ -462,7 +462,7 @@ export default function ModulePage() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center gap-2">
                     <button
                       type="button"
                       onClick={() => rubricInputRef.current?.click()}
