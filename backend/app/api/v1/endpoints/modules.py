@@ -1,11 +1,13 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.assessment import Assessment
+from app.models.evidence import Evidence
 from app.models.enums import ProjectStatus
 from app.models.module import Module
 from app.models.project import Project
@@ -47,7 +49,7 @@ def _student_to_out(s: Student, assessment_status: str = "not-started") -> Stude
     )
 
 
-def _group_to_out(p: Project, student_count: int) -> ProjectOut:
+def _group_to_out(p: Project, student_count: int, file_count: int = 0) -> ProjectOut:
     return ProjectOut(
         id=str(p.id),
         name=p.name,
@@ -56,6 +58,7 @@ def _group_to_out(p: Project, student_count: int) -> ProjectOut:
         status=p.status.value if p.status else "active",
         created_at=p.created_at,
         student_count=student_count,
+        file_count=file_count,
     )
 
 
@@ -203,8 +206,29 @@ def list_module_groups(
         .order_by(Project.created_at.desc())
         .all()
     )
+    if not projects:
+        return []
+    project_ids = [p.id for p in projects]
+    students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
+    student_ids_by_project: dict = {}
+    for s in students:
+        student_ids_by_project.setdefault(s.project_id, []).append(s.id)
+    all_student_ids = [s.id for s in students]
+    file_counts: dict = {}
+    if all_student_ids:
+        for row in db.query(Evidence.student_id, func.count(Evidence.id)).filter(
+            Evidence.student_id.in_(all_student_ids)
+        ).group_by(Evidence.student_id).all():
+            sid, cnt = row
+            project_id = next((s.project_id for s in students if s.id == sid), None)
+            if project_id is not None:
+                file_counts[project_id] = file_counts.get(project_id, 0) + cnt
     return [
-        _group_to_out(project, db.query(Student).filter(Student.project_id == project.id).count())
+        _group_to_out(
+            project,
+            len(student_ids_by_project.get(project.id, [])),
+            file_counts.get(project.id, 0),
+        )
         for project in projects
     ]
 
