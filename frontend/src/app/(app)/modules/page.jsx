@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal, Users } from 'lucide-react';
+import { Search, ArrowRight, SlidersHorizontal, Users, FileText } from 'lucide-react';
 import { listModules } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
@@ -135,6 +135,14 @@ export default function ModulesPage() {
                     >
                       {status.label}
                     </span>
+                    {project.rubric_file ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                        <FileText size={11} />
+                        Rubric attached
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-400">No rubric</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {project.academic_year && (

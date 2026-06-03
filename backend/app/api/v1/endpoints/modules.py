@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -9,11 +9,12 @@ from app.api.deps import get_current_teacher, get_db
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
 from app.models.enums import ProjectStatus
+from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.project import Project
 from app.models.student import Student
 from app.models.teacher import Teacher
-from app.schemas.module import ModuleCreate, ModuleGroupCreate, ModuleOut, StudentGroupUpdate
+from app.schemas.module import ModuleCreate, ModuleGroupCreate, ModuleOut, RubricFileOut, StudentGroupUpdate
 from app.schemas.project import (
     ImportRowError,
     ProjectOut,
@@ -21,6 +22,7 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
+from app.services.module_service import ModuleService
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -62,7 +64,22 @@ def _group_to_out(p: Project, student_count: int, file_count: int = 0) -> Projec
     )
 
 
-def _module_to_out(m: Module, project_count: int, student_count: int) -> ModuleOut:
+def _rubric_file_out(record: Optional[FileRecord]) -> Optional[RubricFileOut]:
+    if not record:
+        return None
+    return RubricFileOut(
+        id=str(record.id),
+        file_name=record.file_name,
+        file_type=record.file_type,
+        size_bytes=record.size_bytes,
+        uploaded_at=record.uploaded_at,
+    )
+
+
+def _module_to_out(m: Module, project_count: int, student_count: int, db: Session) -> ModuleOut:
+    rubric = None
+    if m.rubric_file_id:
+        rubric = db.query(FileRecord).filter(FileRecord.id == m.rubric_file_id).first()
     return ModuleOut(
         id=str(m.id),
         name=m.name,
@@ -71,6 +88,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int) -> ModuleO
         created_at=m.created_at,
         project_count=project_count,
         student_count=student_count,
+        rubric_file=_rubric_file_out(rubric),
     )
 
 
@@ -156,7 +174,7 @@ def list_modules(
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
-        result.append(_module_to_out(module, project_count, student_count))
+        result.append(_module_to_out(module, project_count, student_count, db))
     return result
 
 
@@ -174,7 +192,7 @@ def create_module(
     db.add(module)
     db.commit()
     db.refresh(module)
-    return _module_to_out(module, 0, 0)
+    return _module_to_out(module, 0, 0, db)
 
 
 @router.get("/{module_id}", response_model=ModuleOut)
@@ -185,7 +203,34 @@ def get_module(
 ):
     module = _get_owned_module_or_404(db, module_id, current_teacher)
     project_count, student_count = _module_project_counts(db, module.id)
-    return _module_to_out(module, project_count, student_count)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+# ---------------------------------------------------------------------------
+# Rubric upload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{module_id}/rubric", response_model=ModuleOut)
+def upload_rubric(
+    module_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = ModuleService.upload_rubric(module_id, file, current_teacher.id, db)
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.delete("/{module_id}/rubric", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rubric(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    ModuleService.delete_rubric(module_id, current_teacher.id, db)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------
