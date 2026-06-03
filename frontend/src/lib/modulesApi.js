@@ -67,3 +67,15 @@ export const importProjectStudents = (projectId, file, targetGroupId = '') => {
     body: formData,
   });
 };
+
+export const uploadRubric = (moduleId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(API_PATHS.moduleRubric(moduleId), {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+export const deleteRubric = (moduleId) =>
+  request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });
