@@ -279,7 +279,7 @@ export default function StudentAssessmentPage() {
           {!isRecording && (
             <button
               onClick={() => setShowConsent(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0 cursor-pointer"
             >
               <Mic size={15} /> Start Assessment
             </button>
@@ -295,7 +295,7 @@ export default function StudentAssessmentPage() {
                 <button
                   key={tab}
                   onClick={() => setCurrentTab(i)}
-                  className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                  className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 cursor-pointer ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                 >
                   {tab}
                 </button>
@@ -324,7 +324,7 @@ export default function StudentAssessmentPage() {
                             expanded === contrib.id ? null : contrib.id
                           )
                         }
-                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left"
+                        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer"
                       >
                         <span
                           className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
@@ -376,7 +376,7 @@ export default function StudentAssessmentPage() {
                                     <span className="text-xs font-semibold text-foreground font-mono">
                                       {ev.fileName}
                                     </span>
-                                    <button className="text-xs text-primary hover:text-primary/80 transition-colors">
+                                    <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
                                       View source →
                                     </button>
                                   </div>
@@ -493,10 +493,10 @@ export default function StudentAssessmentPage() {
                     </div>
                   ))}
                   <div className="flex gap-3 justify-end pt-2">
-                    <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+                    <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer">
                       Save Draft
                     </button>
-                    <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+                    <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors cursor-pointer">
                       Complete Assessment
                     </button>
                   </div>
@@ -599,7 +599,7 @@ export default function StudentAssessmentPage() {
                   setShowConsent(false);
                   setConsentGiven(false);
                 }}
-                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -609,7 +609,7 @@ export default function StudentAssessmentPage() {
                   setShowConsent(false);
                   setIsRecording(true);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
               >
                 <Mic size={14} /> Start Recording
               </button>
