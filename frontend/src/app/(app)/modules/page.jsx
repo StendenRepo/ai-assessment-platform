@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal, Users, FileText } from 'lucide-react';
+import {
+  Search,
+  ArrowRight,
+  SlidersHorizontal,
+  Users,
+  FileText,
+} from 'lucide-react';
 import { listModules } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
