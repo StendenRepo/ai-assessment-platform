@@ -104,7 +104,7 @@ export default function ReportsPage() {
               <select
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
-                className={`w-full ${inputClass}`}
+                className={`w-full ${inputClass} cursor-pointer`}
                 disabled={loadingModules || !!modulesError}
               >
                 <option value="">

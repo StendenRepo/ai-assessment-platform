@@ -75,10 +75,10 @@ ai-assessment-platform/
 │   │   ├── models/            # SQLAlchemy models
 │   │   ├── routes/            # API route handlers
 │   │   └── services/          # Business logic
-│   ├── .env.example           # Environment variable template
 │   ├── Dockerfile
 │   └── requirements.txt
 │
+├── .env.example               # Environment variable template
 ├── docker-compose.yml         # Production stack
 ├── docker-compose.dev.yml     # Development overrides (pgAdmin, hot-reload)
 └── README.md
@@ -104,10 +104,10 @@ git clone <repository-url>
 cd ai-assessment-platform
 ```
 
-Copy the backend environment template:
+Copy the environment template:
 
 ```bash
-cp backend/.env.example backend/.env
+cp .env.example .env
 ```
 
 The default values in `.env` work out of the box with Docker Compose. Edit the file if you need custom credentials.
@@ -132,6 +132,22 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 **pgAdmin login:** `admin@admin.com` / `admin`
 Connect to the database using host `postgres`, port `5432`, database `ai_assessment`, user `postgres`, password `postgres`.
+
+### Regenerate Dev Seed SQLite DB
+
+To regenerate the local development seed database (`backend/database/database.db`) with realistic test records (excluding file/evidence uploads):
+
+```bash
+./scripts/reseed-dev-db.sh
+```
+
+### Import Dev Seed into Postgres
+
+To copy the SQLite seed database into the running Postgres database used by pgAdmin:
+
+```bash
+./scripts/import-db-to-postgres.sh
+```
 
 ## Production
 
@@ -206,16 +222,18 @@ This project uses GitHub Actions for continuous integration and an OTAP pipeline
 ## Workflows
 
 ### `ci.yml` — Continuous Integration
+
 Runs on **every push** and **every pull request** (all branches).
 
-| Job | What it does |
-|-----|-------------|
-| Frontend build | `npm ci` → `npm run build` |
-| Backend check | `pip install -r requirements.txt` → import check on `app.main` |
+| Job            | What it does                                                   |
+| -------------- | -------------------------------------------------------------- |
+| Frontend build | `npm ci` → `npm run build`                                     |
+| Backend check  | `pip install -r requirements.txt` → import check on `app.main` |
 
 ---
 
 ### `otap-develop.yml` — Development (`dev` branch)
+
 Runs on push to `dev`.
 
 1. Runs the CI checks (see above)
@@ -225,6 +243,7 @@ Runs on push to `dev`.
 ---
 
 ### `otap-test.yml` — Test (`test` branch)
+
 Runs on push to `test`.
 
 1. Runs the CI checks
@@ -234,6 +253,7 @@ Runs on push to `test`.
 ---
 
 ### `otap-main.yml` — Production (`main` branch)
+
 Runs on push to `main`.
 
 1. Runs the CI checks
@@ -249,11 +269,11 @@ Runs on push to `main`.
 feature/* → dev → test → main
 ```
 
-| Branch | OTAP stage | Workflow |
-|--------|-----------|----------|
-| `dev` | Development | CI + Docker build |
-| `test` | Test | CI + all tests |
-| `main` | Production | CI + GitHub Release |
+| Branch | OTAP stage  | Workflow            |
+| ------ | ----------- | ------------------- |
+| `dev`  | Development | CI + Docker build   |
+| `test` | Test        | CI + all tests      |
+| `main` | Production  | CI + GitHub Release |
 
 ---
 
@@ -284,7 +304,7 @@ This project uses Prettier for code formatting. To ensure consistent styling:
 
 # Environment Variables
 
-Copy `backend/.env.example` to `backend/.env` and adjust as needed:
+Copy `.env.example` to `.env` and adjust as needed:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_assessment
@@ -293,7 +313,7 @@ RECORDING_DIR=/app/data/recordings
 EXPORT_DIR=/app/data/exports
 ```
 
-> `backend/.env` is git-ignored. Never commit real credentials — use `backend/.env.example` as the committed template.
+> `.env` is git-ignored. Never commit real credentials — use `.env.example` as the committed template.
 
 ---
 

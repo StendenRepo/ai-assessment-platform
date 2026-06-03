@@ -12,7 +12,7 @@ const inputClass =
 export default function NewProjectPage() {
   const router = useRouter();
   const [projectName, setProjectName] = useState('');
-  const [course, setCourse] = useState('');
+  const [academicYear, setAcademicYear] = useState('');
   const [className, setClassName] = useState('');
   const [deadline, setDeadline] = useState('');
   const [description, setDescription] = useState('');
@@ -53,7 +53,7 @@ export default function NewProjectPage() {
     try {
       const createdModule = await createModule({
         name: projectName.trim(),
-        academic_year: className.trim() || course.trim() || null,
+        academic_year: className.trim() || academicYear.trim() || null,
       });
       router.push(`${APP_PATHS.modules}/${createdModule.id}`);
     } catch (error) {
@@ -93,12 +93,12 @@ export default function NewProjectPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Course *
+                Academic Year *
               </label>
               <input
-                value={course}
-                onChange={(e) => setCourse(e.target.value)}
-                placeholder="e.g. Advanced Web Development"
+                value={academicYear}
+                onChange={(e) => setAcademicYear(e.target.value)}
+                placeholder="e.g. 2025-2026"
                 className={inputClass}
               />
             </div>
@@ -122,7 +122,7 @@ export default function NewProjectPage() {
               type="date"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} cursor-pointer`}
             />
           </div>
           <div className="space-y-1.5">
@@ -146,7 +146,7 @@ export default function NewProjectPage() {
               onClick={() =>
                 setStudents([...students, { email: '', studentNumber: '' }])
               }
-              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer"
             >
               <Plus size={13} /> Add student
             </button>
@@ -269,7 +269,7 @@ export default function NewProjectPage() {
           <button
             onClick={handleCreateModule}
             disabled={saving}
-            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             {saving ? 'Creating…' : 'Create Module →'}
           </button>
