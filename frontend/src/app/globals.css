@@ -143,6 +143,9 @@
     font-weight: var(--font-weight-medium);
     line-height: 1.5;
   }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
   input {
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);

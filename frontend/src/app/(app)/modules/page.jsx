@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal, Users } from 'lucide-react';
-import { listProjects } from '@/lib/projectsApi';
+import { Search, ArrowRight, SlidersHorizontal, Users, FileText } from 'lucide-react';
+import { listModules } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
@@ -21,7 +21,7 @@ const statusConfig = {
   },
 };
 
-export default function ProjectsPage() {
+export default function ModulesPage() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +30,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
-    listProjects()
+    listModules()
       .then(setProjects)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -135,6 +135,14 @@ export default function ProjectsPage() {
                     >
                       {status.label}
                     </span>
+                    {project.rubric_file ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
+                        <FileText size={11} />
+                        Rubric attached
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-400">No rubric</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     {project.academic_year && (

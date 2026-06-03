@@ -1,4 +1,5 @@
 import { authHeaders } from '@/lib/auth';
+import { normalizeErrorDetail } from '@/lib/apiErrors';
 import { API_PATHS } from '@/lib/routes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -16,13 +17,15 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Request failed (${res.status})`);
+    const message =
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`;
+    throw new Error(message);
   }
   if (res.status === 204) return null;
   return res.json();
 }
 
-export const listProjects = () => request(API_PATHS.modules);
+export const listModules = () => request(API_PATHS.modules);
 
 export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
@@ -50,6 +53,12 @@ export const addProjectStudent = (projectId, payload) =>
     body: JSON.stringify(payload),
   });
 
+export const moveStudentToGroup = (moduleId, studentId, projectId) =>
+  request(API_PATHS.moduleStudent(moduleId, studentId), {
+    method: 'PATCH',
+    body: JSON.stringify({ project_id: projectId }),
+  });
+
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
   formData.append('file', file);
@@ -58,3 +67,15 @@ export const importProjectStudents = (projectId, file, targetGroupId = '') => {
     body: formData,
   });
 };
+
+export const uploadRubric = (moduleId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(API_PATHS.moduleRubric(moduleId), {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+export const deleteRubric = (moduleId) =>
+  request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });

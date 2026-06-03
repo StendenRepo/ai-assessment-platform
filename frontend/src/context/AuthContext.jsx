@@ -4,8 +4,8 @@ import {
   createContext,
   useContext,
   useState,
-  useEffect,
   useCallback,
+  useEffect,
 } from 'react';
 import { getStoredUser, getToken, clearSession } from '@/lib/auth';
 
@@ -18,7 +18,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const token = getToken();
     const stored = getStoredUser();
-    if (token && stored) setUser(stored);
+    setUser(token && stored ? stored : null);
     setReady(true);
   }, []);
 

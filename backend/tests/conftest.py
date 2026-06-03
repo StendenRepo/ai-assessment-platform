@@ -23,16 +23,16 @@ _pg.JSONB = Text    # used as bare class: Column(JSONB, ...)
 _pg.INET = String   # used as bare class: Column(INET, ...)
 
 # ── App imports (models now see the patched UUID) ─────────────────────────────
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
+import pytest  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from app.database import Base
-from app.main import app
-from app.api.deps import get_db
-from app.core.security import hash_password
+from app.database import Base  # noqa: E402
+from app.main import app  # noqa: E402
+from app.api.deps import get_db  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
 
 # ── In-memory SQLite engine ───────────────────────────────────────────────────
 _engine = create_engine(
