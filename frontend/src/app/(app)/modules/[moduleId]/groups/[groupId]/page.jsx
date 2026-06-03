@@ -86,7 +86,7 @@ export default function GroupDetailPage() {
           {[
             { label: 'Module', value: module.name },
             { label: 'Academic Year', value: module.academic_year || '—' },
-            { label: 'Students', value: students.length },
+            { label: 'Deadline', value: module.deadline || '—' },
           ].map((item) => (
             <div key={item.label} className="px-6 py-4">
               <div className="text-xs text-muted-foreground mb-1">
