@@ -12,6 +12,7 @@ import {
   Trash2,
   Check,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { listModules, renameModule, deleteModule } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
@@ -31,6 +32,85 @@ const statusConfig = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Confirmation modal
+// ---------------------------------------------------------------------------
+
+function DeleteConfirmModal({ module, onConfirm, onCancel, loading }) {
+  // Close on Escape key
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
+  return (
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      {/* Panel */}
+      <div
+        className="relative w-full max-w-md mx-4 rounded-xl bg-card border border-border shadow-2xl p-6 space-y-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+            <AlertTriangle size={18} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Delete module</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Are you sure you want to delete{' '}
+              <span className="font-medium text-foreground">{module.name}</span>?
+            </p>
+          </div>
+        </div>
+
+        {/* Warning */}
+        <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-4 py-3 text-xs text-red-400 space-y-1">
+          <p className="font-medium">This action cannot be undone. It will permanently delete:</p>
+          <ul className="list-disc list-inside space-y-0.5 text-red-400/80">
+            <li>The module and all its settings</li>
+            <li>All groups and students in this module</li>
+            <li>All uploaded evidence files</li>
+            <li>The rubric file (if any)</li>
+          </ul>
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground bg-secondary hover:bg-secondary/80 border border-border transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 flex items-center gap-2"
+          >
+            {loading ? (
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Trash2 size={14} />
+            )}
+            Delete module
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
 export default function ModulesPage() {
   const router = useRouter();
   const [projects, setProjects] = useState([]);
@@ -45,8 +125,9 @@ export default function ModulesPage() {
   const [renameLoading, setRenameLoading] = useState(false);
   const renameInputRef = useRef(null);
 
-  // Delete state
-  const [deletingId, setDeletingId] = useState(null);
+  // Delete modal state
+  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -103,31 +184,40 @@ export default function ModulesPage() {
     }
   };
 
-  const handleDelete = async (e, moduleId) => {
+  const requestDelete = (e, module) => {
     e.stopPropagation();
-    if (deletingId === moduleId) {
-      // Second click — confirmed
-      try {
-        await deleteModule(moduleId);
-        setProjects((prev) => prev.filter((p) => p.id !== moduleId));
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setDeletingId(null);
-      }
-    } else {
-      // First click — ask for confirmation
-      setDeletingId(moduleId);
+    setDeleteTarget({ id: module.id, name: module.name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await deleteModule(deleteTarget.id);
+      setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      setError(err.message);
+      setDeleteTarget(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
-  const cancelDelete = (e) => {
-    e.stopPropagation();
-    setDeletingId(null);
-  };
+  const cancelDelete = () => setDeleteTarget(null);
 
   return (
     <div className="space-y-6">
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          module={deleteTarget}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+          loading={deleteLoading}
+        />
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-foreground">Modules</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -201,13 +291,12 @@ export default function ModulesPage() {
               classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
             };
             const isRenaming = renamingId === project.id;
-            const isDeleting = deletingId === project.id;
 
             return (
               <div
                 key={project.id}
                 onClick={() => {
-                  if (!isRenaming && !isDeleting)
+                  if (!isRenaming)
                     router.push(`${APP_PATHS.modules}/${project.id}`);
                 }}
                 className="flex items-center gap-4 px-6 py-5 hover:bg-secondary/50 cursor-pointer transition-colors group"
@@ -301,26 +390,6 @@ export default function ModulesPage() {
                         <X size={14} />
                       </button>
                     </>
-                  ) : isDeleting ? (
-                    <>
-                      <span className="text-xs text-red-400 mr-1">
-                        Delete?
-                      </span>
-                      <button
-                        onClick={(e) => handleDelete(e, project.id)}
-                        title="Confirm delete"
-                        className="p-1.5 rounded text-red-400 hover:bg-red-500/10 transition-colors"
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={cancelDelete}
-                        title="Cancel"
-                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
                   ) : (
                     <>
                       <button
@@ -331,7 +400,7 @@ export default function ModulesPage() {
                         <Pencil size={13} />
                       </button>
                       <button
-                        onClick={(e) => handleDelete(e, project.id)}
+                        onClick={(e) => requestDelete(e, project)}
                         title="Delete module"
                         className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                       >
@@ -341,7 +410,7 @@ export default function ModulesPage() {
                   )}
                 </div>
 
-                {!isRenaming && !isDeleting && (
+                {!isRenaming && (
                   <ArrowRight
                     size={15}
                     className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0"
