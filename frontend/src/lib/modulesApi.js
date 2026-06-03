@@ -44,6 +44,17 @@ export const createProjectGroup = (projectId, payload) =>
     body: JSON.stringify(payload),
   });
 
+export const updateProjectGroup = (moduleId, groupId, payload) =>
+  request(API_PATHS.moduleGroup(moduleId, groupId), {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteProjectGroup = (moduleId, groupId) =>
+  request(API_PATHS.moduleGroup(moduleId, groupId), {
+    method: 'DELETE',
+  });
+
 export const listProjectStudents = (projectId) =>
   request(API_PATHS.moduleStudents(projectId));
 
@@ -53,11 +64,14 @@ export const addProjectStudent = (projectId, payload) =>
     body: JSON.stringify(payload),
   });
 
-export const moveStudentToGroup = (moduleId, studentId, projectId) =>
+export const updateModuleStudent = (moduleId, studentId, payload) =>
   request(API_PATHS.moduleStudent(moduleId, studentId), {
     method: 'PATCH',
-    body: JSON.stringify({ project_id: projectId }),
+    body: JSON.stringify(payload),
   });
+
+export const moveStudentToGroup = (moduleId, studentId, projectId) =>
+  updateModuleStudent(moduleId, studentId, { project_id: projectId });
 
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
