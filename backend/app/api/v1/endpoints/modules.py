@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
@@ -8,13 +9,20 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_teacher, get_db
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
-from app.models.enums import ProjectStatus
+from app.models.enums import ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.project import Project
 from app.models.student import Student
 from app.models.teacher import Teacher
-from app.schemas.module import ModuleCreate, ModuleGroupCreate, ModuleOut, RubricFileOut, StudentGroupUpdate
+from app.schemas.module import (
+    ModuleCreate,
+    ModuleGroupCreate,
+    ModuleGroupUpdate,
+    ModuleOut,
+    RubricFileOut,
+    StudentGroupUpdate,
+)
 from app.schemas.overlap import OverlapAnalysisOut, OverlapSignalOut, OverlapWarningOut
 from app.schemas.project import (
     ImportRowError,
@@ -41,7 +49,33 @@ def _assessment_status(latest: Optional[Assessment]) -> str:
     return "in-progress"
 
 
-def _student_to_out(s: Student, assessment_status: str = "not-started") -> StudentOut:
+def _assessment_grade(latest: Optional[Assessment]) -> Optional[str]:
+    if latest is None:
+        return None
+
+    for payload in (latest.final_form_json, latest.draft_form_json):
+        data = payload
+        if isinstance(payload, str):
+            try:
+                data = json.loads(payload)
+            except Exception:
+                continue
+
+        if isinstance(data, dict):
+            raw_grade = data.get("grade")
+            if raw_grade is None:
+                continue
+            grade = str(raw_grade).strip()
+            if grade:
+                return grade
+    return None
+
+
+def _student_to_out(
+    s: Student,
+    assessment_status: str = "not-started",
+    grade: Optional[str] = None,
+) -> StudentOut:
     return StudentOut(
         id=str(s.id),
         project_id=str(s.project_id),
@@ -50,6 +84,7 @@ def _student_to_out(s: Student, assessment_status: str = "not-started") -> Stude
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         assessment_status=assessment_status,
+        grade=grade,
     )
 
 
@@ -345,6 +380,90 @@ def create_module_group(
     return _group_to_out(project, 0)
 
 
+@router.patch("/{module_id}/groups/{group_id}", response_model=ProjectOut)
+def update_module_group(
+    module_id: str,
+    group_id: str,
+    payload: ModuleGroupUpdate,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    group = (
+        db.query(Project)
+        .filter(Project.id == group_id, Project.module_id == module.id)
+        .first()
+    )
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found",
+        )
+
+    if payload.name is None and payload.group_name is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No group updates provided",
+        )
+
+    if payload.name is not None:
+        group.name = payload.name
+    if payload.group_name is not None:
+        group.group_name = payload.group_name
+
+    db.commit()
+    db.refresh(group)
+    student_count = db.query(Student).filter(Student.project_id == group.id).count()
+    file_count = 0
+    student_ids = [
+        sid
+        for (sid,) in db.query(Student.id).filter(Student.project_id == group.id).all()
+    ]
+    if student_ids:
+        file_count = (
+            db.query(func.count(Evidence.id))
+            .filter(Evidence.student_id.in_(student_ids))
+            .scalar()
+            or 0
+        )
+    return _group_to_out(group, student_count, file_count)
+
+
+@router.delete("/{module_id}/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_module_group(
+    module_id: str,
+    group_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    group = (
+        db.query(Project)
+        .filter(Project.id == group_id, Project.module_id == module.id)
+        .first()
+    )
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found",
+        )
+
+    if group.name == _DEFAULT_GROUP_NAME:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Default group cannot be deleted",
+        )
+
+    default_group = _get_or_create_default_group(db, module)
+    students = db.query(Student).filter(Student.project_id == group.id).all()
+    for student in students:
+        student.project_id = default_group.id
+
+    db.delete(group)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # ---------------------------------------------------------------------------
 # Students within a module
 # ---------------------------------------------------------------------------
@@ -374,7 +493,14 @@ def list_module_students(
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
-    return [_student_to_out(s, _assessment_status(latest_assessment.get(s.id))) for s in students]
+    return [
+        _student_to_out(
+            s,
+            _assessment_status(latest_assessment.get(s.id)),
+            _assessment_grade(latest_assessment.get(s.id)),
+        )
+        for s in students
+    ]
 
 
 @router.post("/{module_id}/students", response_model=StudentOut, status_code=status.HTTP_201_CREATED)
@@ -423,14 +549,48 @@ def move_student_to_group(
     )
     if not student:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in this module")
-    target = (
-        db.query(Project)
-        .filter(Project.id == payload.project_id, Project.module_id == module.id)
-        .first()
-    )
-    if not target:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found in this module")
-    student.project_id = target.id
+
+    if (
+        payload.project_id is None
+        and payload.name is None
+        and payload.student_number is None
+        and payload.status is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No student updates provided",
+        )
+
+    if payload.project_id is not None:
+        target = (
+            db.query(Project)
+            .filter(Project.id == payload.project_id, Project.module_id == module.id)
+            .first()
+        )
+        if not target:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found in this module")
+        student.project_id = target.id
+
+    if payload.name is not None:
+        student.name = payload.name
+
+    if payload.student_number is not None:
+        duplicate = (
+            db.query(Student)
+            .filter(
+                Student.project_id.in_(project_ids),
+                Student.student_number == payload.student_number,
+                Student.id != student.id,
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        student.student_number = payload.student_number
+
+    if payload.status is not None:
+        student.status = StudentStatus(payload.status)
+
     db.commit()
     db.refresh(student)
     return _student_to_out(student)
