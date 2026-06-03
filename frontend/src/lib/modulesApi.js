@@ -91,3 +91,12 @@ export const uploadModuleBook = (moduleId, file) => {
 
 export const deleteModuleBook = (moduleId) =>
   request(API_PATHS.moduleBook(moduleId), { method: 'DELETE' });
+
+export const renameModule = (moduleId, name) =>
+  request(API_PATHS.module(moduleId), {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+
+export const deleteModule = (moduleId) =>
+  request(API_PATHS.module(moduleId), { method: 'DELETE' });

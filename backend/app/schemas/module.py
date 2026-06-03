@@ -17,8 +17,9 @@ class RubricFileOut(BaseModel):
 class ModuleCreate(BaseModel):
     name: str
     academic_year: Optional[str] = None
+    deadline: Optional[str] = None
 
-    @field_validator("name", "academic_year")
+    @field_validator("name", "academic_year", "deadline")
     @classmethod
     def _trim(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
@@ -48,6 +49,7 @@ class ModuleOut(BaseModel):
     id: str
     name: str
     academic_year: Optional[str] = None
+    deadline: Optional[str] = None
     status: str
     created_at: datetime
     project_count: int = 0
