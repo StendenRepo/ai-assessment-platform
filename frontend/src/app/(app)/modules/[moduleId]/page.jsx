@@ -259,6 +259,18 @@ export default function ModulePage() {
       setRubricError(
         `Only PDF and Excel files are allowed. "${file.name}" is not supported.`
       );
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
+      return;
+    }
+    // Confirm before replacing an existing rubric (the old file is removed).
+    const existing = project?.rubric_file;
+    if (
+      existing &&
+      !confirm(
+        `Replace the current rubric "${existing.file_name || 'rubric'}" with "${file.name}"? The existing file will be permanently removed.`
+      )
+    ) {
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
       return;
     }
     setRubricError('');
@@ -522,7 +534,11 @@ export default function ModulePage() {
               <FileText size={16} />
               Rubric File
             </h3>
-            <div className="rounded-lg bg-card border border-border px-5 pt-5 pb-0 space-y-4">
+            <div
+              className={`rounded-lg bg-card border border-border px-5 pt-5 space-y-4 ${
+                rubric ? 'pb-0' : 'pb-5'
+              }`}
+            >
               <p className="text-xs text-muted-foreground">
                 Attach a rubric so the AI knows the grading criteria for this
                 module. Only{' '}
@@ -590,46 +606,23 @@ export default function ModulePage() {
                   />
                 </div>
               ) : (
-                <div
-                  onDragEnter={handleRubricDrag}
-                  onDragLeave={handleRubricDrag}
-                  onDragOver={handleRubricDrag}
-                  onDrop={handleRubricDrop}
-                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
-                    rubricDragActive
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/40'
-                  }`}
-                >
-                  <Upload
-                    size={24}
-                    className="mx-auto text-muted-foreground mb-2"
-                  />
-                  <p className="text-sm font-medium text-foreground mb-1">
-                    {uploadingRubric ? 'Uploading…' : 'Drop your rubric here'}
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    <span className="font-semibold text-foreground">PDF</span>{' '}
-                    or{' '}
-                    <span className="font-semibold text-foreground">Excel</span>{' '}
-                    (.xlsx) only
-                  </p>
+                <div>
                   <input
                     ref={rubricInputRef}
                     type="file"
                     accept=".pdf,.xlsx"
                     onChange={(e) => handleRubricFile(e.target.files?.[0])}
                     className="hidden"
-                    id="rubric-upload"
                   />
-                  <label
-                    htmlFor="rubric-upload"
-                    className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
-                      uploadingRubric ? 'opacity-50 pointer-events-none' : ''
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => rubricInputRef.current?.click()}
+                    disabled={uploadingRubric}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Browse files
-                  </label>
+                    <Upload size={15} />
+                    {uploadingRubric ? 'Uploading…' : 'Choose file'}
+                  </button>
                 </div>
               )}
 
