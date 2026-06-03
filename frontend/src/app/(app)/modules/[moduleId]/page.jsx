@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   FileText,
   FolderPlus,
+  Search,
   RefreshCw,
   Trash2,
   UserCheck,
@@ -54,6 +55,7 @@ export default function ModulePage() {
 
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -101,6 +103,16 @@ export default function ModulePage() {
       return summary;
     }, {});
   }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter(
+      (student) =>
+        student.name.toLowerCase().includes(query) ||
+        student.student_number.toLowerCase().includes(query)
+    );
+  }, [students, studentSearch]);
 
   useEffect(() => {
     Promise.all([
@@ -429,6 +441,20 @@ export default function ModulePage() {
               Students ({students.length})
             </h2>
 
+            <div className="rounded-lg bg-card border border-border px-4 py-3 flex items-center gap-3">
+              <Search size={15} className="text-muted-foreground shrink-0" />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search students by name or number"
+                className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {filteredStudents.length} shown
+              </span>
+            </div>
+
             {students.length === 0 ? (
               <div className="rounded-lg bg-card border border-border p-10 text-center">
                 <Users
@@ -442,9 +468,22 @@ export default function ModulePage() {
                   Add students using the form to set up the assessment
                 </p>
               </div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="rounded-lg bg-card border border-border p-10 text-center">
+                <Search
+                  size={28}
+                  className="mx-auto text-muted-foreground mb-3 opacity-50"
+                />
+                <p className="text-sm font-medium text-foreground">
+                  No students found
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try a different name or student number.
+                </p>
+              </div>
             ) : (
               <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-                {students.map((student) => (
+                {filteredStudents.map((student) => (
                   <div
                     key={student.id}
                     onClick={() =>
