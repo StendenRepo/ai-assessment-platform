@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Upload, X, FileCode, CheckCircle2, Clock, Circle } from 'lucide-react';
-import { mockStudents } from '@/lib/mockData';
+import { listProjectStudents } from '@/lib/projectsApi';
 
 const assessmentStatusConfig = {
   completed: {
@@ -65,8 +65,31 @@ const group = {
 export default function GroupDetailPage() {
   const { projectId, groupId } = useParams();
   const router = useRouter();
+  const [students, setStudents] = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(true);
+  const [studentsError, setStudentsError] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    listProjectStudents(projectId)
+      .then((data) => {
+        if (!mounted) return;
+        setStudents(data.filter((student) => student.project_id === groupId));
+        setStudentsError('');
+      })
+      .catch((e) => {
+        if (mounted) setStudentsError(e.message);
+      })
+      .finally(() => {
+        if (mounted) setLoadingStudents(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [projectId, groupId]);
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -122,66 +145,80 @@ export default function GroupDetailPage() {
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-3">
           <h2 className="text-base font-semibold text-foreground">
-            Students ({mockStudents.length})
+            Students ({students.length})
           </h2>
           <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-            {mockStudents.map((student) => {
-              const status = assessmentStatusConfig[student.assessmentStatus];
-              const StatusIcon = status.icon;
-              return (
-                <div
-                  key={student.id}
-                  onClick={() =>
-                    router.push(
-                      `/modules/${projectId}/groups/${groupId}/students/${student.id}`
-                    )
-                  }
-                  className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                    {student.name
-                      .split(' ')
-                      .map((n) => n[0])
-                      .join('')}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-foreground">
-                      {student.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {student.studentNumber} · {student.email}
-                    </div>
-                  </div>
-                  {student.overallScore && (
-                    <div className="text-right shrink-0">
-                      <div className="text-xs text-muted-foreground mb-0.5">
-                        Grade
-                      </div>
-                      <div className="text-xl font-bold text-foreground font-mono">
-                        {student.overallScore}
-                      </div>
-                    </div>
-                  )}
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 ${status.classes}`}
-                  >
-                    <StatusIcon size={11} />
-                    {status.label}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+            {loadingStudents ? (
+              <div className="p-8 text-center">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+              </div>
+            ) : studentsError ? (
+              <div className="p-8 text-center">
+                <p className="text-sm font-medium text-red-400">
+                  Failed to load students
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {studentsError}
+                </p>
+              </div>
+            ) : students.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-sm font-medium text-foreground">
+                  No students in this group yet
+                </p>
+              </div>
+            ) : (
+              students.map((student) => {
+                const statusKey = student.assessment_status ?? 'not-started';
+                const status =
+                  assessmentStatusConfig[statusKey] ??
+                  assessmentStatusConfig['not-started'];
+                const StatusIcon = status.icon;
+                return (
+                  <div
+                    key={student.id}
+                    onClick={() =>
                       router.push(
                         `/modules/${projectId}/groups/${groupId}/students/${student.id}`
-                      );
-                    }}
-                    className="shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                      )
+                    }
+                    className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors group"
                   >
-                    Assess
-                  </button>
-                </div>
-              );
-            })}
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                      {student.name
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-foreground">
+                        {student.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {student.student_number}
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 ${status.classes}`}
+                    >
+                      <StatusIcon size={11} />
+                      {status.label}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(
+                          `/modules/${projectId}/groups/${groupId}/students/${student.id}`
+                        );
+                      }}
+                      className="shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                    >
+                      Assess
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 
