@@ -12,6 +12,7 @@ export const API_PATHS = {
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
   moduleStudents: (moduleId) => `/modules/${moduleId}/students`,
   moduleStudent: (moduleId, studentId) =>

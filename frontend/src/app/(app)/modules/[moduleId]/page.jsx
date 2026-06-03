@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
+  BookOpen,
   CheckCircle2,
   FileSpreadsheet,
   FileText,
@@ -25,6 +26,8 @@ import {
   moveStudentToGroup,
   uploadRubric,
   deleteRubric,
+  uploadModuleBook,
+  deleteModuleBook,
 } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
@@ -85,6 +88,12 @@ export default function ModulePage() {
   const [deletingRubric, setDeletingRubric] = useState(false);
   const [rubricDragActive, setRubricDragActive] = useState(false);
   const [rubricError, setRubricError] = useState('');
+
+  const moduleBookInputRef = useRef(null);
+  const [uploadingModuleBook, setUploadingModuleBook] = useState(false);
+  const [deletingModuleBook, setDeletingModuleBook] = useState(false);
+  const [moduleBookDragActive, setModuleBookDragActive] = useState(false);
+  const [moduleBookError, setModuleBookError] = useState('');
 
   const groupProgress = useMemo(() => {
     return students.reduce((summary, student) => {
@@ -301,6 +310,59 @@ export default function ModulePage() {
     }
   };
 
+  const handleModuleBookFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && ext !== 'docx') {
+      setModuleBookError(
+        `Only PDF and Word (.docx) files are allowed. "${file.name}" is not supported.`
+      );
+      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
+      return;
+    }
+    setModuleBookError('');
+    setUploadingModuleBook(true);
+    try {
+      const updated = await uploadModuleBook(moduleId, file);
+      setProject((prev) => ({
+        ...prev,
+        module_book_file: updated.module_book_file,
+      }));
+    } catch (err) {
+      setModuleBookError(err.message);
+    } finally {
+      setUploadingModuleBook(false);
+      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
+    }
+  };
+
+  const handleModuleBookDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setModuleBookDragActive(false);
+    handleModuleBookFile(e.dataTransfer.files?.[0]);
+  };
+
+  const handleModuleBookDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setModuleBookDragActive(e.type === 'dragenter' || e.type === 'dragover');
+  };
+
+  const handleModuleBookDelete = async () => {
+    if (!confirm('Remove the module book from this module?')) return;
+    setModuleBookError('');
+    setDeletingModuleBook(true);
+    try {
+      await deleteModuleBook(moduleId);
+      setProject((prev) => ({ ...prev, module_book_file: null }));
+    } catch (err) {
+      setModuleBookError(err.message);
+    } finally {
+      setDeletingModuleBook(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -321,6 +383,7 @@ export default function ModulePage() {
   }
 
   const rubric = project?.rubric_file;
+  const moduleBook = project?.module_book_file;
 
   return (
     <div className="space-y-6">
@@ -636,6 +699,134 @@ export default function ModulePage() {
               {rubricError && (
                 <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
                   {rubricError}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+              <BookOpen size={16} />
+              Module Book
+            </h3>
+            <div className="rounded-lg bg-card border border-border px-5 pt-5 pb-0 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Upload the module book so the AI understands the course content.
+                Only{' '}
+                <span className="font-semibold text-foreground">PDF</span> or{' '}
+                <span className="font-semibold text-foreground">Word</span>{' '}
+                (.docx) files are accepted.
+              </p>
+
+              {moduleBook ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <BookOpen size={16} className="text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-foreground truncate">
+                          {moduleBook.file_name || 'module book'}
+                        </span>
+                        <CheckCircle2
+                          size={13}
+                          className="text-emerald-400 shrink-0"
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        {moduleBook.file_type && (
+                          <span className="uppercase font-mono">
+                            {moduleBook.file_type}
+                          </span>
+                        )}
+                        {moduleBook.size_bytes && (
+                          <span>{formatBytes(moduleBook.size_bytes)}</span>
+                        )}
+                        {moduleBook.uploaded_at && (
+                          <span>
+                            Uploaded {formatDate(moduleBook.uploaded_at)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moduleBookInputRef.current?.click()}
+                      disabled={uploadingModuleBook}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw size={12} /> Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleModuleBookDelete}
+                      disabled={deletingModuleBook}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />{' '}
+                      {deletingModuleBook ? 'Removing…' : 'Remove'}
+                    </button>
+                  </div>
+                  <input
+                    ref={moduleBookInputRef}
+                    type="file"
+                    accept=".pdf,.docx"
+                    onChange={(e) => handleModuleBookFile(e.target.files?.[0])}
+                    className="hidden"
+                  />
+                </div>
+              ) : (
+                <div
+                  onDragEnter={handleModuleBookDrag}
+                  onDragLeave={handleModuleBookDrag}
+                  onDragOver={handleModuleBookDrag}
+                  onDrop={handleModuleBookDrop}
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                    moduleBookDragActive
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/40'
+                  }`}
+                >
+                  <Upload
+                    size={24}
+                    className="mx-auto text-muted-foreground mb-2"
+                  />
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    {uploadingModuleBook
+                      ? 'Uploading…'
+                      : 'Drop your module book here'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    <span className="font-semibold text-foreground">PDF</span>{' '}
+                    or{' '}
+                    <span className="font-semibold text-foreground">Word</span>{' '}
+                    (.docx) only
+                  </p>
+                  <input
+                    ref={moduleBookInputRef}
+                    type="file"
+                    accept=".pdf,.docx"
+                    onChange={(e) => handleModuleBookFile(e.target.files?.[0])}
+                    className="hidden"
+                    id="module-book-upload"
+                  />
+                  <label
+                    htmlFor="module-book-upload"
+                    className={`inline-block px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-secondary transition-all ${
+                      uploadingModuleBook ? 'opacity-50 pointer-events-none' : ''
+                    }`}
+                  >
+                    Browse files
+                  </label>
+                </div>
+              )}
+
+              {moduleBookError && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                  {moduleBookError}
                 </div>
               )}
             </div>
