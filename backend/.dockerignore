@@ -9,4 +9,3 @@ __pycache__
 Dockerfile*
 .dockerignore
 test_db.py
-database
