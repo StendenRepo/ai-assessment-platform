@@ -25,9 +25,9 @@ pg.UUID = lambda as_uuid=True: SQLiteUUID()
 pg.JSONB = Text
 pg.INET = String
 
-from app.core.security import hash_password
-from app.database import Base
-from app.models import (
+from app.core.security import hash_password  # noqa: E402
+from app.database import Base  # noqa: E402
+from app.models import (  # noqa: E402
     Assessment,
     AuditEvent,
     ChatMessage,
@@ -37,7 +37,7 @@ from app.models import (
     Student,
     Teacher,
 )
-from app.models.enums import (
+from app.models.enums import (  # noqa: E402
     AssessmentStatus,
     AuditSource,
     ModuleStatus,
