@@ -8,6 +8,7 @@ services:
         container_name: frontend
         ports:
             - '3000:3000'
+        env_file: .env
         volumes:
             - ./frontend:/app
             - /app/node_modules
