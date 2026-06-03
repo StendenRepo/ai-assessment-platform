@@ -274,3 +274,69 @@ class TestDeleteModule:
 
         get_res = client.get(f"{MODULES_URL}/{module['id']}", headers=headers)
         assert get_res.status_code == 404
+
+    def test_delete_removes_evidence_files_from_disk(self, client, modules_teacher, db, tmp_path, monkeypatch):
+        """Evidence files on disk must be removed when the module is deleted."""
+        from app.models.project import Project
+        from app.models.student import Student
+        from app.models.evidence import Evidence
+        from app.models.enums import EmbeddingStatus, FileType, SourceType
+        import app.config as app_config
+
+        # ── Redirect UPLOAD_DIR to tmp_path so we don't touch real storage ──
+        # The delete_module endpoint computes:
+        #   EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+        # Patching settings.UPLOAD_DIR makes it resolve to our tmp dir.
+        monkeypatch.setattr(app_config.settings, "UPLOAD_DIR", str(tmp_path))
+
+        fake_evidence_dir = tmp_path / "evidence"
+        fake_evidence_dir.mkdir(parents=True, exist_ok=True)
+
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Module With Files")
+
+        # Create a group + student + evidence record with a real file on disk
+        project = Project(
+            id=uuid.uuid4(),
+            module_id=uuid.UUID(module["id"]),
+            name="Group A",
+            group_name="Group A",
+        )
+        db.add(project)
+        db.commit()
+
+        student = Student(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            name="Test Student",
+            student_number="S999",
+        )
+        db.add(student)
+        db.commit()
+
+        # Write a fake evidence file to disk
+        student_dir = fake_evidence_dir / str(student.id)
+        student_dir.mkdir(parents=True)
+        fake_file = student_dir / "abc123_report.md"
+        fake_file.write_text("# Evidence content")
+
+        relative_path = str(fake_file.relative_to(fake_evidence_dir))
+        ev = Evidence(
+            id=uuid.uuid4(),
+            student_id=student.id,
+            file_name="report.md",
+            file_type=FileType.markdown,
+            file_path=relative_path,
+            source_type=SourceType.upload,
+            embedding_status=EmbeddingStatus.completed,
+        )
+        db.add(ev)
+        db.commit()
+
+        assert fake_file.exists(), "Precondition: file must exist before delete"
+
+        # Delete the module via the API
+        res = client.delete(f"{MODULES_URL}/{module['id']}", headers=headers)
+        assert res.status_code == 204
+
+        assert not fake_file.exists(), "Evidence file must be removed from disk after module delete"
