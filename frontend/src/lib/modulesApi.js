@@ -94,6 +94,18 @@ export const uploadRubric = (moduleId, file) => {
 export const deleteRubric = (moduleId) =>
   request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });
 
+export const uploadModuleBook = (moduleId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(API_PATHS.moduleBook(moduleId), {
+    method: 'POST',
+    body: formData,
+  });
+};
+
+export const deleteModuleBook = (moduleId) =>
+  request(API_PATHS.moduleBook(moduleId), { method: 'DELETE' });
+
 export const renameModule = (moduleId, name) =>
   request(API_PATHS.module(moduleId), {
     method: 'PATCH',
