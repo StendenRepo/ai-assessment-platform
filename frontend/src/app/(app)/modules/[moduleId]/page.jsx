@@ -229,6 +229,18 @@ export default function ModulePage() {
       setRubricError(
         `Only PDF and Excel files are allowed. "${file.name}" is not supported.`
       );
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
+      return;
+    }
+    // Confirm before replacing an existing rubric (the old file is removed).
+    const existing = project?.rubric_file;
+    if (
+      existing &&
+      !confirm(
+        `Replace the current rubric "${existing.file_name || 'rubric'}" with "${file.name}"? The existing file will be permanently removed.`
+      )
+    ) {
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
       return;
     }
     setRubricError('');
