@@ -10,8 +10,11 @@ import {
   XCircle,
   Sun,
   Moon,
+  Loader2,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
@@ -50,6 +53,79 @@ function SectionCard({ title, children }) {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
+  const [integrationTestState, setIntegrationTestState] = useState({});
+
+  const connectedServices = [
+    {
+      id: 'ollama',
+      name: 'Ollama',
+      desc: 'Local LLM runtime for analysis and generation',
+      active: true,
+      detail: 'Configured via backend OLLAMA_BASE_URL',
+      canTest: true,
+    },
+    {
+      id: 'github',
+      name: 'GitHub Integration',
+      desc: 'Automatically analyze Git repositories',
+      active: true,
+      detail: 'API Key: EXAMPLE_TOKEN_NOT_REAL',
+      canTest: false,
+    },
+    {
+      id: 'lms',
+      name: 'Learning Management System',
+      desc: 'Import courses and students from LMS (Canvas, Moodle)',
+      active: false,
+      detail: 'Not configured',
+      canTest: false,
+    },
+    {
+      id: 'smtp',
+      name: 'Email Server (SMTP)',
+      desc: 'Send notifications and report exports',
+      active: true,
+      detail: 'smtp.university.edu:587',
+      canTest: false,
+    },
+  ];
+
+  const testOllamaConnection = async () => {
+    setIntegrationTestState((prev) => ({
+      ...prev,
+      ollama: { status: 'loading', message: 'Testing connection...' },
+    }));
+
+    try {
+      const res = await fetch(`${API_URL}/api/v1/health/ollama`);
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.reachable) {
+        throw new Error(data.detail || `Connection failed (${res.status})`);
+      }
+
+      const modelInfo =
+        data.model_count > 0
+          ? `${data.model_count} model(s) detected`
+          : 'Connected but no models found';
+
+      setIntegrationTestState((prev) => ({
+        ...prev,
+        ollama: {
+          status: 'success',
+          message: `Connected to ${data.base_url}. ${modelInfo}.`,
+        },
+      }));
+    } catch (err) {
+      setIntegrationTestState((prev) => ({
+        ...prev,
+        ollama: {
+          status: 'error',
+          message: err?.message || 'Connection test failed',
+        },
+      }));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -417,26 +493,7 @@ export default function SettingsPage() {
           {activeTab === 'integration' && (
             <>
               <SectionCard title="Connected Services">
-                {[
-                  {
-                    name: 'GitHub Integration',
-                    desc: 'Automatically analyze Git repositories',
-                    active: true,
-                    detail: 'API Key: EXAMPLE_TOKEN_NOT_REAL',
-                  },
-                  {
-                    name: 'Learning Management System',
-                    desc: 'Import courses and students from LMS (Canvas, Moodle)',
-                    active: false,
-                    detail: 'Not configured',
-                  },
-                  {
-                    name: 'Email Server (SMTP)',
-                    desc: 'Send notifications and report exports',
-                    active: true,
-                    detail: 'smtp.university.edu:587',
-                  },
-                ].map((svc) => (
+                {connectedServices.map((svc) => (
                   <div
                     key={svc.name}
                     className="rounded-lg border border-border p-4 space-y-3"
@@ -464,12 +521,29 @@ export default function SettingsPage() {
                     <div className="text-xs font-mono text-muted-foreground">
                       {svc.detail}
                     </div>
+                    {svc.id === 'ollama' && integrationTestState.ollama && (
+                      <div
+                        className={`text-xs rounded-md px-2.5 py-2 ${integrationTestState.ollama.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20' : integrationTestState.ollama.status === 'error' ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20' : 'bg-secondary text-muted-foreground ring-1 ring-border'}`}
+                      >
+                        {integrationTestState.ollama.message}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
                         Configure
                       </button>
-                      {svc.active && (
-                        <button className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+                      {svc.active && svc.canTest && (
+                        <button
+                          onClick={testOllamaConnection}
+                          disabled={
+                            integrationTestState.ollama?.status === 'loading'
+                          }
+                          className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+                        >
+                          {integrationTestState.ollama?.status ===
+                            'loading' && (
+                            <Loader2 size={12} className="animate-spin" />
+                          )}
                           Test Connection
                         </button>
                       )}
