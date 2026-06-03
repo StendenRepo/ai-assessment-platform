@@ -121,7 +121,7 @@ export default function CriteriaPage() {
                   onChange={(e) =>
                     setForm({ ...form, category: e.target.value })
                   }
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer`}
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>

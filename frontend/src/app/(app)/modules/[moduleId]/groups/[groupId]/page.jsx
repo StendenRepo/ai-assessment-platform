@@ -165,7 +165,7 @@ export default function GroupDetailPage() {
                         `${APP_PATHS.modules}/${moduleId}/groups/${groupId}/students/${student.id}`
                       );
                     }}
-                    className="shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                    className="shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
                   >
                     Assess
                   </button>

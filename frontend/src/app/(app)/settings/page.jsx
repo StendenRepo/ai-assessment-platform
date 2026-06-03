@@ -25,6 +25,7 @@ const tabs = [
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
+const selectClass = `${inputClass} cursor-pointer`;
 
 function Toggle({ defaultChecked, disabled }) {
   const [on, setOn] = useState(defaultChecked ?? false);
@@ -144,7 +145,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Language
                     </label>
-                    <select className={inputClass}>
+                    <select className={`${inputClass} cursor-pointer`}>
                       <option value="en">English</option>
                       <option value="nl">Nederlands</option>
                       <option value="de">Deutsch</option>
@@ -154,7 +155,7 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Date Format
                     </label>
-                    <select className={inputClass}>
+                    <select className={`${inputClass} cursor-pointer`}>
                       <option>DD-MM-YYYY</option>
                       <option>MM-DD-YYYY</option>
                       <option>YYYY-MM-DD</option>
@@ -272,7 +273,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Automatic Evidence Linking
                   </label>
-                  <select className={inputClass}>
+                  <select className={`${inputClass} cursor-pointer`}>
                     <option value="aggressive">
                       Aggressive — Link all possible matches
                     </option>
@@ -325,7 +326,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Data Retention Period
                   </label>
-                  <select className={inputClass}>
+                  <select className={`${inputClass} cursor-pointer`}>
                     <option>30 days after project completion</option>
                     <option>90 days after project completion</option>
                     <option>180 days after project completion</option>
@@ -337,7 +338,7 @@ export default function SettingsPage() {
                   <label className="text-xs font-medium text-muted-foreground">
                     Automatic Anonymization
                   </label>
-                  <select className={inputClass}>
+                  <select className={`${inputClass} cursor-pointer`}>
                     <option>Never</option>
                     <option>After 30 days</option>
                     <option>After 90 days</option>
