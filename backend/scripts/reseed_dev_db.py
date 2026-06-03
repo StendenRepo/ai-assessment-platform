@@ -1,0 +1,330 @@
+#!/usr/bin/env python3
+
+import os
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import sqlalchemy.dialects.postgresql as pg
+from sqlalchemy import String, Text, TypeDecorator, create_engine
+from sqlalchemy.orm import sessionmaker
+
+
+class SQLiteUUID(TypeDecorator):
+    impl = String(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return str(value) if value is not None else None
+
+    def process_result_value(self, value, dialect):
+        return uuid.UUID(str(value)) if value is not None else None
+
+
+# Patch PostgreSQL-only types so the existing models can create SQLite tables.
+pg.UUID = lambda as_uuid=True: SQLiteUUID()
+pg.JSONB = Text
+pg.INET = String
+
+from app.core.security import hash_password
+from app.database import Base
+from app.models import (
+    Assessment,
+    AuditEvent,
+    ChatMessage,
+    Department,
+    Module,
+    Project,
+    Student,
+    Teacher,
+)
+from app.models.enums import (
+    AssessmentStatus,
+    AuditSource,
+    ModuleStatus,
+    ProjectStatus,
+    StudentStatus,
+)
+
+
+def uid(name: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_DNS, f"ai-assessment-seed::{name}")
+
+
+def resolve_output_path() -> str:
+    if os.path.isdir("/app"):
+        return "/app/database/database.db"
+    here = os.path.dirname(os.path.abspath(__file__))
+    backend_root = os.path.dirname(here)
+    return os.path.join(backend_root, "database", "database.db")
+
+
+def build_seed_database(seed_path: str) -> None:
+    os.makedirs(os.path.dirname(seed_path), exist_ok=True)
+    if os.path.exists(seed_path):
+        os.remove(seed_path)
+
+    engine = create_engine(f"sqlite:///{seed_path}")
+    session_cls = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    Base.metadata.create_all(bind=engine)
+
+    session = session_cls()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    departments = [
+        Department(id=uid("dept-cs"), name="Computer Science", created_at=now - timedelta(days=400)),
+        Department(id=uid("dept-ds"), name="Data Science", created_at=now - timedelta(days=380)),
+        Department(id=uid("dept-se"), name="Software Engineering", created_at=now - timedelta(days=360)),
+    ]
+    session.add_all(departments)
+
+    teachers = [
+        Teacher(
+            id=uid("teacher-alice"),
+            name="Alice Johnson",
+            email="alice.johnson@university.edu",
+            password_hash=hash_password("password123"),
+            is_admin=False,
+            is_seed=True,
+            department_id=uid("dept-cs"),
+            created_at=now - timedelta(days=280),
+            last_login=now - timedelta(hours=6),
+        ),
+        Teacher(
+            id=uid("teacher-bob"),
+            name="Bob Singh",
+            email="bob.singh@university.edu",
+            password_hash=hash_password("password123"),
+            is_admin=False,
+            is_seed=True,
+            department_id=uid("dept-ds"),
+            created_at=now - timedelta(days=275),
+            last_login=now - timedelta(hours=18),
+        ),
+        Teacher(
+            id=uid("teacher-clara"),
+            name="Clara Nunez",
+            email="clara.nunez@university.edu",
+            password_hash=hash_password("password123"),
+            is_admin=False,
+            is_seed=True,
+            department_id=uid("dept-se"),
+            created_at=now - timedelta(days=260),
+            last_login=now - timedelta(days=2),
+        ),
+    ]
+    session.add_all(teachers)
+
+    modules = [
+        Module(
+            id=uid("module-programmeren-2-2026"),
+            teacher_id=uid("teacher-bob"),
+            name="Programmeren 2 (HBO-ICT Informatica)",
+            academic_year="2025-2026",
+            created_at=now - timedelta(days=220),
+            status=ModuleStatus.active,
+        ),
+        Module(
+            id=uid("module-databases-2026"),
+            teacher_id=uid("teacher-clara"),
+            name="Databases",
+            academic_year="2025-2026",
+            created_at=now - timedelta(days=210),
+            status=ModuleStatus.active,
+        ),
+        Module(
+            id=uid("module-webtech-2026"),
+            teacher_id=uid("teacher-alice"),
+            name="Webtechnologie",
+            academic_year="2025-2026",
+            created_at=now - timedelta(days=205),
+            status=ModuleStatus.active,
+        ),
+        Module(
+            id=uid("module-se-project-2024"),
+            teacher_id=uid("teacher-alice"),
+            name="Software Engineering Project",
+            academic_year="2023-2024",
+            created_at=now - timedelta(days=600),
+            status=ModuleStatus.archived,
+        ),
+    ]
+    session.add_all(modules)
+
+    project_specs = [
+        ("prog2-team-1", "CLI Planningsapp in Python", "Team Alpha", "module-programmeren-2-2026", ProjectStatus.active),
+        ("prog2-team-2", "Algoritme Visualizer", "Team Beta", "module-programmeren-2-2026", ProjectStatus.active),
+        ("prog2-team-3", "Refactor van Legacy Java Tool", "Team Gamma", "module-programmeren-2-2026", ProjectStatus.completed),
+        ("db-team-1", "Ontwerp van Studentvolgsysteem Database", "Team Delta", "module-databases-2026", ProjectStatus.active),
+        ("db-team-2", "SQL Rapportage voor Studievoortgang", "Team Epsilon", "module-databases-2026", ProjectStatus.active),
+        ("db-team-3", "Normalisatie en Migratiecase", "Team Zeta", "module-databases-2026", ProjectStatus.completed),
+        ("web-team-1", "Frontend voor Stageportaal", "Team Eta", "module-webtech-2026", ProjectStatus.active),
+        ("web-team-2", "REST API Dashboard met Next.js", "Team Theta", "module-webtech-2026", ProjectStatus.active),
+        ("sep-team-1", "Scrum Project: Campus Service App", "Team Iota", "module-se-project-2024", ProjectStatus.archived),
+    ]
+    projects = []
+    for idx, (key, name, group_name, module_key, status) in enumerate(project_specs):
+        projects.append(
+            Project(
+                id=uid(f"project-{key}"),
+                module_id=uid(module_key),
+                name=name,
+                group_name=group_name,
+                created_at=now - timedelta(days=180 - idx * 3),
+                status=status,
+            )
+        )
+    session.add_all(projects)
+
+    students = []
+    student_index = 1
+    for project in projects:
+        count = 3 if project.status == ProjectStatus.archived else 6
+        for i in range(count):
+            students.append(
+                Student(
+                    id=uid(f"student-{project.id}-{i}"),
+                    project_id=project.id,
+                    name=f"Student {student_index:03d}",
+                    student_number=f"S{student_index:06d}",
+                    status=StudentStatus.active if i < count - 1 else StudentStatus.inactive,
+                    consent_given=(i % 2 == 0),
+                )
+            )
+            student_index += 1
+    session.add_all(students)
+
+    project_by_id = {p.id: p for p in projects}
+    module_by_id = {m.id: m for m in modules}
+
+    assessments = []
+    for i, student in enumerate(students):
+        if i % 7 == 0:
+            continue
+
+        project = project_by_id[student.project_id]
+        module = module_by_id[project.module_id]
+
+        if i % 5 == 0:
+            status = AssessmentStatus.final
+            completed_at = now - timedelta(days=(i % 30))
+        elif i % 3 == 0:
+            status = AssessmentStatus.reviewed
+            completed_at = now - timedelta(days=(i % 15))
+        else:
+            status = AssessmentStatus.draft
+            completed_at = None
+
+        assessments.append(
+            Assessment(
+                id=uid(f"assessment-{student.id}"),
+                student_id=student.id,
+                teacher_id=module.teacher_id,
+                status=status,
+                draft_form_json='{"criteria": {"analysis": "good progress", "implementation": "solid"}}',
+                final_form_json='{"grade": "B+", "summary": "Consistent work across milestones"}'
+                if status != AssessmentStatus.draft
+                else None,
+                transcript_text="Discussion covered architecture decisions, risk handling, and test strategy.",
+                consent_recorded=student.consent_given,
+                created_at=now - timedelta(days=45 - (i % 20)),
+                completed_at=completed_at,
+            )
+        )
+    session.add_all(assessments)
+
+    messages = []
+    for assessment in assessments[:80]:
+        base_time = assessment.created_at or now
+        messages.extend(
+            [
+                ChatMessage(
+                    id=uid(f"chat-{assessment.id}-1"),
+                    assessment_id=assessment.id,
+                    role="teacher",
+                    content="Please summarize the key contribution for this submission.",
+                    timestamp=base_time + timedelta(minutes=1),
+                ),
+                ChatMessage(
+                    id=uid(f"chat-{assessment.id}-2"),
+                    assessment_id=assessment.id,
+                    role="assistant",
+                    content="The team improved deployment reliability and reduced incident rates by adding smoke tests.",
+                    timestamp=base_time + timedelta(minutes=2),
+                ),
+                ChatMessage(
+                    id=uid(f"chat-{assessment.id}-3"),
+                    assessment_id=assessment.id,
+                    role="teacher",
+                    content="Highlight evidence quality and missing artifacts.",
+                    timestamp=base_time + timedelta(minutes=3),
+                ),
+            ]
+        )
+    session.add_all(messages)
+
+    audit_events = []
+    audit_id = 1
+    for i, assessment in enumerate(assessments):
+        base_time = assessment.created_at or now
+        audit_events.append(
+            AuditEvent(
+                id=audit_id,
+                assessment_id=assessment.id,
+                teacher_id=assessment.teacher_id,
+                action="assessment_created",
+                details_json='{"channel":"ui","note":"initial draft created"}',
+                timestamp=base_time,
+                source=AuditSource.teacher,
+                ip_address="127.0.0.1",
+            )
+        )
+        audit_id += 1
+
+        if assessment.status in {AssessmentStatus.reviewed, AssessmentStatus.final}:
+            audit_events.append(
+                AuditEvent(
+                    id=audit_id,
+                    assessment_id=assessment.id,
+                    teacher_id=assessment.teacher_id,
+                    action="assessment_reviewed",
+                    details_json='{"confidence":0.84,"flags":0}',
+                    timestamp=base_time + timedelta(hours=2),
+                    source=AuditSource.ai,
+                    ip_address="127.0.0.1",
+                )
+            )
+            audit_id += 1
+
+        if i % 9 == 0:
+            audit_events.append(
+                AuditEvent(
+                    id=audit_id,
+                    assessment_id=assessment.id,
+                    teacher_id=assessment.teacher_id,
+                    action="export_generated",
+                    details_json='{"format":"pdf"}',
+                    timestamp=base_time + timedelta(hours=4),
+                    source=AuditSource.system,
+                    ip_address="127.0.0.1",
+                )
+            )
+            audit_id += 1
+    session.add_all(audit_events)
+
+    session.commit()
+
+    print(f"Seed database created: {seed_path}")
+    print(f"departments={session.query(Department).count()}")
+    print(f"teachers={session.query(Teacher).count()}")
+    print(f"modules={session.query(Module).count()}")
+    print(f"projects={session.query(Project).count()}")
+    print(f"students={session.query(Student).count()}")
+    print(f"assessments={session.query(Assessment).count()}")
+    print(f"chat_messages={session.query(ChatMessage).count()}")
+    print(f"audit_events={session.query(AuditEvent).count()}")
+
+    session.close()
+
+
+if __name__ == "__main__":
+    build_seed_database(resolve_output_path())

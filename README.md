@@ -141,6 +141,14 @@ To regenerate the local development seed database (`backend/database/database.db
 ./scripts/reseed-dev-db.sh
 ```
 
+### Import Dev Seed into Postgres
+
+To copy the SQLite seed database into the running Postgres database used by pgAdmin:
+
+```bash
+./scripts/import-db-to-postgres.sh
+```
+
 ## Production
 
 ```bash
