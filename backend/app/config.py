@@ -22,6 +22,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
 
 
 settings = Settings()
