@@ -63,7 +63,7 @@ backend/venv/
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.env
-backend/database/*.db
+backend/database/
 
 # Uploaded files / runtime data (stored on disk, not committed)
 backend/data/
