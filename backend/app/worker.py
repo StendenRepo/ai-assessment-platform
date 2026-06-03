@@ -1,0 +1,47 @@
+"""Background retention worker (runs in its own container).
+
+On a daily cycle it:
+  * flags recordings whose 3-month retention period has passed (G2-141), and
+  * creates reminder notifications for recordings approaching deletion (G2-142).
+
+The actual logic lives in app.services.retention_service so it stays unit
+testable; this module is just the scheduling loop.
+"""
+import logging
+import os
+import time
+
+from app.database import SessionLocal
+from app.services import retention_service
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [worker] %(levelname)s %(message)s",
+)
+logger = logging.getLogger("worker")
+
+# How often to run the retention sweep, in seconds (default: daily).
+RUN_INTERVAL_SECONDS = int(os.getenv("WORKER_INTERVAL_SECONDS", str(24 * 60 * 60)))
+
+
+def run_once() -> None:
+    db = SessionLocal()
+    try:
+        flagged = retention_service.flag_expired_recordings(db)
+        reminders = retention_service.create_deletion_reminders(db)
+        logger.info("retention sweep: flagged=%d reminders=%d", flagged, reminders)
+    except Exception:  # noqa: BLE001 - keep the loop alive
+        logger.exception("retention sweep failed")
+    finally:
+        db.close()
+
+
+def main() -> None:
+    logger.info("retention worker started (interval=%ss)", RUN_INTERVAL_SECONDS)
+    while True:
+        run_once()
+        time.sleep(RUN_INTERVAL_SECONDS)
+
+
+if __name__ == "__main__":
+    main()

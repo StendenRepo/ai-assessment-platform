@@ -22,8 +22,12 @@ services:
         ports:
             - '8000:8000'
         env_file: .env
+        volumes:
+            - app_data:/app/data
         depends_on:
             postgres:
+                condition: service_healthy
+            stt:
                 condition: service_healthy
         command: >
             sh -c "
@@ -51,6 +55,34 @@ services:
             timeout: 5s
             retries: 5
         restart: unless-stopped
+    stt:
+        build:
+            context: ./stt
+        container_name: stt
+        environment:
+            WHISPER_MODEL: ${WHISPER_MODEL:-base}
+            WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+        healthcheck:
+            test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:9000/health'')" || exit 1']
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+        restart: unless-stopped
+    worker:
+        build:
+            context: ./backend
+            target: production
+        container_name: worker
+        env_file: .env
+        volumes:
+            - app_data:/app/data
+        depends_on:
+            postgres:
+                condition: service_healthy
+        command: ['python', '-m', 'app.worker']
+        restart: unless-stopped
 
 volumes:
     postgres_data:
+    app_data:

@@ -7,7 +7,7 @@ import {
   useEffect,
   useCallback,
 } from 'react';
-import { getStoredUser, getToken, clearSession } from '@/lib/auth';
+import { fetchCurrentUser, clearSession } from '@/lib/auth';
 
 const AuthContext = createContext(null);
 
@@ -16,10 +16,19 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const token = getToken();
-    const stored = getStoredUser();
-    if (token && stored) setUser(stored);
-    setReady(true);
+    let active = true;
+
+    fetchCurrentUser()
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
+      .finally(() => {
+        if (active) setReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const login = useCallback((userData) => {

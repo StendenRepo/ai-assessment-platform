@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { GraduationCap, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import NotificationBell from '@/components/recording/NotificationBell';
 
 /**
  * exact: true  — active only on the precise path
@@ -75,6 +76,7 @@ export default function Header({
                 <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
                   {initials(user.name)}
                 </div>
+                <NotificationBell />
               </>
             )}
             <button

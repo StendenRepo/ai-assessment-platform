@@ -53,6 +53,24 @@ export async function apiLogin(email, password) {
   return user;
 }
 
+export async function fetchCurrentUser() {
+  const token = getToken();
+  if (!token) return null;
+
+  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    clearSession();
+    return null;
+  }
+
+  const user = await res.json();
+  saveSession(token, user);
+  return user;
+}
+
 export function authHeaders() {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from app.database import Base
@@ -14,3 +14,9 @@ class FileRecord(Base):
     size_bytes = Column(Integer)
     hash = Column(String)  # SHA-256
     uploaded_at = Column(DateTime, default=datetime.utcnow)
+    # Retention: recordings are flagged for deletion after delete_after passes (GDPR).
+    delete_after = Column(DateTime, nullable=True)
+    flagged_for_deletion = Column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    deleted_at = Column(DateTime, nullable=True)

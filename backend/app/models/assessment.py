@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
-from app.models.enums import AssessmentStatus
+from app.models.enums import AssessmentStatus, ConsentStatus, TranscriptionStatus
 
 
 class Assessment(Base):
@@ -18,12 +18,24 @@ class Assessment(Base):
     final_form_json = Column(JSONB, nullable=True)
     recording_file_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
     transcript_text = Column(Text, nullable=True)
-    consent_recorded = Column(Boolean, default=False)
+    transcription_status = Column(
+        Enum(TranscriptionStatus), default=TranscriptionStatus.pending, nullable=False
+    )
+    # Oral consent captured at the start of the recording, confirmed by the teacher.
+    consent_status = Column(
+        Enum(ConsentStatus), default=ConsentStatus.pending, nullable=False
+    )
+    consent_confirmed_at = Column(DateTime, nullable=True)
+    consent_confirmed_by = Column(
+        UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
     student = relationship("Student", back_populates="assessments")
-    teacher = relationship("Teacher", back_populates="assessments")
+    teacher = relationship(
+        "Teacher", back_populates="assessments", foreign_keys=[teacher_id]
+    )
     chat_messages = relationship("ChatMessage", back_populates="assessment")
     evidence_matches = relationship("EvidenceMatch", back_populates="assessment")
