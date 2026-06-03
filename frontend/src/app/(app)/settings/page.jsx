@@ -65,22 +65,6 @@ export default function SettingsPage() {
       canTest: true,
     },
     {
-      id: 'github',
-      name: 'GitHub Integration',
-      desc: 'Automatically analyze Git repositories',
-      active: true,
-      detail: 'API Key: EXAMPLE_TOKEN_NOT_REAL',
-      canTest: false,
-    },
-    {
-      id: 'lms',
-      name: 'Learning Management System',
-      desc: 'Import courses and students from LMS (Canvas, Moodle)',
-      active: false,
-      detail: 'Not configured',
-      canTest: false,
-    },
-    {
       id: 'smtp',
       name: 'Email Server (SMTP)',
       desc: 'Send notifications and report exports',
@@ -154,53 +138,8 @@ export default function SettingsPage() {
         <div className="col-span-3 space-y-5">
           {activeTab === 'general' && (
             <>
-              <SectionCard title="Profile">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      defaultValue="John"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      defaultValue="Smith"
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    defaultValue="j.smith@university.edu"
-                    className={inputClass}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue="Computer Science"
-                    className={inputClass}
-                  />
-                </div>
-              </SectionCard>
-
               <SectionCard title="Preferences">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">
                       Language
@@ -209,16 +148,6 @@ export default function SettingsPage() {
                       <option value="en">English</option>
                       <option value="nl">Nederlands</option>
                       <option value="de">Deutsch</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      Timezone
-                    </label>
-                    <select className={inputClass}>
-                      <option>Europe/Amsterdam (UTC+1)</option>
-                      <option>Europe/London (UTC+0)</option>
-                      <option>America/New York (UTC-5)</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -576,15 +505,6 @@ export default function SettingsPage() {
               </SectionCard>
             </>
           )}
-
-          <div className="flex gap-3 justify-end">
-            <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-              Cancel
-            </button>
-            <button className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
-              Save Changes
-            </button>
-          </div>
         </div>
       </div>
     </div>
