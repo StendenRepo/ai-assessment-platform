@@ -29,12 +29,11 @@ def _rubric_path(module_id: str, stored_name: str) -> Path:
     return RUBRIC_UPLOAD_DIR / str(module_id) / stored_name
 
 
-def _get_module_or_404(module_id: str, teacher_id, db: Session) -> Module:
-    module = (
-        db.query(Module)
-        .filter(Module.id == module_id, Module.teacher_id == teacher_id)
-        .first()
-    )
+def _get_module_or_404(module_id: str, teacher_id, db: Session, is_admin: bool = False) -> Module:
+    query = db.query(Module).filter(Module.id == module_id)
+    if not is_admin:
+        query = query.filter(Module.teacher_id == teacher_id)
+    module = query.first()
     if not module:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
     return module
@@ -63,8 +62,14 @@ class ModuleService:
         return module
 
     @staticmethod
-    def upload_rubric(module_id: str, file: UploadFile, teacher_id, db: Session) -> Module:
-        module = _get_module_or_404(module_id, teacher_id, db)
+    def upload_rubric(
+        module_id: str,
+        file: UploadFile,
+        teacher_id,
+        db: Session,
+        is_admin: bool = False,
+    ) -> Module:
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
 
         filename = file.filename or "rubric"
         _check_extension(filename)
@@ -110,8 +115,8 @@ class ModuleService:
         return module
 
     @staticmethod
-    def delete_rubric(module_id: str, teacher_id, db: Session) -> Module:
-        module = _get_module_or_404(module_id, teacher_id, db)
+    def delete_rubric(module_id: str, teacher_id, db: Session, is_admin: bool = False) -> Module:
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
 
         if not module.rubric_file_id:
             raise HTTPException(
