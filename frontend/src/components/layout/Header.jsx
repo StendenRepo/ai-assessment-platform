@@ -14,6 +14,7 @@ import NotificationBell from '@/components/recording/NotificationBell';
  */
 const DEFAULT_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', exact: true },
+  { href: '/modules', label: 'Modules' },
   { href: '/projects', label: 'Projects' },
   { href: '/projects/new', label: 'New Project', exact: true },
   { href: '/reports', label: 'Reports' },

@@ -22,7 +22,7 @@ function buildCrumbs(pathname, params) {
       });
     if (studentId) {
       crumbs.push({ label: 'Assessment', href: null });
-    } else if (pathname.includes('/criteria')) {
+    } else if (pathname.includes('/rubric')) {
       crumbs.push({ label: 'Criteria & Rubrics', href: null });
     }
   } else if (pathname.startsWith('/reports')) {

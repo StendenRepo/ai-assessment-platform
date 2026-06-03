@@ -1,14 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ArrowRight,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-} from 'lucide-react';
-import { mockProjects } from '@/lib/mockData';
+import { ArrowRight, FolderOpen } from 'lucide-react';
+import { apiFetch } from '@/lib/apiFetch';
 
 const statusConfig = {
   active: {
@@ -19,41 +14,25 @@ const statusConfig = {
     label: 'Completed',
     classes: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
   },
-  overdue: {
-    label: 'Overdue',
-    classes: 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20',
+  archived: {
+    label: 'Archived',
+    classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
   },
 };
 
-const statCards = [
-  {
-    label: 'Active Projects',
-    value: '12',
-    icon: TrendingUp,
-    color: 'text-primary',
-  },
-  {
-    label: 'Deadlines This Week',
-    value: '3',
-    icon: Clock,
-    color: 'text-amber-400',
-  },
-  {
-    label: 'Assessments Completed',
-    value: '47',
-    icon: CheckCircle2,
-    color: 'text-emerald-400',
-  },
-  {
-    label: 'Pending Review',
-    value: '8',
-    icon: AlertTriangle,
-    color: 'text-orange-400',
-  },
-];
-
 export default function DashboardPage() {
   const router = useRouter();
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch('/projects')
+      .then(setProjects)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const recent = projects.slice(0, 5);
 
   return (
     <div className="space-y-8">
@@ -64,26 +43,25 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        {statCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <div
-              key={card.label}
-              className="rounded-lg bg-card border border-border p-5"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                  {card.label}
-                </span>
-                <Icon size={15} className={card.color} />
-              </div>
-              <div className="text-3xl font-bold text-foreground">
-                {card.value}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="rounded-lg bg-card border border-border p-5">
+          <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-3">
+            Total Projects
+          </div>
+          <div className="text-3xl font-bold text-foreground">
+            {loading ? '—' : projects.length}
+          </div>
+        </div>
+        <div className="rounded-lg bg-card border border-border p-5">
+          <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-3">
+            Active Projects
+          </div>
+          <div className="text-3xl font-bold text-foreground">
+            {loading
+              ? '—'
+              : projects.filter((p) => p.status === 'active').length}
+          </div>
+        </div>
       </div>
 
       <div>
@@ -99,66 +77,83 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-          {mockProjects.map((project) => {
-            const status = statusConfig[project.status];
-            return (
-              <div
-                key={project.id}
-                onClick={() => router.push(`/projects/${project.id}`)}
-                className="flex items-center gap-6 px-6 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
-              >
-                <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="text-sm font-semibold text-foreground truncate">
-                      {project.name}
-                    </span>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${status.classes}`}
-                    >
-                      {status.label}
-                    </span>
+        {loading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {!loading && recent.length === 0 && (
+          <div className="rounded-lg border border-border bg-card px-6 py-12 text-center">
+            <FolderOpen
+              size={32}
+              className="mx-auto mb-3 text-muted-foreground/50"
+            />
+            <p className="text-sm text-muted-foreground">No projects yet.</p>
+            <button
+              onClick={() => router.push('/projects/new')}
+              className="mt-3 text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              Create your first project →
+            </button>
+          </div>
+        )}
+
+        {recent.length > 0 && (
+          <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
+            {recent.map((project) => {
+              const s = statusConfig[project.status] ?? statusConfig.active;
+              return (
+                <div
+                  key={project.id}
+                  onClick={() => router.push(`/projects/${project.id}`)}
+                  className="flex items-center gap-6 px-6 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
+                >
+                  <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="text-sm font-semibold text-foreground truncate">
+                        {project.name}
+                      </span>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${s.classes}`}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {project.course && <span>{project.course}</span>}
+                      {project.course && project.group_name && <span>·</span>}
+                      {project.group_name && <span>{project.group_name}</span>}
+                      {project.deadline && (
+                        <>
+                          {(project.course || project.group_name) && (
+                            <span>·</span>
+                          )}
+                          <span>
+                            Due{' '}
+                            {new Date(project.deadline).toLocaleDateString(
+                              'en-US',
+                              {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              }
+                            )}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{project.course}</span>
-                    <span>·</span>
-                    <span>Group {project.groupNumber}</span>
-                    <span>·</span>
-                    <span>
-                      Due{' '}
-                      {new Date(project.deadline).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </span>
-                  </div>
+                  <ArrowRight
+                    size={14}
+                    className="text-muted-foreground shrink-0"
+                  />
                 </div>
-                <div className="w-36 shrink-0">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-muted-foreground">
-                      Progress
-                    </span>
-                    <span className="text-xs font-semibold text-foreground">
-                      {project.assessmentProgress}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all"
-                      style={{ width: `${project.assessmentProgress}%` }}
-                    />
-                  </div>
-                </div>
-                <ArrowRight
-                  size={14}
-                  className="text-muted-foreground shrink-0"
-                />
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

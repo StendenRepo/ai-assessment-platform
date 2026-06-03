@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, Plus, FileText } from 'lucide-react';
+import { apiFetch } from '@/lib/apiFetch';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -17,6 +18,8 @@ export default function NewProjectPage() {
   const [students, setStudents] = useState([{ email: '', studentNumber: '' }]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
 
   const updateStudent = (i, field, val) => {
     const updated = [...students];
@@ -36,6 +39,40 @@ export default function NewProjectPage() {
     setDragActive(false);
     if (e.dataTransfer.files.length > 0)
       setUploadedFiles((f) => [...f, ...Array.from(e.dataTransfer.files)]);
+  };
+
+  const handleCreate = async () => {
+    if (!projectName.trim()) {
+      setError('Project name is required');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const created = await apiFetch('/projects', {
+        method: 'POST',
+        json: {
+          name: projectName.trim(),
+          course: course.trim() || null,
+          group_name: className.trim() || null,
+          deadline: deadline || null,
+          students: students
+            .filter((s) => s.email.trim() || s.studentNumber.trim())
+            .map((s) => ({
+              email: s.email.trim() || null,
+              student_number: s.studentNumber.trim() || null,
+            })),
+        },
+      });
+      // Stage 2 of project creation: define the rubric before the project
+      // is considered ready. The /rubric page is where the teacher hits
+      // "Complete Setup" which flips status from "draft" to "ready".
+      router.push(`/projects/${created.id}/rubric`);
+    } catch (err) {
+      setError(err.message || 'Failed to create project');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -68,7 +105,7 @@ export default function NewProjectPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Course *
+                Course
               </label>
               <input
                 value={course}
@@ -79,7 +116,7 @@ export default function NewProjectPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Class *
+                Group / Class
               </label>
               <input
                 value={className}
@@ -91,7 +128,7 @@ export default function NewProjectPage() {
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">
-              Deadline *
+              Deadline
             </label>
             <input
               type="date"
@@ -175,7 +212,7 @@ export default function NewProjectPage() {
               Drop files here to upload
             </p>
             <p className="text-xs text-muted-foreground mb-4">
-              Code files, documents, PDFs, images · Max 100 MB per file
+              Code files, documents, PDFs, images - Max 100 MB per file
             </p>
             <input
               type="file"
@@ -232,15 +269,25 @@ export default function NewProjectPage() {
           )}
         </div>
 
+        {error && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
         <div className="flex gap-3 justify-end">
-          <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-            Save Draft
+          <button
+            onClick={() => router.push('/projects')}
+            className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          >
+            Cancel
           </button>
           <button
-            onClick={() => router.push(`/projects/proj-${Date.now()}/criteria`)}
-            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            onClick={handleCreate}
+            disabled={submitting}
+            className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            Create Project →
+            {submitting ? 'Creating...' : 'Create Project ->'}
           </button>
         </div>
       </div>
