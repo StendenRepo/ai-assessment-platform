@@ -4,6 +4,7 @@ export const APP_PATHS = {
   admin: '/admin',
   modules: '/modules',
   moduleNew: '/modules/new',
+  moduleManage: (moduleId) => `/modules/${moduleId}/manage`,
   reports: '/reports',
   settings: '/settings',
 };
@@ -13,6 +14,7 @@ export const API_PATHS = {
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
+  moduleGroup: (moduleId, groupId) => `/modules/${moduleId}/groups/${groupId}`,
   moduleStudents: (moduleId) => `/modules/${moduleId}/students`,
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,

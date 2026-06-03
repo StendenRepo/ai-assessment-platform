@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2,
-  FileSpreadsheet,
   FileText,
   FolderPlus,
   Search,
@@ -20,7 +19,6 @@ import {
   listProjectGroups,
   listProjectStudents,
   addProjectStudent,
-  importProjectStudents,
   createProjectGroup,
   moveStudentToGroup,
   uploadRubric,
@@ -74,11 +72,6 @@ export default function ModulePage() {
   const [assignGroupId, setAssignGroupId] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [assignError, setAssignError] = useState('');
-
-  const fileInputRef = useRef(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-  const [importError, setImportError] = useState('');
 
   const rubricInputRef = useRef(null);
   const [uploadingRubric, setUploadingRubric] = useState(false);
@@ -152,34 +145,6 @@ export default function ModulePage() {
       setFormError(err.message);
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleImport = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setImportError('');
-    setImportResult(null);
-    try {
-      const result = await importProjectStudents(
-        moduleId,
-        file,
-        selectedGroupId
-      );
-      setImportResult(result);
-      if (result.students?.length) {
-        setStudents((prev) =>
-          [...prev, ...result.students].sort((a, b) =>
-            a.name.localeCompare(b.name)
-          )
-        );
-      }
-    } catch (err) {
-      setImportError(err.message);
-    } finally {
-      setImporting(false);
-      e.target.value = ''; // allow re-selecting the same file
     }
   };
 
@@ -337,10 +302,23 @@ export default function ModulePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-foreground">{project?.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage the students in this module to set up the assessment
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              {project?.name}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage the students in this module to set up the assessment
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
+            className="shrink-0 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          >
+            Manage Groups & Students
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
@@ -496,30 +474,50 @@ export default function ModulePage() {
             ) : (
               <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
                 {filteredStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    onClick={() =>
-                      router.push(
-                        `${APP_PATHS.modules}/${moduleId}/groups/${student.project_id}/students/${student.id}?from=module`
-                      )
-                    }
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 cursor-pointer transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                      {student.name
-                        .split(' ')
-                        .map((n) => n[0])
-                        .join('')
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-foreground">
-                        {student.name}
+                  <div key={student.id} className="px-5 py-4 space-y-4">
+                    <div
+                      onClick={() =>
+                        router.push(
+                          `${APP_PATHS.modules}/${moduleId}/groups/${student.project_id}/students/${student.id}?from=module`
+                        )
+                      }
+                      className="flex items-center gap-4 hover:bg-secondary/50 cursor-pointer transition-colors rounded-md -mx-2 px-2 py-1"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                        {student.name
+                          .split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 font-mono">
-                        {student.student_number}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-foreground">
+                          {student.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5 font-mono">
+                          {student.student_number}
+                        </div>
                       </div>
+                      <div className="w-16 text-right shrink-0">
+                        <div className="text-xs text-muted-foreground">
+                          Grade
+                        </div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {student.grade || '—'}
+                        </div>
+                      </div>
+                      <span
+                        className={`inline-flex items-center justify-center w-24 rounded-full px-2 py-0.5 text-xs font-medium shrink-0 ${
+                          student.status === 'inactive'
+                            ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
+                        }`}
+                      >
+                        {student.status === 'inactive'
+                          ? 'Dropped out'
+                          : 'Active'}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -718,67 +716,6 @@ export default function ModulePage() {
               {submitting ? 'Adding…' : 'Add Student'}
             </button>
           </form>
-
-          <div className="rounded-lg bg-card border border-border p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <FileSpreadsheet size={15} />
-              Import from file
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Upload an Excel (.xlsx) or CSV file with{' '}
-              <span className="font-medium text-foreground">Name</span> and{' '}
-              <span className="font-medium text-foreground">
-                Student Number
-              </span>{' '}
-              columns.
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.csv"
-              onChange={handleImport}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-            >
-              <Upload size={15} />
-              {importing ? 'Importing…' : 'Choose file'}
-            </button>
-
-            {importError && (
-              <p className="text-xs text-red-400">{importError}</p>
-            )}
-
-            {importResult && (
-              <div className="space-y-2 pt-1">
-                <p className="text-xs font-medium text-emerald-400">
-                  Imported {importResult.imported_count} of{' '}
-                  {importResult.total_rows}{' '}
-                  {importResult.total_rows === 1 ? 'row' : 'rows'}.
-                </p>
-                {importResult.error_count > 0 && (
-                  <div className="rounded-md border border-border bg-secondary/50 p-3 space-y-1 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-medium text-amber-400">
-                      {importResult.error_count}{' '}
-                      {importResult.error_count === 1 ? 'row' : 'rows'} skipped:
-                    </p>
-                    {importResult.errors.map((err, i) => (
-                      <p key={i} className="text-xs text-muted-foreground">
-                        Row {err.row}
-                        {err.student_number
-                          ? ` (${err.student_number})`
-                          : ''}: {err.message}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
 
           {groups.length > 0 && students.length > 0 && (
             <form
