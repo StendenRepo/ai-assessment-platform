@@ -7,6 +7,8 @@ class ModuleStatus(str, enum.Enum):
 
 
 class ProjectStatus(str, enum.Enum):
+    draft = "draft"
+    ready = "ready"
     active = "active"
     completed = "completed"
     archived = "archived"

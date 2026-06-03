@@ -17,8 +17,14 @@ class Project(Base):
     group_name = Column(String, nullable=True)
     deadline = Column(Date, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    status = Column(Enum(ProjectStatus), default=ProjectStatus.active)
+    status = Column(Enum(ProjectStatus), default=ProjectStatus.draft, nullable=False)
 
     # Relationships
     module = relationship("Module", back_populates="projects")
     students = relationship("Student", back_populates="project")
+    rubric_criteria = relationship(
+        "RubricCriterion",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
