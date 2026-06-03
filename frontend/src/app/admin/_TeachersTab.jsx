@@ -288,7 +288,7 @@ export function TeachersTab({ departments, currentUserId }) {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, department_id: e.target.value }))
                 }
-                className={inputCls}
+                className={`${inputCls} cursor-pointer`}
               >
                 <option value="">— No department —</option>
                 {departments.map((d) => (

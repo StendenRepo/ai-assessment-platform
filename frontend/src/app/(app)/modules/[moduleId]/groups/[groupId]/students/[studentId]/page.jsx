@@ -540,7 +540,7 @@ export default function StudentAssessmentPage() {
           {!isRecording && (
             <button
               onClick={() => setShowConsent(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0 cursor-pointer"
             >
               <Mic size={15} /> Start Assessment
             </button>
@@ -556,7 +556,7 @@ export default function StudentAssessmentPage() {
                 <button
                   key={tab}
                   onClick={() => setCurrentTab(i)}
-                  className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                  className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 cursor-pointer ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                 >
                   {tab}
                 </button>
@@ -566,10 +566,6 @@ export default function StudentAssessmentPage() {
             <div className="p-6">
               {currentTab === 0 && (
                 <div className="space-y-6">
-                  {/* ── Upload section ── */}
-                  <EvidenceUpload studentId={studentId} />
-
-                  {/* ── Contributions list ── */}
                   <div className="space-y-3">
                     <div className="mb-4">
                       <h3 className="text-sm font-semibold text-foreground">
@@ -590,27 +586,13 @@ export default function StudentAssessmentPage() {
                               expanded === contrib.id ? null : contrib.id
                             )
                           }
-                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left"
+                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer"
                         >
                           <span
                             className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
                           >
                             {contributionTypeLabel[contrib.type]}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-foreground">
-                              {contrib.title}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-0.5">
-                              {contrib.evidenceFiles.length} evidence file
-                              {contrib.evidenceFiles.length !== 1 ? 's' : ''}
-                            </div>
-                          </div>
-                          {contrib.aiConfidence && (
-                            <span className="text-xs rounded-full px-2.5 py-1 bg-accent/10 text-accent ring-1 ring-accent/20 font-medium shrink-0">
-                              AI {(contrib.aiConfidence * 100).toFixed(0)}%
-                            </span>
-                          )}
                           {expanded === contrib.id ? (
                             <ChevronDown
                               size={15}
@@ -642,7 +624,7 @@ export default function StudentAssessmentPage() {
                                       <span className="text-xs font-semibold text-foreground font-mono">
                                         {ev.fileName}
                                       </span>
-                                      <button className="text-xs text-primary hover:text-primary/80 transition-colors">
+                                      <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
                                         View source →
                                       </button>
                                     </div>
@@ -653,9 +635,9 @@ export default function StudentAssessmentPage() {
                                     )}
                                     <div className="text-[10px] text-muted-foreground">
                                       Uploaded{' '}
-                                      {new Date(
-                                        ev.uploadDate
-                                      ).toLocaleDateString('en-US')}
+                                      {new Date(ev.uploadDate).toLocaleDateString(
+                                        'en-US'
+                                      )}
                                     </div>
                                   </div>
                                 ))}
@@ -688,6 +670,8 @@ export default function StudentAssessmentPage() {
                       </div>
                     ))}
                   </div>
+
+                  <EvidenceUpload studentId={studentId} />
                 </div>
               )}
 
@@ -760,10 +744,10 @@ export default function StudentAssessmentPage() {
                     </div>
                   ))}
                   <div className="flex gap-3 justify-end pt-2">
-                    <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+                    <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer">
                       Save Draft
                     </button>
-                    <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+                    <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors cursor-pointer">
                       Complete Assessment
                     </button>
                   </div>
@@ -866,7 +850,7 @@ export default function StudentAssessmentPage() {
                   setShowConsent(false);
                   setConsentGiven(false);
                 }}
-                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -876,7 +860,7 @@ export default function StudentAssessmentPage() {
                   setShowConsent(false);
                   setIsRecording(true);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
               >
                 <Mic size={14} /> Start Recording
               </button>

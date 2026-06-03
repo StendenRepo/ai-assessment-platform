@@ -9,7 +9,7 @@ import {
   Clock,
   TrendingUp,
 } from 'lucide-react';
-import { listModules } from '@/lib/modulesApi';
+import { listModules, listProjectStudents } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
@@ -26,17 +26,51 @@ const statusConfig = {
 export default function DashboardPage() {
   const router = useRouter();
   const [modules, setModules] = useState([]);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    listModules()
-      .then((data) => {
-        setModules(data);
+    let mounted = true;
+    let running = false;
+
+    const refreshDashboard = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const moduleList = await listModules();
+        const studentLists = await Promise.all(
+          moduleList.map((module) => listProjectStudents(module.id))
+        );
+
+        const pendingCount = studentLists.reduce(
+          (sum, students) =>
+            sum +
+            students.filter(
+              (student) => student.assessment_status === 'in-progress'
+            ).length,
+          0
+        );
+
+        if (!mounted) return;
+        setModules(moduleList);
+        setPendingReviewCount(pendingCount);
         setError('');
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      } catch (e) {
+        if (mounted) setError(e.message);
+      } finally {
+        if (mounted) setLoading(false);
+        running = false;
+      }
+    };
+
+    refreshDashboard();
+    const intervalId = setInterval(refreshDashboard, 30000);
+
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
   const activeModules = useMemo(
@@ -75,7 +109,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Pending Review',
-      value: '8',
+      value: String(pendingReviewCount),
       icon: AlertTriangle,
       color: 'text-orange-400',
     },
@@ -119,7 +153,7 @@ export default function DashboardPage() {
           </h2>
           <button
             onClick={() => router.push(APP_PATHS.modules)}
-            className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors cursor-pointer"
           >
             View all <ArrowRight size={14} />
           </button>
