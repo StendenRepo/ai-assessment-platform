@@ -20,7 +20,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
-  mockStudents,
   mockContributions,
   mockCriteria,
   mockAIInsights,
@@ -31,6 +30,7 @@ const API_BASE_STUDENT =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { listProjectStudents } from '@/lib/modulesApi';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -455,43 +455,9 @@ const contributionTypeColor = {
 };
 
 export default function StudentAssessmentPage() {
-  const { studentId } = useParams();
-
-  // Support both mock data and real API students
-  const isRealUUID = UUID_RE.test(studentId);
-  const mockStudent = mockStudents.find((s) => s.id === studentId);
-
-  const [apiStudent, setApiStudent] = useState(null);
-  const [studentLoading, setStudentLoading] = useState(isRealUUID);
-
-  useEffect(() => {
-    if (!isRealUUID) return;
-    const load = async () => {
-      try {
-        const r = await fetch(
-          `${API_BASE_STUDENT}/api/v1/students/${studentId}`,
-          { headers: authHeaders() }
-        );
-        setApiStudent(r.ok ? await r.json() : null);
-      } catch {
-        setApiStudent(null);
-      } finally {
-        setStudentLoading(false);
-      }
-    };
-    load();
-  }, [studentId, isRealUUID]);
-
-  const student = isRealUUID
-    ? apiStudent
-      ? {
-          name: apiStudent.name,
-          studentNumber: apiStudent.student_number,
-          email: '',
-        }
-      : null
-    : mockStudent;
-
+  const { moduleId, studentId } = useParams();
+  const [student, setStudent] = useState(null);
+  const [loadError, setLoadError] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
   const [expanded, setExpanded] = useState(null);
   const [scores, setScores] = useState({});
@@ -504,6 +470,16 @@ export default function StudentAssessmentPage() {
   const timerRef = useRef(null);
 
   useEffect(() => {
+    listProjectStudents(moduleId)
+      .then((students) => {
+        const found = students.find((s) => s.id === studentId);
+        if (found) setStudent(found);
+        else setLoadError('Student not found in this module.');
+      })
+      .catch((e) => setLoadError(e.message));
+  }, [moduleId, studentId]);
+
+  useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
     } else {
@@ -514,15 +490,15 @@ export default function StudentAssessmentPage() {
     };
   }, [isRecording, isPaused]);
 
-  if (studentLoading)
+  if (loadError)
+    return <div className="text-sm text-red-400 p-4">{loadError}</div>;
+
+  if (!student)
     return (
       <div className="flex justify-center py-20">
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
-
-  if (!student)
-    return <div className="text-muted-foreground">Student not found</div>;
 
   const overallScore =
     Object.values(scores).length > 0
@@ -550,7 +526,7 @@ export default function StudentAssessmentPage() {
               {student.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {student.studentNumber} · {student.email}
+              {student.student_number}
             </p>
           </div>
           <div className="text-center border-l border-border pl-6 shrink-0">

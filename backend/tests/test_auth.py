@@ -1,5 +1,4 @@
 import uuid
-import pytest
 
 
 LOGIN_URL = "/api/v1/auth/login"
