@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2,
@@ -83,6 +83,24 @@ export default function ModulePage() {
   const [deletingRubric, setDeletingRubric] = useState(false);
   const [rubricDragActive, setRubricDragActive] = useState(false);
   const [rubricError, setRubricError] = useState('');
+
+  const groupProgress = useMemo(() => {
+    return students.reduce((summary, student) => {
+      const current = summary[student.project_id] ?? {
+        total: 0,
+        completed: 0,
+        inProgress: 0,
+        notStarted: 0,
+      };
+      current.total += 1;
+      if (student.assessment_status === 'completed') current.completed += 1;
+      else if (student.assessment_status === 'in-progress')
+        current.inProgress += 1;
+      else current.notStarted += 1;
+      summary[student.project_id] = current;
+      return summary;
+    }, {});
+  }, [students]);
 
   useEffect(() => {
     Promise.all([
@@ -325,39 +343,82 @@ export default function ModulePage() {
               </div>
             ) : (
               <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-                {groups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
-                      )
-                    }
-                    className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">
-                        {group.name}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
-                        <span className="flex items-center gap-1.5 leading-none">
-                          <Users size={13} />
-                          {group.student_count}{' '}
-                          {group.student_count === 1 ? 'student' : 'students'}
-                        </span>
-                        <span className="flex items-center gap-1.5 leading-none">
-                          <FileText size={13} />
-                          {group.file_count ?? 0}{' '}
-                          {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Open group →
-                    </span>
-                  </button>
-                ))}
+                {groups.map((group) =>
+                  (() => {
+                    const progress = groupProgress[group.id] ?? {
+                      total: 0,
+                      completed: 0,
+                      inProgress: 0,
+                      notStarted: 0,
+                    };
+                    const progressPercent =
+                      progress.total > 0
+                        ? Math.round(
+                            (progress.completed / progress.total) * 100
+                          )
+                        : 0;
+
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
+                          )
+                        }
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
+                      >
+                        <div className="flex-1 min-w-0 space-y-3">
+                          <div className="text-sm font-semibold text-foreground">
+                            {group.name}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                            <span className="flex items-center gap-1.5 leading-none">
+                              <Users size={13} />
+                              {group.student_count}{' '}
+                              {group.student_count === 1
+                                ? 'student'
+                                : 'students'}
+                            </span>
+                            <span className="flex items-center gap-1.5 leading-none">
+                              <FileText size={13} />
+                              {group.file_count ?? 0}{' '}
+                              {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5 pr-3">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground/80">
+                                Assessment progress
+                              </span>
+                              <span className="font-semibold text-foreground">
+                                {progress.completed} completed
+                              </span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span className="font-medium">
+                                {progressPercent}% complete
+                              </span>
+                              {progress.inProgress > 0 && (
+                                <span>{progress.inProgress} in progress</span>
+                              )}
+                              {progress.notStarted > 0 && (
+                                <span>{progress.notStarted} not started</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })()
+                )}
               </div>
             )}
           </div>
