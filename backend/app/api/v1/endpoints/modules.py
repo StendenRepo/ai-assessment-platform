@@ -206,6 +206,43 @@ def get_module(
     return _module_to_out(module, project_count, student_count, db)
 
 
+@router.patch("/{module_id}", response_model=ModuleOut, summary="Rename a module")
+def rename_module(
+    module_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Update the name (and optionally academic_year) of a module."""
+    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    new_name = payload.get("name", "").strip()
+    if not new_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="name must not be empty",
+        )
+    module.name = new_name
+    if "academic_year" in payload:
+        module.academic_year = payload["academic_year"]
+    db.commit()
+    db.refresh(module)
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module")
+def delete_module(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Permanently delete a module and all its groups, students and evidence."""
+    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    db.delete(module)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # ---------------------------------------------------------------------------
 # Rubric upload
 # ---------------------------------------------------------------------------
