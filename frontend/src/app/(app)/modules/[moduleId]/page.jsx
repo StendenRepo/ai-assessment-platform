@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   CheckCircle2,
   FileSpreadsheet,
   FileText,
   FolderPlus,
+  Search,
   RefreshCw,
   Trash2,
   UserCheck,
@@ -54,6 +55,7 @@ export default function ModulePage() {
 
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -83,6 +85,34 @@ export default function ModulePage() {
   const [deletingRubric, setDeletingRubric] = useState(false);
   const [rubricDragActive, setRubricDragActive] = useState(false);
   const [rubricError, setRubricError] = useState('');
+
+  const groupProgress = useMemo(() => {
+    return students.reduce((summary, student) => {
+      const current = summary[student.project_id] ?? {
+        total: 0,
+        completed: 0,
+        inProgress: 0,
+        notStarted: 0,
+      };
+      current.total += 1;
+      if (student.assessment_status === 'completed') current.completed += 1;
+      else if (student.assessment_status === 'in-progress')
+        current.inProgress += 1;
+      else current.notStarted += 1;
+      summary[student.project_id] = current;
+      return summary;
+    }, {});
+  }, [students]);
+
+  const filteredStudents = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter(
+      (student) =>
+        student.name.toLowerCase().includes(query) ||
+        student.student_number.toLowerCase().includes(query)
+    );
+  }, [students, studentSearch]);
 
   useEffect(() => {
     Promise.all([
@@ -325,39 +355,82 @@ export default function ModulePage() {
               </div>
             ) : (
               <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-                {groups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
-                      )
-                    }
-                    className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">
-                        {group.name}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
-                        <span className="flex items-center gap-1.5 leading-none">
-                          <Users size={13} />
-                          {group.student_count}{' '}
-                          {group.student_count === 1 ? 'student' : 'students'}
-                        </span>
-                        <span className="flex items-center gap-1.5 leading-none">
-                          <FileText size={13} />
-                          {group.file_count ?? 0}{' '}
-                          {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Open group →
-                    </span>
-                  </button>
-                ))}
+                {groups.map((group) =>
+                  (() => {
+                    const progress = groupProgress[group.id] ?? {
+                      total: 0,
+                      completed: 0,
+                      inProgress: 0,
+                      notStarted: 0,
+                    };
+                    const progressPercent =
+                      progress.total > 0
+                        ? Math.round(
+                            (progress.completed / progress.total) * 100
+                          )
+                        : 0;
+
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `${APP_PATHS.modules}/${moduleId}/groups/${group.id}`
+                          )
+                        }
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-secondary/50 text-left transition-colors"
+                      >
+                        <div className="flex-1 min-w-0 space-y-3">
+                          <div className="text-sm font-semibold text-foreground">
+                            {group.name}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-2">
+                            <span className="flex items-center gap-1.5 leading-none">
+                              <Users size={13} />
+                              {group.student_count}{' '}
+                              {group.student_count === 1
+                                ? 'student'
+                                : 'students'}
+                            </span>
+                            <span className="flex items-center gap-1.5 leading-none">
+                              <FileText size={13} />
+                              {group.file_count ?? 0}{' '}
+                              {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
+                            </span>
+                          </div>
+                          <div className="space-y-1.5 pr-3">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground/80">
+                                Assessment progress
+                              </span>
+                              <span className="font-semibold text-foreground">
+                                {progress.completed} completed
+                              </span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-secondary overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-primary transition-all"
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              <span className="font-medium">
+                                {progressPercent}% complete
+                              </span>
+                              {progress.inProgress > 0 && (
+                                <span>{progress.inProgress} in progress</span>
+                              )}
+                              {progress.notStarted > 0 && (
+                                <span>{progress.notStarted} not started</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })()
+                )}
               </div>
             )}
           </div>
@@ -367,6 +440,20 @@ export default function ModulePage() {
               <Users size={16} />
               Students ({students.length})
             </h2>
+
+            <div className="rounded-lg bg-card border border-border px-4 py-3 flex items-center gap-3">
+              <Search size={15} className="text-muted-foreground shrink-0" />
+              <input
+                type="text"
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search students by name or number"
+                className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {filteredStudents.length} shown
+              </span>
+            </div>
 
             {students.length === 0 ? (
               <div className="rounded-lg bg-card border border-border p-10 text-center">
@@ -381,9 +468,22 @@ export default function ModulePage() {
                   Add students using the form to set up the assessment
                 </p>
               </div>
+            ) : filteredStudents.length === 0 ? (
+              <div className="rounded-lg bg-card border border-border p-10 text-center">
+                <Search
+                  size={28}
+                  className="mx-auto text-muted-foreground mb-3 opacity-50"
+                />
+                <p className="text-sm font-medium text-foreground">
+                  No students found
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Try a different name or student number.
+                </p>
+              </div>
             ) : (
               <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-                {students.map((student) => (
+                {filteredStudents.map((student) => (
                   <div
                     key={student.id}
                     onClick={() =>
@@ -564,14 +664,14 @@ export default function ModulePage() {
             <button
               type="submit"
               disabled={groupSubmitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {groupSubmitting ? 'Creating…' : 'Create Group'}
             </button>
           </form>
           <form
             onSubmit={handleAdd}
-            className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
+            className="rounded-lg bg-card border border-border p-5 space-y-4"
           >
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <UserPlus size={15} />
@@ -606,7 +706,7 @@ export default function ModulePage() {
               <select
                 value={selectedGroupId}
                 onChange={(e) => setSelectedGroupId(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} cursor-pointer`}
               >
                 <option value="">Default individual group</option>
                 {groups.map((group) => (
@@ -620,7 +720,7 @@ export default function ModulePage() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               {submitting ? 'Adding…' : 'Add Student'}
             </button>
@@ -650,7 +750,7 @@ export default function ModulePage() {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
               <Upload size={15} />
               {importing ? 'Importing…' : 'Choose file'}
@@ -703,7 +803,7 @@ export default function ModulePage() {
                 <select
                   value={assignStudentId}
                   onChange={(e) => setAssignStudentId(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer`}
                 >
                   <option value="">— Select student —</option>
                   {students.map((s) => (
@@ -720,7 +820,7 @@ export default function ModulePage() {
                 <select
                   value={assignGroupId}
                   onChange={(e) => setAssignGroupId(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} cursor-pointer`}
                 >
                   <option value="">— Select group —</option>
                   {groups.map((g) => (
@@ -736,7 +836,7 @@ export default function ModulePage() {
               <button
                 type="submit"
                 disabled={assigning}
-                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
                 {assigning ? 'Assigning…' : 'Assign'}
               </button>

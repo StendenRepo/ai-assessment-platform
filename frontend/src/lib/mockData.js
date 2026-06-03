@@ -1,39 +1,3 @@
-export const mockStudents = [
-  {
-    id: 'student-1',
-    name: 'Lisa Anderson',
-    studentNumber: 'S2034567',
-    email: 'l.anderson@student.edu',
-    contributions: [],
-    assessmentStatus: 'completed',
-    overallScore: 8.5,
-  },
-  {
-    id: 'student-2',
-    name: 'Thomas Johnson',
-    studentNumber: 'S2034789',
-    email: 't.johnson@student.edu',
-    contributions: [],
-    assessmentStatus: 'in-progress',
-  },
-  {
-    id: 'student-3',
-    name: 'Maya Patel',
-    studentNumber: 'S2035012',
-    email: 'm.patel@student.edu',
-    contributions: [],
-    assessmentStatus: 'not-started',
-  },
-  {
-    id: 'student-4',
-    name: 'Mark Davis',
-    studentNumber: 'S2034891',
-    email: 'm.davis@student.edu',
-    contributions: [],
-    assessmentStatus: 'in-progress',
-  },
-];
-
 export const mockContributions = [
   {
     id: 'contrib-1',

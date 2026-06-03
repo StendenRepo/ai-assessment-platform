@@ -16,6 +16,7 @@ from app.models.project import Project
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.schemas.module import ModuleCreate, ModuleGroupCreate, ModuleOut, RubricFileOut, StudentGroupUpdate
+from app.schemas.overlap import OverlapAnalysisOut, OverlapSignalOut, OverlapWarningOut
 from app.schemas.project import (
     ImportRowError,
     ProjectOut,
@@ -24,6 +25,7 @@ from app.schemas.project import (
     StudentOut,
 )
 from app.services.module_service import ModuleService
+from app.services.overlap_service import OverlapService
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -93,12 +95,14 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
     )
 
 
-def _owned_modules_query(db: Session, teacher: Teacher):
+def _visible_modules_query(db: Session, teacher: Teacher):
+    if teacher.is_admin:
+        return db.query(Module)
     return db.query(Module).filter(Module.teacher_id == teacher.id)
 
 
-def _get_owned_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
-    module = _owned_modules_query(db, teacher).filter(Module.id == module_id).first()
+def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
+    module = _visible_modules_query(db, teacher).filter(Module.id == module_id).first()
     if not module:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
     return module
@@ -118,6 +122,39 @@ def _module_project_counts(db: Session, module_id: str) -> tuple[int, int]:
     for project in projects:
         student_count += db.query(Student).filter(Student.project_id == project.id).count()
     return project_count, student_count
+
+
+def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+    return OverlapSignalOut(
+        id=str(signal.id),
+        student_a_id=str(signal.student_a_id),
+        student_a_name=student_names.get(signal.student_a_id, "Unknown student"),
+        student_b_id=str(signal.student_b_id),
+        student_b_name=student_names.get(signal.student_b_id, "Unknown student"),
+        evidence_a_id=str(signal.evidence_a_id),
+        evidence_a_name=evidence_names.get(signal.evidence_a_id, "Unknown evidence"),
+        evidence_b_id=str(signal.evidence_b_id),
+        evidence_b_name=evidence_names.get(signal.evidence_b_id, "Unknown evidence"),
+        overlap_type=signal.overlap_type.value if signal.overlap_type else "textual",
+        confidence=round(float(signal.confidence or 0.0), 2),
+        snippet=signal.snippet,
+        detected_at=signal.detected_at,
+    )
+
+
+def _module_signal_context(db: Session, module: Module):
+    project_ids = [p.id for p in db.query(Project).filter(Project.module_id == module.id).all()]
+    if not project_ids:
+        return {}, {}
+
+    students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
+    student_names = {s.id: s.name for s in students}
+    student_ids = [s.id for s in students]
+    evidence_names = {}
+    if student_ids:
+        for e in db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).all():
+            evidence_names[e.id] = e.file_name
+    return student_names, evidence_names
 
 
 def _get_or_create_default_group(db: Session, module: Module) -> Project:
@@ -171,7 +208,7 @@ def list_modules(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    modules = _owned_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
+    modules = _visible_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
@@ -202,7 +239,7 @@ def get_module(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
 
@@ -215,7 +252,7 @@ def rename_module(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     """Update the name (and optionally academic_year) of a module."""
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     new_name = payload.get("name", "").strip()
     if not new_name:
         raise HTTPException(
@@ -245,7 +282,7 @@ def delete_module(
     # Evidence files are stored relative to <UPLOAD_DIR>/evidence/
     EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
 
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
 
     # Collect and delete evidence files on disk ──────────────────────────
     project_ids = _module_project_ids(db, module.id)
@@ -313,7 +350,13 @@ def upload_rubric(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = ModuleService.upload_rubric(module_id, file, current_teacher.id, db)
+    module = ModuleService.upload_rubric(
+        module_id,
+        file,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
 
@@ -324,7 +367,12 @@ def delete_rubric(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    ModuleService.delete_rubric(module_id, current_teacher.id, db)
+    ModuleService.delete_rubric(
+        module_id,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -339,7 +387,7 @@ def list_module_groups(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     projects = (
         db.query(Project)
         .filter(Project.module_id == module.id)
@@ -380,7 +428,7 @@ def create_module_group(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = Project(
         module_id=module.id,
         name=payload.name,
@@ -403,7 +451,7 @@ def list_module_students(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
     if not project_ids:
         return []
@@ -431,7 +479,7 @@ def add_module_student(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
     duplicate = _student_duplicate_query(db, _module_project_ids(db, module.id), payload.student_number)
@@ -461,7 +509,7 @@ def move_student_to_group(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
     student = (
         db.query(Student)
@@ -491,7 +539,7 @@ async def import_module_students(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, project_id)
 
     contents = await file.read()
@@ -556,3 +604,51 @@ async def import_module_students(
         errors=errors,
         students=[_student_to_out(s) for s in to_add],
     )
+
+
+# ---------------------------------------------------------------------------
+# Overlap detection
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{module_id}/overlap/signals", response_model=List[OverlapSignalOut])
+def list_module_overlap_signals(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signals = OverlapService.get_module_signals(db, str(module.id))
+    student_names, evidence_names = _module_signal_context(db, module)
+    return [_signal_to_out(signal, student_names, evidence_names) for signal in signals]
+
+
+@router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)
+def analyze_module_overlap(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    generated = OverlapService.analyze_module_overlap(db, str(module.id))
+    warning_data = OverlapService.build_warning(generated)
+    student_names, evidence_names = _module_signal_context(db, module)
+
+    return OverlapAnalysisOut(
+        module_id=str(module.id),
+        generated_count=len(generated),
+        warning=OverlapWarningOut(**warning_data),
+        signals=[_signal_to_out(signal, student_names, evidence_names) for signal in generated],
+    )
+
+
+@router.get("/{module_id}/overlap/warning", response_model=OverlapWarningOut)
+def get_module_overlap_warning(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signals = OverlapService.get_module_signals(db, str(module.id))
+    warning_data = OverlapService.build_warning(signals)
+    return OverlapWarningOut(**warning_data)

@@ -1,10 +1,7 @@
-"""
-Tests for module rename (PATCH /modules/{id}) and delete (DELETE /modules/{id}).
-"""
-
 import uuid
-
 import pytest
+
+from app.core.security import hash_password
 
 LOGIN_URL = "/api/v1/auth/login"
 MODULES_URL = "/api/v1/modules"
@@ -51,14 +48,16 @@ def modules_teacher(db):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _login(client):
-    res = client.post(LOGIN_URL, json={"email": _TEACHER_EMAIL, "password": _TEACHER_PASSWORD})
+def _login(client, email: str = _TEACHER_EMAIL, password: str = _TEACHER_PASSWORD) -> str:
+    """Return a raw access token. Defaults to the modules_teacher credentials."""
+    res = client.post(LOGIN_URL, json={"email": email, "password": password})
     assert res.status_code == 200, res.text
     return res.json()["access_token"]
 
 
-def _auth(client):
-    return {"Authorization": f"Bearer {_login(client)}"}
+def _auth(client, email: str = _TEACHER_EMAIL, password: str = _TEACHER_PASSWORD) -> dict:
+    """Return an Authorization header dict."""
+    return {"Authorization": f"Bearer {_login(client, email, password)}"}
 
 
 def _create_module(client, headers, name="Test Module", academic_year="2024-2025"):
@@ -340,3 +339,50 @@ class TestDeleteModule:
         assert res.status_code == 204
 
         assert not fake_file.exists(), "Evidence file must be removed from disk after module delete"
+
+def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db, teacher):
+    from app.models.file_record import FileRecord
+    from app.models.module import Module
+    from app.models.teacher import Teacher
+
+    admin = Teacher(
+        id=uuid.uuid4(),
+        name="Admin Teacher",
+        email="admin@test.com",
+        password_hash=hash_password("password123"),
+        is_admin=True,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+
+    module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name="Owned by non-admin")
+    db.add(module)
+    db.commit()
+    db.refresh(module)
+
+    try:
+        headers = _auth(client, "admin@test.com", "password123")
+
+        upload = client.post(
+            f"{MODULES_URL}/{module.id}/rubric",
+            files={"file": ("rubric.pdf", b"%PDF-1.4 test rubric", "application/pdf")},
+            headers=headers,
+        )
+        assert upload.status_code == 200
+        body = upload.json()
+        assert body["id"] == str(module.id)
+        assert body["rubric_file"] is not None
+        assert body["rubric_file"]["file_name"] == "rubric.pdf"
+
+        remove = client.delete(f"{MODULES_URL}/{module.id}/rubric", headers=headers)
+        assert remove.status_code == 204
+
+        db.refresh(module)
+        assert module.rubric_file_id is None
+        assert db.query(FileRecord).count() == 0
+    finally:
+        db.query(FileRecord).delete()
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.query(Teacher).filter(Teacher.id == admin.id).delete()
+        db.commit()

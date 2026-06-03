@@ -2,7 +2,6 @@ export const APP_PATHS = {
   root: '/',
   dashboard: '/dashboard',
   admin: '/admin',
-  projects: '/projects',
   modules: '/modules',
   moduleNew: '/modules/new',
   reports: '/reports',
