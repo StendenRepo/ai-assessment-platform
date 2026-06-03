@@ -153,7 +153,7 @@ export default function DashboardPage() {
           </h2>
           <button
             onClick={() => router.push(APP_PATHS.modules)}
-            className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors cursor-pointer"
           >
             View all <ArrowRight size={14} />
           </button>
