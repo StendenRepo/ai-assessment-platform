@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
+from app.config import settings
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
 from app.models.enums import ProjectStatus
@@ -89,6 +90,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         id=str(m.id),
         name=m.name,
         academic_year=m.academic_year,
+        deadline=m.deadline,
         status=m.status.value if m.status else "active",
         created_at=m.created_at,
         project_count=project_count,
@@ -229,6 +231,7 @@ def create_module(
         teacher_id=current_teacher.id,
         name=payload.name,
         academic_year=payload.academic_year,
+        deadline=payload.deadline,
     )
     db.add(module)
     db.commit()
@@ -245,6 +248,100 @@ def get_module(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
+
+
+@router.patch("/{module_id}", response_model=ModuleOut, summary="Rename a module")
+def rename_module(
+    module_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Update the name (and optionally academic_year) of a module."""
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    new_name = payload.get("name", "").strip()
+    if not new_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="name must not be empty",
+        )
+    module.name = new_name
+    if "academic_year" in payload:
+        module.academic_year = payload["academic_year"]
+    db.commit()
+    db.refresh(module)
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module")
+def delete_module(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Permanently delete a module and all its groups, students, evidence records
+    and the associated files on disk (evidence uploads + rubric)."""
+    from pathlib import Path
+    from app.services.module_service import RUBRIC_UPLOAD_DIR
+
+    # Evidence files are stored relative to <UPLOAD_DIR>/evidence/
+    EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Collect and delete evidence files on disk ──────────────────────────
+    project_ids = _module_project_ids(db, module.id)
+    if project_ids:
+        students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
+        student_ids = [s.id for s in students]
+        if student_ids:
+            evidence_records = (
+                db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).all()
+            )
+            for ev in evidence_records:
+                try:
+                    file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+                    if file_path.exists():
+                        file_path.unlink()
+                except OSError:
+                    pass  # Log in production; don't block the delete
+
+    # Delete rubric file on disk ─────────────────────────────────────────
+    if module.rubric_file_id:
+        rubric_record = (
+            db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+        )
+        if rubric_record:
+            try:
+                rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_record.path
+                if rubric_path.exists():
+                    rubric_path.unlink()
+                # Remove the now-empty module rubric directory if possible
+                rubric_dir = RUBRIC_UPLOAD_DIR / str(module.id)
+                if rubric_dir.exists() and not any(rubric_dir.iterdir()):
+                    rubric_dir.rmdir()
+            except OSError:
+                pass
+
+    # Delete DB records explicitly (no ORM cascade configured) ──────────
+    # Delete in leaf-to-root order to respect FK constraints.
+    if project_ids:
+        students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
+        student_ids = [s.id for s in students]
+        if student_ids:
+            db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(Student).filter(Student.project_id.in_(project_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Project).filter(Project.module_id == module.id).delete(
+        synchronize_session=False
+    )
+    db.delete(module)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

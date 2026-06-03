@@ -53,7 +53,8 @@ export default function NewProjectPage() {
     try {
       const createdModule = await createModule({
         name: projectName.trim(),
-        academic_year: className.trim() || academicYear.trim() || null,
+        academic_year: academicYear.trim() || null,
+        deadline: deadline || null,
       });
       router.push(`${APP_PATHS.modules}/${createdModule.id}`);
     } catch (error) {
