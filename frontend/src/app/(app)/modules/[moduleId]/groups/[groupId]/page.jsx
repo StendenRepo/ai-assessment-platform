@@ -28,6 +28,15 @@ const assessmentStatusConfig = {
   },
 };
 
+function formatAsDdMmYyyy(value) {
+  if (!value) return '—';
+  const parts = String(value).split('-');
+  if (parts.length !== 3) return value;
+  const [year, month, day] = parts;
+  if (!year || !month || !day) return value;
+  return `${day}-${month}-${year}`;
+}
+
 export default function GroupDetailPage() {
   const { moduleId, groupId } = useParams();
   const router = useRouter();
@@ -86,7 +95,7 @@ export default function GroupDetailPage() {
           {[
             { label: 'Module', value: module.name },
             { label: 'Academic Year', value: module.academic_year || '—' },
-            { label: 'Deadline', value: module.deadline || '—' },
+            { label: 'Deadline', value: formatAsDdMmYyyy(module.deadline) },
           ].map((item) => (
             <div key={item.label} className="px-6 py-4">
               <div className="text-xs text-muted-foreground mb-1">

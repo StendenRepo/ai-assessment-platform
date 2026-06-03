@@ -14,6 +14,7 @@ class Module(Base):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
     name = Column(String, nullable=False)
     academic_year = Column(String)
+    deadline = Column(String)
     rubric_file_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
     module_book_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
