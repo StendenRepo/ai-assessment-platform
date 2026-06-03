@@ -386,3 +386,75 @@ def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db
         db.query(Module).filter(Module.id == module.id).delete()
         db.query(Teacher).filter(Teacher.id == admin.id).delete()
         db.commit()
+
+
+def test_teacher_can_upload_replace_and_delete_module_book(client, db, teacher):
+    from app.models.file_record import FileRecord
+    from app.models.module import Module
+
+    module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name="With module book")
+    db.add(module)
+    db.commit()
+    db.refresh(module)
+
+    try:
+        headers = _auth(client, "teacher@test.com", "password123")
+
+        upload = client.post(
+            f"{MODULES_URL}/{module.id}/module-book",
+            files={"file": ("book.pdf", b"%PDF-1.4 module book", "application/pdf")},
+            headers=headers,
+        )
+        assert upload.status_code == 200
+        body = upload.json()
+        assert body["id"] == str(module.id)
+        assert body["module_book_file"] is not None
+        assert body["module_book_file"]["file_name"] == "book.pdf"
+
+        # Replacing swaps the linked file and removes the previous record.
+        replace = client.post(
+            f"{MODULES_URL}/{module.id}/module-book",
+            files={
+                "file": (
+                    "book.docx",
+                    b"PK\x03\x04 module book v2",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+            headers=headers,
+        )
+        assert replace.status_code == 200
+        assert replace.json()["module_book_file"]["file_name"] == "book.docx"
+        assert db.query(FileRecord).count() == 1
+
+        remove = client.delete(f"{MODULES_URL}/{module.id}/module-book", headers=headers)
+        assert remove.status_code == 204
+
+        db.refresh(module)
+        assert module.module_book_id is None
+        assert db.query(FileRecord).count() == 0
+    finally:
+        db.query(FileRecord).delete()
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.commit()
+
+
+def test_module_book_rejects_unsupported_extension(client, db, teacher):
+    from app.models.module import Module
+
+    module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name="Bad upload")
+    db.add(module)
+    db.commit()
+    db.refresh(module)
+
+    try:
+        headers = _auth(client, "teacher@test.com", "password123")
+        res = client.post(
+            f"{MODULES_URL}/{module.id}/module-book",
+            files={"file": ("notes.txt", b"plain text", "text/plain")},
+            headers=headers,
+        )
+        assert res.status_code == 422
+    finally:
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.commit()

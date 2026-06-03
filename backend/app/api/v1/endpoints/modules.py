@@ -118,6 +118,9 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
     rubric = None
     if m.rubric_file_id:
         rubric = db.query(FileRecord).filter(FileRecord.id == m.rubric_file_id).first()
+    module_book = None
+    if m.module_book_id:
+        module_book = db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
     return ModuleOut(
         id=str(m.id),
         name=m.name,
@@ -128,6 +131,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         project_count=project_count,
         student_count=student_count,
         rubric_file=_rubric_file_out(rubric),
+        module_book_file=_rubric_file_out(module_book),
     )
 
 
@@ -405,6 +409,44 @@ def delete_rubric(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     ModuleService.delete_rubric(
+        module_id,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Module book upload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{module_id}/module-book", response_model=ModuleOut)
+def upload_module_book(
+    module_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = ModuleService.upload_module_book(
+        module_id,
+        file,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.delete("/{module_id}/module-book", status_code=status.HTTP_204_NO_CONTENT)
+def delete_module_book(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    ModuleService.delete_module_book(
         module_id,
         current_teacher.id,
         db,

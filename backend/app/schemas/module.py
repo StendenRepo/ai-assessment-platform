@@ -93,5 +93,6 @@ class ModuleOut(BaseModel):
     project_count: int = 0
     student_count: int = 0
     rubric_file: Optional[RubricFileOut] = None
+    module_book_file: Optional[RubricFileOut] = None
 
     model_config = {"from_attributes": True}
