@@ -16,12 +16,14 @@ def create_notification(
     type: NotificationType,
     message: str,
     assessment_id: Optional[UUID] = None,
+    recording_id: Optional[UUID] = None,
     due_date: Optional[datetime] = None,
     commit: bool = True,
 ) -> Notification:
     notification = Notification(
         teacher_id=teacher_id,
         assessment_id=assessment_id,
+        recording_id=recording_id,
         type=type,
         message=message,
         due_date=due_date,
@@ -52,12 +54,12 @@ def mark_read(db: Session, *, notification: Notification) -> Notification:
     return notification
 
 
-def reminder_exists(db: Session, *, assessment_id: UUID) -> bool:
-    """Whether a deletion reminder was already created for this assessment."""
+def reminder_exists(db: Session, *, recording_id: UUID) -> bool:
+    """Whether a deletion reminder was already created for this recording."""
     return (
         db.query(Notification)
         .filter(
-            Notification.assessment_id == assessment_id,
+            Notification.recording_id == recording_id,
             Notification.type == NotificationType.deletion_reminder,
         )
         .first()

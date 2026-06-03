@@ -38,6 +38,7 @@ export function DepartmentsTab({ onDataChange }) {
   }, [onDataChange]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDepartments();
   }, [fetchDepartments]);
 

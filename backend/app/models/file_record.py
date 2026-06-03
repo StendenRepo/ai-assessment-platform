@@ -20,3 +20,7 @@ class FileRecord(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     deleted_at = Column(DateTime, nullable=True)
+    # Number of times the retention expiry has been extended (GDPR cap: max 2).
+    extension_count = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )

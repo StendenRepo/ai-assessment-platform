@@ -1,4 +1,5 @@
 """Tests for FR-06 recording, consent, transcription and retention."""
+import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -11,6 +12,7 @@ from app.models.audit_event import AuditEvent
 from app.models.enums import ConsentStatus, NotificationType, TranscriptionStatus
 from app.models.file_record import FileRecord
 from app.models.notification import Notification
+from app.models.recording import Recording
 from app.services import (
     assessment_service,
     recording_service,
@@ -34,6 +36,7 @@ def assessment(db, teacher):
     # deleting the teacher would try to null assessments.teacher_id (NOT NULL).
     db.query(Notification).delete()
     db.query(AuditEvent).delete()
+    db.query(Recording).delete()
     db.query(Assessment).delete()
     db.query(FileRecord).delete()
     db.commit()
@@ -125,9 +128,9 @@ class TestConsentEndpoint:
 # ── Recording storage + transcription (G2-136 / G2-140) ──────────────────────
 
 class TestRecordingService:
-    def test_save_recording_stores_file_and_links(self, db, assessment, teacher, tmp_path):
+    def test_append_recording_stores_file_and_links(self, db, assessment, teacher, tmp_path):
         settings.RECORDING_DIR = str(tmp_path)
-        record = recording_service.save_recording(
+        recording = recording_service.append_recording(
             db,
             assessment=assessment,
             teacher=teacher,
@@ -135,7 +138,12 @@ class TestRecordingService:
             content_type="audio/webm",
             filename="rec.webm",
         )
-        assert assessment.recording_file_id == record.id
+        assert recording.assessment_id == assessment.id
+        assert recording.sequence_number == 1
+        assert recording.display_name == "Recording 1"
+
+        record = db.query(FileRecord).filter(FileRecord.id == recording.file_id).first()
+        assert record is not None
         assert record.delete_after is not None
         # 3-month retention window
         expected = datetime.utcnow() + timedelta(days=settings.RECORDING_RETENTION_DAYS)
@@ -148,9 +156,20 @@ class TestRecordingService:
             == 1
         )
 
+    def test_append_increments_sequence_number(self, db, assessment, teacher, tmp_path):
+        settings.RECORDING_DIR = str(tmp_path)
+        r1 = recording_service.append_recording(
+            db, assessment=assessment, teacher=teacher, audio_bytes=b"a"
+        )
+        r2 = recording_service.append_recording(
+            db, assessment=assessment, teacher=teacher, audio_bytes=b"b"
+        )
+        assert (r1.sequence_number, r2.sequence_number) == (1, 2)
+        assert r2.display_name == "Recording 2"
+
     def test_transcribe_success(self, db, assessment, teacher, tmp_path, monkeypatch):
         settings.RECORDING_DIR = str(tmp_path)
-        recording_service.save_recording(
+        recording = recording_service.append_recording(
             db, assessment=assessment, teacher=teacher, audio_bytes=b"audio"
         )
         monkeypatch.setattr(
@@ -161,13 +180,13 @@ class TestRecordingService:
                 "segments": [{"start": 0, "end": 2, "text": "Jane Doe. I consent."}],
             },
         )
-        recording_service.transcribe_recording(db, assessment=assessment, teacher=teacher)
-        assert assessment.transcription_status == TranscriptionStatus.completed
-        assert "I consent" in assessment.transcript_text
+        recording_service.transcribe_recording(db, recording=recording, teacher=teacher)
+        assert recording.transcription_status == TranscriptionStatus.completed
+        assert "I consent" in recording.transcript_text
 
     def test_transcribe_failure_sets_failed(self, db, assessment, teacher, tmp_path, monkeypatch):
         settings.RECORDING_DIR = str(tmp_path)
-        recording_service.save_recording(
+        recording = recording_service.append_recording(
             db, assessment=assessment, teacher=teacher, audio_bytes=b"audio"
         )
 
@@ -176,16 +195,31 @@ class TestRecordingService:
 
         monkeypatch.setattr(stt_client, "transcribe", boom)
         with pytest.raises(RuntimeError):
-            recording_service.transcribe_recording(db, assessment=assessment, teacher=teacher)
-        assert assessment.transcription_status == TranscriptionStatus.failed
+            recording_service.transcribe_recording(db, recording=recording, teacher=teacher)
+        assert recording.transcription_status == TranscriptionStatus.failed
+
+
+def _accept_consent(db, assessment):
+    assessment.consent_status = ConsentStatus.accepted
+    db.commit()
 
 
 class TestUploadEndpoint:
-    def test_upload_saves_file_and_links(
-        self, client, assessment, teacher, tmp_path, monkeypatch
+    def test_upload_requires_consent(self, client, assessment, teacher, tmp_path):
+        settings.RECORDING_DIR = str(tmp_path)
+        # consent is pending by default -> 409
+        res = client.post(
+            f"/api/v1/assessments/{assessment.id}/recording",
+            files={"file": ("recording.webm", b"abc", "audio/webm")},
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 409
+
+    def test_upload_saves_file_and_appends(
+        self, client, db, assessment, teacher, tmp_path, monkeypatch
     ):
         settings.RECORDING_DIR = str(tmp_path)
-        # STT isn't running in tests; stub it so the background task succeeds.
+        _accept_consent(db, assessment)
         monkeypatch.setattr(
             stt_client,
             "transcribe",
@@ -198,24 +232,123 @@ class TestUploadEndpoint:
         )
         assert res.status_code == 201, res.text
         body = res.json()
-        assert body["has_recording"] is True
+        assert body["display_name"] == "Recording 1"
+        assert body["sequence_number"] == 1
 
-        # A file was actually written to RECORDING_DIR.
         files = list(tmp_path.iterdir())
         assert len(files) == 1
         assert files[0].read_bytes() == b"binary-audio-bytes"
-
-        # And the FileRecord row points at that path.
-        rec = db_record_for(client)
-        assert rec is not None
+        assert db.query(FileRecord).count() == 1
 
 
-def db_record_for(client):
-    # helper: the client fixture shares the test db session via dependency override
-    from app.api.deps import get_db
+class TestRecordingsApi:
+    def _make(self, db, teacher, assessment, tmp_path, n=1):
+        settings.RECORDING_DIR = str(tmp_path)
+        recs = []
+        for _ in range(n):
+            recs.append(
+                recording_service.append_recording(
+                    db, assessment=assessment, teacher=teacher, audio_bytes=b"x"
+                )
+            )
+        return recs
 
-    db = client.app.dependency_overrides[get_db]()
-    return db.query(FileRecord).first()
+    def test_list_recordings(self, client, db, assessment, teacher, tmp_path):
+        self._make(db, teacher, assessment, tmp_path, n=2)
+        res = client.get(
+            f"/api/v1/assessments/{assessment.id}/recordings", headers=_auth(teacher)
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert [r["sequence_number"] for r in body] == [1, 2]
+
+    def test_get_recording_detail(self, client, db, assessment, teacher, tmp_path):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        res = client.get(
+            f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}",
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 200
+        assert "transcript_text" in res.json()
+
+    def test_rename(self, client, db, assessment, teacher, tmp_path):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        res = client.patch(
+            f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}",
+            json={"display_name": "Intro segment"},
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 200
+        assert res.json()["display_name"] == "Intro segment"
+        assert (
+            db.query(AuditEvent).filter(AuditEvent.action == "recording.renamed").count() == 1
+        )
+
+    def test_extend_expiry_within_cap(self, client, db, assessment, teacher, tmp_path):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        res = client.patch(
+            f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}",
+            json={"extend_expiry": {"reason": "appeal pending", "extra_days": 30}},
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 200
+        assert res.json()["extension_count"] == 1
+
+    def test_extend_requires_reason(self, client, db, assessment, teacher, tmp_path):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        res = client.patch(
+            f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}",
+            json={"extend_expiry": {"reason": "", "extra_days": 30}},
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 422  # pydantic min_length
+
+    def test_extend_capped_at_two(self, client, db, assessment, teacher, tmp_path):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        url = f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}"
+        for _ in range(2):
+            ok = client.patch(
+                url, json={"extend_expiry": {"reason": "r"}}, headers=_auth(teacher)
+            )
+            assert ok.status_code == 200
+        third = client.patch(
+            url, json={"extend_expiry": {"reason": "r"}}, headers=_auth(teacher)
+        )
+        assert third.status_code == 400
+
+    def test_delete_is_soft_and_unlinks_file(
+        self, client, db, assessment, teacher, tmp_path
+    ):
+        rec = self._make(db, teacher, assessment, tmp_path)[0]
+        record = db.query(FileRecord).filter(FileRecord.id == rec.file_id).first()
+        assert os.path.exists(record.path)
+
+        res = client.delete(
+            f"/api/v1/assessments/{assessment.id}/recordings/{rec.id}",
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 204
+
+        db.refresh(rec)
+        assert rec.deleted_at is not None          # row kept (audit trail)
+        assert not os.path.exists(record.path)     # file unlinked
+        # no longer listed
+        listed = client.get(
+            f"/api/v1/assessments/{assessment.id}/recordings", headers=_auth(teacher)
+        ).json()
+        assert listed == []
+
+    def test_other_teacher_cannot_list(self, client, db, assessment, teacher, tmp_path):
+        from app.models.teacher import Teacher
+
+        self._make(db, teacher, assessment, tmp_path)
+        other = Teacher(id=uuid.uuid4(), name="Other", email="other2@test.com")
+        db.add(other)
+        db.commit()
+        res = client.get(
+            f"/api/v1/assessments/{assessment.id}/recordings", headers=_auth(other)
+        )
+        assert res.status_code == 403
 
 
 # ── Retention + reminders (G2-141 / G2-142) ──────────────────────────────────
@@ -231,7 +364,14 @@ class TestRetention:
         )
         db.add(rec)
         db.flush()
-        assessment.recording_file_id = rec.id
+        recording = Recording(
+            id=uuid.uuid4(),
+            assessment_id=assessment.id,
+            file_id=rec.id,
+            display_name="Recording 1",
+            sequence_number=1,
+        )
+        db.add(recording)
         db.commit()
         return rec
 
@@ -283,3 +423,100 @@ class TestRetention:
     def test_no_reminder_when_far_off(self, db, assessment, teacher):
         self._recording(db, assessment, datetime.utcnow() + timedelta(days=365))
         assert retention_service.create_deletion_reminders(db) == 0
+
+
+# ── Per-recording reminders (G2-142) ─────────────────────────────────────────
+
+class TestPerRecordingReminders:
+    def _expiring(self, db, assessment, seq, days):
+        rec = FileRecord(
+            id=uuid.uuid4(),
+            path=f"/tmp/r{seq}.webm",
+            delete_after=datetime.utcnow() + timedelta(days=days),
+        )
+        db.add(rec)
+        db.flush()
+        recording = Recording(
+            id=uuid.uuid4(),
+            assessment_id=assessment.id,
+            file_id=rec.id,
+            display_name=f"Recording {seq}",
+            sequence_number=seq,
+        )
+        db.add(recording)
+        db.commit()
+        return recording
+
+    def test_each_expiring_recording_gets_its_own_reminder(self, db, assessment, teacher):
+        lead = settings.RECORDING_REMINDER_LEAD_DAYS
+        for seq in (1, 2, 3):
+            self._expiring(db, assessment, seq, lead - 1)
+
+        created = retention_service.create_deletion_reminders(db)
+        assert created == 3
+
+        notes = db.query(Notification).all()
+        assert len(notes) == 3
+        # every reminder references a specific recording and names it
+        assert all(n.recording_id is not None for n in notes)
+        messages = " | ".join(n.message for n in notes)
+        assert "Recording 1" in messages
+        assert "Recording 2" in messages
+        assert "Recording 3" in messages
+
+    def test_reminder_dedup_is_per_recording(self, db, assessment, teacher):
+        self._expiring(db, assessment, 1, settings.RECORDING_REMINDER_LEAD_DAYS - 1)
+        assert retention_service.create_deletion_reminders(db) == 1
+        assert retention_service.create_deletion_reminders(db) == 0
+
+
+# ── Auto-purge (G2-141) ──────────────────────────────────────────────────────
+
+class TestAutoPurge:
+    def _recording_with_file(self, db, assessment, teacher, tmp_path):
+        settings.RECORDING_DIR = str(tmp_path)
+        rec = recording_service.append_recording(
+            db, assessment=assessment, teacher=teacher, audio_bytes=b"audio-bytes"
+        )
+        record = db.query(FileRecord).filter(FileRecord.id == rec.file_id).first()
+        return rec, record
+
+    def test_expired_recording_is_purged(self, db, assessment, teacher, tmp_path):
+        rec, record = self._recording_with_file(db, assessment, teacher, tmp_path)
+        path = record.path
+        assert os.path.exists(path)
+
+        # force the retention date into the past (no extension)
+        record.delete_after = datetime.utcnow() - timedelta(days=1)
+        db.commit()
+
+        purged = retention_service.purge_expired_recordings(db)
+        assert purged == 1
+
+        db.refresh(rec)
+        db.refresh(record)
+        assert not os.path.exists(path)        # audio removed from disk
+        assert rec.deleted_at is not None       # metadata row kept, marked deleted
+        assert record.deleted_at is not None
+        # audit event recorded with the system reason
+        ev = (
+            db.query(AuditEvent)
+            .filter(AuditEvent.action == "recording.auto_deleted")
+            .first()
+        )
+        assert ev is not None
+        assert ev.details_json["reason"] == "retention expired, no action taken"
+
+    def test_extended_recording_is_not_purged(self, db, assessment, teacher, tmp_path):
+        rec, record = self._recording_with_file(db, assessment, teacher, tmp_path)
+        path = record.path
+
+        # simulate an active extension: future delete_after
+        record.delete_after = datetime.utcnow() + timedelta(days=30)
+        db.commit()
+
+        purged = retention_service.purge_expired_recordings(db)
+        assert purged == 0
+        assert os.path.exists(path)             # file untouched
+        db.refresh(rec)
+        assert rec.deleted_at is None

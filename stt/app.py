@@ -10,14 +10,14 @@ import os
 import tempfile
 
 from faster_whisper import WhisperModel
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 
 # tiny/base/small/medium/large-v3 — base is a reasonable CPU default on-prem.
 MODEL_SIZE = os.getenv("WHISPER_MODEL", "base")
 DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-# Language hint; leave empty for auto-detect. Dutch institution -> default "nl".
-LANGUAGE = os.getenv("WHISPER_LANGUAGE", "nl") or None
+# Language is now chosen per request (see /transcribe). When the caller sends no
+# language, faster-whisper auto-detects.
 
 app = FastAPI(title="STT Service", version="0.1.0")
 
@@ -37,16 +37,22 @@ def health():
 
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+async def transcribe(
+    file: UploadFile = File(...),
+    language: str | None = Form(default=None),
+):
     suffix = os.path.splitext(file.filename or "")[1] or ".webm"
     audio_bytes = await file.read()
+
+    # None -> faster-whisper auto-detects; "en", "nl", etc. force the language.
+    requested_language = language or None
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(audio_bytes)
         tmp_path = tmp.name
 
     try:
-        segments, info = get_model().transcribe(tmp_path, language=LANGUAGE)
+        segments, info = get_model().transcribe(tmp_path, language=requested_language)
         out_segments = [
             {"start": round(s.start, 3), "end": round(s.end, 3), "text": s.text.strip()}
             for s in segments

@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.assessment import Assessment
 from app.models.enums import AuditSource, NotificationType
 from app.models.file_record import FileRecord
-from app.services import audit_service, notification_service
+from app.models.recording import Recording
+from app.services import audit_service, notification_service, recording_service
 
 
 def flag_expired_recordings(db: Session, *, now: datetime | None = None) -> int:
@@ -34,17 +34,21 @@ def flag_expired_recordings(db: Session, *, now: datetime | None = None) -> int:
 
     for record in records:
         record.flagged_for_deletion = True
-        assessment = (
-            db.query(Assessment)
-            .filter(Assessment.recording_file_id == record.id)
+        recording = (
+            db.query(Recording)
+            .filter(Recording.file_id == record.id, Recording.deleted_at.is_(None))
             .first()
         )
         audit_service.log_action(
             db,
             action="recording.flagged_for_deletion",
             source=AuditSource.system,
-            assessment_id=assessment.id if assessment else None,
-            details={"file_id": str(record.id), "delete_after": record.delete_after.isoformat()},
+            assessment_id=recording.assessment_id if recording else None,
+            details={
+                "file_id": str(record.id),
+                "recording_id": str(recording.id) if recording else None,
+                "delete_after": record.delete_after.isoformat(),
+            },
             commit=False,
         )
 
@@ -55,17 +59,19 @@ def flag_expired_recordings(db: Session, *, now: datetime | None = None) -> int:
 def create_deletion_reminders(db: Session, *, now: datetime | None = None) -> int:
     """Create reminders for recordings approaching their deletion date (G2-142).
 
-    A reminder is created once per assessment for the teacher who owns it, when
-    the recording is within RECORDING_REMINDER_LEAD_DAYS of deletion.
+    A reminder is created once per RECORDING for the teacher who owns the
+    assessment, when the recording is within RECORDING_REMINDER_LEAD_DAYS of
+    deletion. Each reminder names the specific recording.
     Returns the number of reminders created.
     """
     now = now or datetime.utcnow()
     threshold = now + timedelta(days=settings.RECORDING_REMINDER_LEAD_DAYS)
 
     rows = (
-        db.query(Assessment, FileRecord)
-        .join(FileRecord, Assessment.recording_file_id == FileRecord.id)
+        db.query(Recording, FileRecord)
+        .join(FileRecord, Recording.file_id == FileRecord.id)
         .filter(
+            Recording.deleted_at.is_(None),
             FileRecord.delete_after.isnot(None),
             FileRecord.delete_after <= threshold,
             FileRecord.deleted_at.is_(None),
@@ -74,18 +80,21 @@ def create_deletion_reminders(db: Session, *, now: datetime | None = None) -> in
     )
 
     created = 0
-    for assessment, record in rows:
-        if notification_service.reminder_exists(db, assessment_id=assessment.id):
+    for recording, record in rows:
+        if notification_service.reminder_exists(db, recording_id=recording.id):
             continue
         days_left = max((record.delete_after - now).days, 0)
+        student = recording.assessment.student
+        subject = student.name if student else "this assessment"
         notification_service.create_notification(
             db,
-            teacher_id=assessment.teacher_id,
+            teacher_id=recording.assessment.teacher_id,
             type=NotificationType.deletion_reminder,
-            assessment_id=assessment.id,
+            assessment_id=recording.assessment_id,
+            recording_id=recording.id,
             message=(
-                f"Recording for this assessment will be deleted in {days_left} day(s) "
-                f"(on {record.delete_after.date().isoformat()})."
+                f"Recording '{recording.display_name}' for {subject} will be deleted "
+                f"in {days_left} day(s) (on {record.delete_after.date().isoformat()})."
             ),
             due_date=record.delete_after,
             commit=False,
@@ -94,3 +103,31 @@ def create_deletion_reminders(db: Session, *, now: datetime | None = None) -> in
 
     db.commit()
     return created
+
+
+def purge_expired_recordings(db: Session, *, now: datetime | None = None) -> int:
+    """Permanently remove recordings whose deletion date has passed (G2-141).
+
+    Inaction -> delete. A recording that was extended has a future delete_after
+    and is therefore naturally excluded. The audio file is removed from disk and
+    deleted_at is set, but the metadata row + audit trail are kept. Returns the
+    number of recordings purged.
+    """
+    now = now or datetime.utcnow()
+
+    rows = (
+        db.query(Recording, FileRecord)
+        .join(FileRecord, Recording.file_id == FileRecord.id)
+        .filter(
+            Recording.deleted_at.is_(None),
+            FileRecord.delete_after.isnot(None),
+            FileRecord.delete_after <= now,
+            FileRecord.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+    for recording, _record in rows:
+        recording_service.auto_delete_recording(db, recording)
+
+    return len(rows)

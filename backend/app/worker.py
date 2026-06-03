@@ -27,9 +27,16 @@ RUN_INTERVAL_SECONDS = int(os.getenv("WORKER_INTERVAL_SECONDS", str(24 * 60 * 60
 def run_once() -> None:
     db = SessionLocal()
     try:
-        flagged = retention_service.flag_expired_recordings(db)
+        # Order: warn (reminders) -> flag (mark expired) -> purge (delete expired).
         reminders = retention_service.create_deletion_reminders(db)
-        logger.info("retention sweep: flagged=%d reminders=%d", flagged, reminders)
+        flagged = retention_service.flag_expired_recordings(db)
+        purged = retention_service.purge_expired_recordings(db)
+        logger.info(
+            "retention sweep: reminders=%d flagged=%d purged=%d",
+            reminders,
+            flagged,
+            purged,
+        )
     except Exception:  # noqa: BLE001 - keep the loop alive
         logger.exception("retention sweep failed")
     finally:

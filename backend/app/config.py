@@ -42,6 +42,12 @@ class Settings:
     RECORDING_REMINDER_LEAD_DAYS: int = int(
         os.getenv("RECORDING_REMINDER_LEAD_DAYS", "14")
     )
+    # GDPR extension cap: a recording's expiry may be extended at most this many
+    # times, by at most this many days each.
+    RECORDING_MAX_EXTENSIONS: int = int(os.getenv("RECORDING_MAX_EXTENSIONS", "2"))
+    RECORDING_MAX_EXTENSION_DAYS: int = int(
+        os.getenv("RECORDING_MAX_EXTENSION_DAYS", "90")
+    )
 
 
 settings = Settings()

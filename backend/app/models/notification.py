@@ -15,6 +15,11 @@ class Notification(Base):
     assessment_id = Column(
         UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=True
     )
+    # Specific recording this notification concerns (G2-142). Nullable so older
+    # assessment-only reminders remain valid.
+    recording_id = Column(
+        UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=True
+    )
     type = Column(Enum(NotificationType), nullable=False)
     message = Column(Text, nullable=False)
     due_date = Column(DateTime, nullable=True)
@@ -23,3 +28,4 @@ class Notification(Base):
 
     teacher = relationship("Teacher")
     assessment = relationship("Assessment")
+    recording = relationship("Recording")

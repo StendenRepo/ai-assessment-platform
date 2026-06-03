@@ -12,3 +12,4 @@ from app.models.chat_message import ChatMessage
 from app.models.file_record import FileRecord
 from app.models.evidence_match import EvidenceMatch
 from app.models.notification import Notification
+from app.models.recording import Recording
