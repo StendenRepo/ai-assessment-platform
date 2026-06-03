@@ -671,7 +671,7 @@ export default function ModulePage() {
           </form>
           <form
             onSubmit={handleAdd}
-            className="rounded-lg bg-card border border-border p-5 sticky top-4 space-y-4"
+            className="rounded-lg bg-card border border-border p-5 space-y-4"
           >
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <UserPlus size={15} />
