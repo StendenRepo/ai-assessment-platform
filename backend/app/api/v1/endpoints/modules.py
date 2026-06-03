@@ -92,12 +92,14 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
     )
 
 
-def _owned_modules_query(db: Session, teacher: Teacher):
+def _visible_modules_query(db: Session, teacher: Teacher):
+    if teacher.is_admin:
+        return db.query(Module)
     return db.query(Module).filter(Module.teacher_id == teacher.id)
 
 
-def _get_owned_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
-    module = _owned_modules_query(db, teacher).filter(Module.id == module_id).first()
+def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
+    module = _visible_modules_query(db, teacher).filter(Module.id == module_id).first()
     if not module:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
     return module
@@ -170,7 +172,7 @@ def list_modules(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    modules = _owned_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
+    modules = _visible_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
@@ -201,7 +203,7 @@ def get_module(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
 
@@ -244,7 +246,7 @@ def list_module_groups(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     projects = (
         db.query(Project)
         .filter(Project.module_id == module.id)
@@ -285,7 +287,7 @@ def create_module_group(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = Project(
         module_id=module.id,
         name=payload.name,
@@ -308,7 +310,7 @@ def list_module_students(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
     if not project_ids:
         return []
@@ -336,7 +338,7 @@ def add_module_student(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
     duplicate = _student_duplicate_query(db, _module_project_ids(db, module.id), payload.student_number)
@@ -366,7 +368,7 @@ def move_student_to_group(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
     student = (
         db.query(Student)
@@ -396,7 +398,7 @@ async def import_module_students(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    module = _get_owned_module_or_404(db, module_id, current_teacher)
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, project_id)
 
     contents = await file.read()
