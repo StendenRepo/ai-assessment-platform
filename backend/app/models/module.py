@@ -13,6 +13,7 @@ class Module(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
     name = Column(String, nullable=False)
+    code = Column(String, nullable=False, unique=True)
     academic_year = Column(String)
     rubric_file_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
     module_book_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)

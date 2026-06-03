@@ -11,8 +11,9 @@ class Student(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
-    name = Column(String, nullable=False)
-    student_number = Column(String)
+    name = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    student_number = Column(String, nullable=True)
     status = Column(Enum(StudentStatus), default=StudentStatus.active)
     consent_given = Column(Boolean, default=False)
 
