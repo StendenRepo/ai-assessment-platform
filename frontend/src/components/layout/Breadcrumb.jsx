@@ -19,6 +19,9 @@ function buildCrumbs(pathname, params, fromModule) {
         label: 'Module',
         href: `${APP_PATHS.modules}/${moduleId}`,
       });
+    if (pathname.includes('/manage')) {
+      crumbs.push({ label: 'Manage Roster', href: null });
+    }
     if (groupId && !fromModule)
       crumbs.push({
         label: 'Group',

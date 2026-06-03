@@ -40,8 +40,46 @@ class ModuleGroupCreate(BaseModel):
         return value or None
 
 
+class ModuleGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    group_name: Optional[str] = None
+
+    @field_validator("name", "group_name")
+    @classmethod
+    def _trim_non_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
 class StudentGroupUpdate(BaseModel):
-    project_id: str
+    project_id: Optional[str] = None
+    name: Optional[str] = None
+    student_number: Optional[str] = None
+    status: Optional[str] = None
+
+    @field_validator("name", "student_number")
+    @classmethod
+    def _trim_non_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("status")
+    @classmethod
+    def _validate_status(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"active", "inactive"}:
+            raise ValueError("status must be 'active' or 'inactive'")
+        return normalized
 
 
 class ModuleOut(BaseModel):

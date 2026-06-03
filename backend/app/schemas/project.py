@@ -26,6 +26,7 @@ class StudentOut(BaseModel):
     status: str
     consent_given: bool = False
     assessment_status: str = "not-started"
+    grade: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
