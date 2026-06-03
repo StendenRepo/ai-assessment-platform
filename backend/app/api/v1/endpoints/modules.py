@@ -87,6 +87,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         id=str(m.id),
         name=m.name,
         academic_year=m.academic_year,
+        deadline=m.deadline,
         status=m.status.value if m.status else "active",
         created_at=m.created_at,
         project_count=project_count,
@@ -226,6 +227,7 @@ def create_module(
         teacher_id=current_teacher.id,
         name=payload.name,
         academic_year=payload.academic_year,
+        deadline=payload.deadline,
     )
     db.add(module)
     db.commit()
