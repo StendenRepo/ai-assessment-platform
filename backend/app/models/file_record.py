@@ -9,6 +9,7 @@ class FileRecord(Base):
     __tablename__ = "file_records"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    file_name = Column(String, nullable=True)
     path = Column(String, nullable=False)
     file_type = Column(String)
     size_bytes = Column(Integer)

@@ -4,6 +4,16 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 
+class RubricFileOut(BaseModel):
+    id: str
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    uploaded_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
 class ModuleCreate(BaseModel):
     name: str
     academic_year: Optional[str] = None
@@ -42,5 +52,6 @@ class ModuleOut(BaseModel):
     created_at: datetime
     project_count: int = 0
     student_count: int = 0
+    rubric_file: Optional[RubricFileOut] = None
 
     model_config = {"from_attributes": True}
