@@ -1,9 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, ArrowRight, SlidersHorizontal, Users, FileText } from 'lucide-react';
-import { listModules } from '@/lib/modulesApi';
+import {
+  Search,
+  ArrowRight,
+  SlidersHorizontal,
+  Users,
+  FileText,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+} from 'lucide-react';
+import { listModules, renameModule, deleteModule } from '@/lib/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
@@ -29,18 +39,92 @@ export default function ModulesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Rename state
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const renameInputRef = useRef(null);
+
+  // Delete state
+  const [deletingId, setDeletingId] = useState(null);
+
   useEffect(() => {
-    listModules()
-      .then(setProjects)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    const load = async () => {
+      try {
+        const data = await listModules();
+        setProjects(data);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
+
+  // Focus rename input when it appears
+  useEffect(() => {
+    if (renamingId) renameInputRef.current?.focus();
+  }, [renamingId]);
 
   const filtered = projects.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
+
+  const startRename = (e, module) => {
+    e.stopPropagation();
+    setRenamingId(module.id);
+    setRenameValue(module.name);
+  };
+
+  const cancelRename = (e) => {
+    e?.stopPropagation();
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
+  const confirmRename = async (e, moduleId) => {
+    e?.stopPropagation();
+    const trimmed = renameValue.trim();
+    if (!trimmed) return;
+    setRenameLoading(true);
+    try {
+      const updated = await renameModule(moduleId, trimmed);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === moduleId ? { ...p, name: updated.name } : p))
+      );
+      setRenamingId(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRenameLoading(false);
+    }
+  };
+
+  const handleDelete = async (e, moduleId) => {
+    e.stopPropagation();
+    if (deletingId === moduleId) {
+      // Second click — confirmed
+      try {
+        await deleteModule(moduleId);
+        setProjects((prev) => prev.filter((p) => p.id !== moduleId));
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setDeletingId(null);
+      }
+    } else {
+      // First click — ask for confirmation
+      setDeletingId(moduleId);
+    }
+  };
+
+  const cancelDelete = (e) => {
+    e.stopPropagation();
+    setDeletingId(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -86,16 +170,15 @@ export default function ModulesPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="rounded-lg bg-card border border-border p-12 text-center">
           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-        </div>
-      ) : error ? (
-        <div className="rounded-lg bg-card border border-border p-12 text-center">
-          <p className="text-sm font-medium text-red-400">
-            Failed to load modules
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">{error}</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-lg bg-card border border-border p-12 text-center">
@@ -117,19 +200,38 @@ export default function ModulesPage() {
               label: project.status || 'Unknown',
               classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
             };
+            const isRenaming = renamingId === project.id;
+            const isDeleting = deletingId === project.id;
+
             return (
               <div
                 key={project.id}
-                onClick={() =>
-                  router.push(`${APP_PATHS.modules}/${project.id}`)
-                }
-                className="flex items-center gap-6 px-6 py-5 hover:bg-secondary/50 cursor-pointer transition-colors group"
+                onClick={() => {
+                  if (!isRenaming && !isDeleting)
+                    router.push(`${APP_PATHS.modules}/${project.id}`);
+                }}
+                className="flex items-center gap-4 px-6 py-5 hover:bg-secondary/50 cursor-pointer transition-colors group"
               >
+                {/* Name / rename input */}
                 <div className="flex-1 min-w-0 space-y-2">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-foreground">
-                      {project.name}
-                    </span>
+                    {isRenaming ? (
+                      <input
+                        ref={renameInputRef}
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') confirmRename(e, project.id);
+                          if (e.key === 'Escape') cancelRename(e);
+                        }}
+                        className="text-sm font-semibold text-foreground bg-secondary border border-ring rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-ring w-64"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-foreground">
+                        {project.name}
+                      </span>
+                    )}
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${status.classes}`}
                     >
@@ -175,10 +277,76 @@ export default function ModulesPage() {
                     )}
                   </div>
                 </div>
-                <ArrowRight
-                  size={15}
-                  className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0"
-                />
+
+                {/* Action buttons */}
+                <div
+                  className="flex items-center gap-1 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {isRenaming ? (
+                    <>
+                      <button
+                        onClick={(e) => confirmRename(e, project.id)}
+                        disabled={renameLoading}
+                        title="Save name"
+                        className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={cancelRename}
+                        title="Cancel"
+                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : isDeleting ? (
+                    <>
+                      <span className="text-xs text-red-400 mr-1">
+                        Delete?
+                      </span>
+                      <button
+                        onClick={(e) => handleDelete(e, project.id)}
+                        title="Confirm delete"
+                        className="p-1.5 rounded text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        onClick={cancelDelete}
+                        title="Cancel"
+                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={(e) => startRename(e, project)}
+                        title="Rename module"
+                        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(e, project.id)}
+                        title="Delete module"
+                        className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {!isRenaming && !isDeleting && (
+                  <ArrowRight
+                    size={15}
+                    className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-all shrink-0"
+                  />
+                )}
               </div>
             );
           })}

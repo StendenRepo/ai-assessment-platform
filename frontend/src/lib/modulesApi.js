@@ -79,3 +79,12 @@ export const uploadRubric = (moduleId, file) => {
 
 export const deleteRubric = (moduleId) =>
   request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });
+
+export const renameModule = (moduleId, name) =>
+  request(API_PATHS.module(moduleId), {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+
+export const deleteModule = (moduleId) =>
+  request(API_PATHS.module(moduleId), { method: 'DELETE' });
