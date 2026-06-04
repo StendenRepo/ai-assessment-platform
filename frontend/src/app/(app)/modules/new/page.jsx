@@ -44,8 +44,16 @@ export default function NewProjectPage() {
 
   const handleCreateModule = async () => {
     setSaveError('');
-    if (!projectName.trim()) {
-      setSaveError('Module name is required.');
+    const missingFields = [];
+    if (!projectName.trim()) missingFields.push('module name');
+    if (!academicYear.trim()) missingFields.push('academic year');
+    if (!className.trim()) missingFields.push('class');
+    if (!deadline) missingFields.push('deadline');
+
+    if (missingFields.length > 0) {
+      setSaveError(
+        `Please fill in required fields: ${missingFields.join(', ')}.`
+      );
       return;
     }
 
@@ -53,8 +61,8 @@ export default function NewProjectPage() {
     try {
       const createdModule = await createModule({
         name: projectName.trim(),
-        academic_year: academicYear.trim() || null,
-        deadline: deadline || null,
+        academic_year: academicYear.trim(),
+        deadline,
       });
       router.push(`${APP_PATHS.modules}/${createdModule.id}`);
     } catch (error) {
@@ -88,6 +96,7 @@ export default function NewProjectPage() {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="e.g. Advanced Web Development"
+              required
               className={inputClass}
             />
           </div>
@@ -100,6 +109,7 @@ export default function NewProjectPage() {
                 value={academicYear}
                 onChange={(e) => setAcademicYear(e.target.value)}
                 placeholder="e.g. 2025-2026"
+                required
                 className={inputClass}
               />
             </div>
@@ -111,6 +121,7 @@ export default function NewProjectPage() {
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
                 placeholder="e.g. CS401-A"
+                required
                 className={inputClass}
               />
             </div>
@@ -123,6 +134,7 @@ export default function NewProjectPage() {
               type="date"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
+              required
               className={`${inputClass} cursor-pointer`}
             />
           </div>
