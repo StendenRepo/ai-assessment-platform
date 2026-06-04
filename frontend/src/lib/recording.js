@@ -1,20 +1,23 @@
 import { apiFetch } from '@/lib/apiFetch';
+import { API_PATHS } from '@/lib/routes';
 
 // ── Consent gate ──────────────────────────────────────────────────────────────
 
 // Resolve (or lazily create) the current teacher's assessment for a student.
 // Returns ConsentStateOut, including the real assessment_id to use everywhere else.
 export function resolveAssessmentForStudent(studentId) {
-  return apiFetch(`/assessments/for-student/${studentId}`, { method: 'POST' });
+  return apiFetch(API_PATHS.assessmentForStudent(studentId), {
+    method: 'POST',
+  });
 }
 
 export function getConsentState(assessmentId) {
-  return apiFetch(`/assessments/${assessmentId}/recording`);
+  return apiFetch(API_PATHS.assessmentRecordingState(assessmentId));
 }
 
 export function setConsent(assessmentId, status) {
   // status: 'accepted' | 'declined'
-  return apiFetch(`/assessments/${assessmentId}/consent`, {
+  return apiFetch(API_PATHS.assessmentConsent(assessmentId), {
     method: 'POST',
     json: { status },
   });
@@ -23,11 +26,11 @@ export function setConsent(assessmentId, status) {
 // ── Recordings (many per assessment) ──────────────────────────────────────────
 
 export function listRecordings(assessmentId) {
-  return apiFetch(`/assessments/${assessmentId}/recordings`);
+  return apiFetch(API_PATHS.assessmentRecordings(assessmentId));
 }
 
 export function getRecording(assessmentId, recordingId) {
-  return apiFetch(`/assessments/${assessmentId}/recordings/${recordingId}`);
+  return apiFetch(API_PATHS.assessmentRecording(assessmentId, recordingId));
 }
 
 export function appendRecording(
@@ -37,14 +40,14 @@ export function appendRecording(
 ) {
   const form = new FormData();
   form.append('file', blob, filename);
-  return apiFetch(`/assessments/${assessmentId}/recording`, {
+  return apiFetch(API_PATHS.assessmentRecordingState(assessmentId), {
     method: 'POST',
     body: form,
   });
 }
 
 export function renameRecording(assessmentId, recordingId, displayName) {
-  return apiFetch(`/assessments/${assessmentId}/recordings/${recordingId}`, {
+  return apiFetch(API_PATHS.assessmentRecording(assessmentId, recordingId), {
     method: 'PATCH',
     json: { display_name: displayName },
   });
@@ -55,14 +58,14 @@ export function extendRecordingExpiry(
   recordingId,
   { reason, extraDays = 90 }
 ) {
-  return apiFetch(`/assessments/${assessmentId}/recordings/${recordingId}`, {
+  return apiFetch(API_PATHS.assessmentRecording(assessmentId, recordingId), {
     method: 'PATCH',
     json: { extend_expiry: { reason, extra_days: extraDays } },
   });
 }
 
 export function deleteRecording(assessmentId, recordingId) {
-  return apiFetch(`/assessments/${assessmentId}/recordings/${recordingId}`, {
+  return apiFetch(API_PATHS.assessmentRecording(assessmentId, recordingId), {
     method: 'DELETE',
   });
 }
@@ -70,11 +73,11 @@ export function deleteRecording(assessmentId, recordingId) {
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 export function listNotifications(unreadOnly = false) {
-  return apiFetch(
-    `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`
-  );
+  return apiFetch(API_PATHS.notifications(unreadOnly));
 }
 
 export function markNotificationRead(notificationId) {
-  return apiFetch(`/notifications/${notificationId}/read`, { method: 'POST' });
+  return apiFetch(API_PATHS.notificationRead(notificationId), {
+    method: 'POST',
+  });
 }
