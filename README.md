@@ -47,6 +47,8 @@ The project is currently in the prototype and development phase.
 ## Infrastructure
 
 - [Docker](https://www.docker.com/) & Docker Compose
+- [Ollama](https://ollama.com/) for local LLM inference
+- STT microservice (faster-whisper based) for transcription
 - pgAdmin 4 (development only)
 
 ## Version Control
@@ -72,11 +74,15 @@ ai-assessment-platform/
 │   │   ├── config.py          # Environment-based settings
 │   │   ├── database.py        # SQLAlchemy engine & session
 │   │   ├── main.py            # FastAPI app entry point
+│   │   ├── api/               # API dependencies, routers, endpoints
 │   │   ├── models/            # SQLAlchemy models
-│   │   ├── routes/            # API route handlers
 │   │   └── services/          # Business logic
 │   ├── Dockerfile
 │   └── requirements.txt
+│
+├── stt/                       # Speech-to-text service
+│   ├── app.py
+│   └── Dockerfile
 │
 ├── .env.example               # Environment variable template
 ├── docker-compose.yml         # Production stack
@@ -118,17 +124,19 @@ The default values in `.env` work out of the box with Docker Compose. Edit the f
 
 ## Development
 
-Starts all services with hot-reload for the frontend and pgAdmin for database management:
+Starts all services with hot-reload for frontend and backend, plus local AI services and pgAdmin:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-| Service  | URL                   |
-| -------- | --------------------- |
-| Frontend | http://localhost:3000 |
-| Backend  | http://localhost:8000 |
-| pgAdmin  | http://localhost:5050 |
+| Service  | URL                    |
+| -------- | ---------------------- |
+| Frontend | http://localhost:3000  |
+| Backend  | http://localhost:8000  |
+| STT API  | http://localhost:9000  |
+| Ollama   | http://localhost:11434 |
+| pgAdmin  | http://localhost:5050  |
 
 **pgAdmin login:** `admin@admin.com` / `admin`
 Connect to the database using host `postgres`, port `5432`, database `ai_assessment`, user `postgres`, password `postgres`.
@@ -152,8 +160,37 @@ To copy the SQLite seed database into the running Postgres database used by pgAd
 ## Production
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml up -d --build
 ```
+
+---
+
+# API Endpoints
+
+Base API URL:
+
+- http://localhost:8000/api/v1
+
+Core route groups:
+
+- Health: /health
+- Auth: /auth
+- Admin: /admin
+- Modules: /modules
+- Projects: /projects
+- Students: /students
+- Evidence: /evidence
+- Recordings: /recordings
+
+Useful health checks:
+
+- Backend health: http://localhost:8000/api/v1/health
+- Ollama health: http://localhost:8000/api/v1/health/ollama
+
+For interactive docs while running locally:
+
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
 ---
 
@@ -161,23 +198,19 @@ docker compose up -d --build
 
 ## Current Features
 
-- Next.js project setup
-- Tailwind CSS integration
-- ESLint configuration
-- App Router structure
+- Role-based authentication and profile endpoint
+- Module and student management APIs
+- Evidence upload, listing, content readback, and supported types endpoint
+- Recording workflow with consent, transcription, reminders, extension limits, and auto-purge
+- Audit events for sensitive operations
+- Overlap detection endpoints and warning flow
+- Frontend dashboard, settings, reports, and module workflows
 
 ## Planned Features
 
-- Authentication system
-- Module management
-- Project management
-- Student and group management
-- File uploads
-- Assessment dashboard
-- AI-supported assessment assistance
-- Rubric integration
-- Contribution analysis
-- Reporting and export functionality
+- Additional reporting and export options
+- Expanded AI review and evidence matching quality
+- UX polish and deeper workflow integration across module pages
 
 ---
 
