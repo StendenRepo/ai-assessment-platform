@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/apiFetch';
+import { apiFetch } from '@/lib/api/apiClient';
 import { API_PATHS } from '@/lib/routes';
 
 // ── Consent gate ──────────────────────────────────────────────────────────────

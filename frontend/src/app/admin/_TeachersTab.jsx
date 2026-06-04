@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Pencil, Shield, Trash2 } from 'lucide-react';
-import { adminFetch } from '@/lib/adminFetch';
+import { adminFetch } from '@/lib/api/adminFetch';
 import { isPasswordStrong, PasswordStrength } from '@/lib/password';
 import {
   DeleteConfirm,

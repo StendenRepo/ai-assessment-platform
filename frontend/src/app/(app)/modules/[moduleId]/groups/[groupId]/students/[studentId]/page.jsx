@@ -22,13 +22,13 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
-import { resolveAssessmentForStudent } from '@/lib/recording';
+import { resolveAssessmentForStudent } from '@/lib/api/recording';
 
 const API_BASE_STUDENT =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-import { listProjectStudents } from '@/lib/modulesApi';
+import { listProjectStudents } from '@/lib/api/modulesApi';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 

@@ -14,7 +14,7 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react';
-import { listModules, renameModule, deleteModule } from '@/lib/modulesApi';
+import { listModules, renameModule, deleteModule } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {
@@ -39,7 +39,9 @@ const statusConfig = {
 function DeleteConfirmModal({ module, onConfirm, onCancel, loading }) {
   // Close on Escape key
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    const handler = (e) => {
+      if (e.key === 'Escape') onCancel();
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onCancel]);
@@ -61,17 +63,22 @@ function DeleteConfirmModal({ module, onConfirm, onCancel, loading }) {
             <AlertTriangle size={18} className="text-red-400" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-foreground">Delete module</h2>
+            <h2 className="text-base font-semibold text-foreground">
+              Delete module
+            </h2>
             <p className="text-sm text-muted-foreground mt-1">
               Are you sure you want to delete{' '}
-              <span className="font-medium text-foreground">{module.name}</span>?
+              <span className="font-medium text-foreground">{module.name}</span>
+              ?
             </p>
           </div>
         </div>
 
         {/* Warning */}
         <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-4 py-3 text-xs text-red-400 space-y-1">
-          <p className="font-medium">This action cannot be undone. It will permanently delete:</p>
+          <p className="font-medium">
+            This action cannot be undone. It will permanently delete:
+          </p>
           <ul className="list-disc list-inside space-y-0.5 text-red-400/80">
             <li>The module and all its settings</li>
             <li>All groups and students in this module</li>
