@@ -67,6 +67,13 @@ def student(db, teacher):
     db.commit()
     db.refresh(s)
     yield s
+    # Delete evidence first: tests upload Evidence rows that FK to this student.
+    # Deleting the student while those rows exist raises IntegrityError, which
+    # rolls back the teardown and leaves a committed teacher row behind —
+    # cascading into UNIQUE(teachers.email) errors in later test files.
+    from app.models.evidence import Evidence
+
+    db.query(Evidence).filter(Evidence.student_id == s.id).delete()
     db.delete(s)
     db.delete(project)
     db.delete(module)
