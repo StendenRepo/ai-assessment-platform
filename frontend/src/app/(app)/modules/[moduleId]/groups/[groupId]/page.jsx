@@ -7,7 +7,7 @@ import {
   getProject,
   listProjectGroups,
   listProjectStudents,
-} from '@/lib/modulesApi';
+} from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const assessmentStatusConfig = {

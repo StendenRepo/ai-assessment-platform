@@ -1,10 +1,10 @@
 import uuid
-from sqlalchemy import Column, DateTime, Boolean, Text, Enum, ForeignKey
+from sqlalchemy import Column, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
-from app.models.enums import AssessmentStatus
+from app.models.enums import AssessmentStatus, ConsentStatus
 
 
 class Assessment(Base):
@@ -16,14 +16,26 @@ class Assessment(Base):
     status = Column(Enum(AssessmentStatus), default=AssessmentStatus.draft)
     draft_form_json = Column(JSONB, nullable=True)
     final_form_json = Column(JSONB, nullable=True)
-    recording_file_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
-    transcript_text = Column(Text, nullable=True)
-    consent_recorded = Column(Boolean, default=False)
+    # Oral consent captured once per assessment, confirmed by the teacher.
+    # Transcript/status/file now live on the recordings table (one assessment,
+    # many recordings).
+    consent_status = Column(
+        Enum(ConsentStatus), default=ConsentStatus.pending, nullable=False
+    )
+    consent_confirmed_at = Column(DateTime, nullable=True)
+    consent_confirmed_by = Column(
+        UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
     student = relationship("Student", back_populates="assessments")
-    teacher = relationship("Teacher", back_populates="assessments")
+    teacher = relationship(
+        "Teacher", back_populates="assessments", foreign_keys=[teacher_id]
+    )
     chat_messages = relationship("ChatMessage", back_populates="assessment")
     evidence_matches = relationship("EvidenceMatch", back_populates="assessment")
+    recordings = relationship(
+        "Recording", back_populates="assessment", order_by="Recording.sequence_number"
+    )

@@ -10,6 +10,8 @@ export const APP_PATHS = {
 };
 
 export const API_PATHS = {
+  authLogin: '/auth/login',
+  authMe: '/auth/me',
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
@@ -25,4 +27,15 @@ export const API_PATHS = {
       : '';
     return `/modules/${moduleId}/students/import${query}`;
   },
+  assessmentForStudent: (studentId) => `/assessments/for-student/${studentId}`,
+  assessmentRecordingState: (assessmentId) =>
+    `/assessments/${assessmentId}/recording`,
+  assessmentConsent: (assessmentId) => `/assessments/${assessmentId}/consent`,
+  assessmentRecordings: (assessmentId) =>
+    `/assessments/${assessmentId}/recordings`,
+  assessmentRecording: (assessmentId, recordingId) =>
+    `/assessments/${assessmentId}/recordings/${recordingId}`,
+  notifications: (unreadOnly = false) =>
+    `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
+  notificationRead: (notificationId) => `/notifications/${notificationId}/read`,
 };

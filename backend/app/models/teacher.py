@@ -24,5 +24,9 @@ class Teacher(Base):
 
     department = relationship("Department", back_populates="teachers")
     modules = relationship("Module", back_populates="teacher")
-    assessments = relationship("Assessment", back_populates="teacher")
+    assessments = relationship(
+        "Assessment",
+        back_populates="teacher",
+        foreign_keys="Assessment.teacher_id",
+    )
     audit_events = relationship("AuditEvent", back_populates="teacher")
