@@ -186,11 +186,6 @@ def update_teacher(
     if teacher.is_seed and payload.email != teacher.email:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The seed admin account email cannot be changed")
 
-    if teacher.is_seed:
-        # Preserve and auto-heal seed account admin access on non-role edits
-        # (e.g., password updates).
-        payload.is_admin = True
-
     if payload.email != teacher.email:
         if db.query(Teacher).filter(Teacher.email == payload.email, Teacher.id != teacher.id).first():
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
