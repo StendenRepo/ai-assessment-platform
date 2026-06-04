@@ -34,15 +34,18 @@ from app.models import (  # noqa: E402
     Department,
     Module,
     Project,
+    Recording,
     Student,
     Teacher,
 )
 from app.models.enums import (  # noqa: E402
     AssessmentStatus,
     AuditSource,
+    ConsentStatus,
     ModuleStatus,
     ProjectStatus,
     StudentStatus,
+    TranscriptionStatus,
 )
 
 
@@ -84,7 +87,7 @@ def build_seed_database(seed_path: str) -> None:
             email="alice.johnson@university.edu",
             password_hash=hash_password("password123"),
             is_admin=False,
-            is_seed=True,
+            is_seed=False,
             department_id=uid("dept-cs"),
             created_at=now - timedelta(days=280),
             last_login=now - timedelta(hours=6),
@@ -95,7 +98,7 @@ def build_seed_database(seed_path: str) -> None:
             email="bob.singh@university.edu",
             password_hash=hash_password("password123"),
             is_admin=False,
-            is_seed=True,
+            is_seed=False,
             department_id=uid("dept-ds"),
             created_at=now - timedelta(days=275),
             last_login=now - timedelta(hours=18),
@@ -106,7 +109,7 @@ def build_seed_database(seed_path: str) -> None:
             email="clara.nunez@university.edu",
             password_hash=hash_password("password123"),
             is_admin=False,
-            is_seed=True,
+            is_seed=False,
             department_id=uid("dept-se"),
             created_at=now - timedelta(days=260),
             last_login=now - timedelta(days=2),
@@ -228,13 +231,35 @@ def build_seed_database(seed_path: str) -> None:
                 final_form_json='{"grade": "B+", "summary": "Consistent work across milestones"}'
                 if status != AssessmentStatus.draft
                 else None,
-                transcript_text="Discussion covered architecture decisions, risk handling, and test strategy.",
-                consent_recorded=student.consent_given,
+                consent_status=ConsentStatus.accepted
+                if student.consent_given
+                else ConsentStatus.pending,
+                consent_confirmed_at=(now - timedelta(days=2)) if student.consent_given else None,
+                consent_confirmed_by=module.teacher_id if student.consent_given else None,
                 created_at=now - timedelta(days=45 - (i % 20)),
                 completed_at=completed_at,
             )
         )
     session.add_all(assessments)
+
+    recordings = []
+    for i, assessment in enumerate(assessments):
+        if i % 4 != 0:
+            continue
+
+        recordings.append(
+            Recording(
+                id=uid(f"recording-{assessment.id}-1"),
+                assessment_id=assessment.id,
+                file_id=None,
+                display_name="interview-intake.wav",
+                sequence_number=1,
+                transcript_text="Discussion covered architecture decisions, risk handling, and test strategy.",
+                transcription_status=TranscriptionStatus.completed,
+                created_at=(assessment.created_at or now) + timedelta(minutes=10),
+            )
+        )
+    session.add_all(recordings)
 
     messages = []
     for assessment in assessments[:80]:
@@ -324,6 +349,7 @@ def build_seed_database(seed_path: str) -> None:
     print(f"projects={session.query(Project).count()}")
     print(f"students={session.query(Student).count()}")
     print(f"assessments={session.query(Assessment).count()}")
+    print(f"recordings={session.query(Recording).count()}")
     print(f"chat_messages={session.query(ChatMessage).count()}")
     print(f"audit_events={session.query(AuditEvent).count()}")
 
