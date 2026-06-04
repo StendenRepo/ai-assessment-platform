@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.file_record import FileRecord
 from app.models.module import Module
+from app.services.text_extraction import extract_document_text
 
 RUBRIC_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "rubrics"
 MODULE_BOOK_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "module_books"
@@ -61,11 +62,17 @@ def _set_module_file(
     """Store an uploaded file, link it to ``module`` via ``fk_attr`` and remove
     the file it replaces (if any). Shared by rubric and module book uploads."""
     filename = file.filename or default_name
-    _check_extension(filename, allowed, label)
+    ext = _check_extension(filename, allowed, label)
 
     raw = file.file.read()
     file_hash = hashlib.sha256(raw).hexdigest()
     size = len(raw)
+
+    # Re-parse the document to plain text so the AI always retrieves over the
+    # latest version (G2-105). Best-effort: a file that won't parse yields None
+    # and the upload still succeeds. The old record — and its extracted text —
+    # is deleted below, so a replace never leaves stale text behind.
+    extracted_text = extract_document_text(raw, ext)
 
     upload_dir = base_dir / str(module.id)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -85,6 +92,7 @@ def _set_module_file(
         file_type=Path(filename).suffix.lstrip(".").lower(),
         size_bytes=size,
         hash=file_hash,
+        extracted_text=extracted_text,
     )
     db.add(record)
     db.flush()
