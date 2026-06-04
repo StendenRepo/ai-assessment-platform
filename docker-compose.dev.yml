@@ -42,6 +42,7 @@ services:
     stt:
         build:
             context: ./stt
+            target: dev
         container_name: stt
         ports:
             - '9000:9000'

@@ -82,6 +82,7 @@ services:
     stt:
         build:
             context: ./stt
+            target: production
         container_name: stt
         environment:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
