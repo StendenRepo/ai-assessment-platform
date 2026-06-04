@@ -458,3 +458,161 @@ def test_module_book_rejects_unsupported_extension(client, db, teacher):
     finally:
         db.query(Module).filter(Module.id == module.id).delete()
         db.commit()
+
+
+# ---------------------------------------------------------------------------
+# G2-105 (slice a): re-parse + persist document text on upload/replace.
+#
+# The extracted text lives on FileRecord.extracted_text, which is intentionally
+# NOT exposed by the API (RubricFileOut omits it), so these tests assert via a
+# direct DB query rather than the response body.
+# ---------------------------------------------------------------------------
+
+import io  # noqa: E402
+
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _docx_bytes(paragraphs: list[str]) -> bytes:
+    """Build a real, parseable .docx in memory."""
+    from docx import Document
+
+    doc = Document()
+    for p in paragraphs:
+        doc.add_paragraph(p)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _xlsx_bytes(rows: list[list[str]]) -> bytes:
+    """Build a real, parseable .xlsx in memory."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    for row in rows:
+        ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _record_for(db, module):
+    from app.models.file_record import FileRecord
+
+    db.refresh(module)
+    return db.query(FileRecord).filter(FileRecord.id == module.module_book_id).first()
+
+
+class TestModuleDocumentTextExtraction:
+    def _module(self, db, teacher, name):
+        from app.models.module import Module
+
+        module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name=name)
+        db.add(module)
+        db.commit()
+        db.refresh(module)
+        return module
+
+    def _cleanup(self, db, module):
+        from app.models.file_record import FileRecord
+        from app.models.module import Module
+
+        db.query(FileRecord).delete()
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.commit()
+
+    def test_module_book_docx_text_is_persisted(self, client, db, teacher):
+        module = self._module(db, teacher, "Book with text")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            docx = _docx_bytes(["Criterion 1: database design", "Criterion 2: security"])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("book.docx", docx, _DOCX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            record = _record_for(db, module)
+            assert record is not None
+            assert record.extracted_text is not None
+            assert "database design" in record.extracted_text
+            assert "security" in record.extracted_text
+        finally:
+            self._cleanup(db, module)
+
+    def test_rubric_xlsx_text_is_persisted(self, client, db, teacher):
+        from app.models.file_record import FileRecord
+
+        module = self._module(db, teacher, "Rubric with text")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            xlsx = _xlsx_bytes([["Criterion", "Weight"], ["database design", "40"]])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.xlsx", xlsx, _XLSX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            db.refresh(module)
+            record = db.query(FileRecord).filter(
+                FileRecord.id == module.rubric_file_id
+            ).first()
+            assert record is not None
+            assert record.extracted_text is not None
+            assert "database design" in record.extracted_text
+        finally:
+            self._cleanup(db, module)
+
+    def test_replace_module_book_refreshes_text_and_drops_old(self, client, db, teacher):
+        from app.models.file_record import FileRecord
+
+        module = self._module(db, teacher, "Book replaced")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+
+            up1 = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("v1.docx", _docx_bytes(["alpha apple version one"]), _DOCX_MIME)},
+                headers=headers,
+            )
+            assert up1.status_code == 200, up1.text
+
+            up2 = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("v2.docx", _docx_bytes(["bravo banana version two"]), _DOCX_MIME)},
+                headers=headers,
+            )
+            assert up2.status_code == 200, up2.text
+
+            # Only the new record survives — the old text is gone with it.
+            assert db.query(FileRecord).count() == 1
+            record = _record_for(db, module)
+            assert "bravo banana" in record.extracted_text
+            assert "alpha" not in record.extracted_text
+        finally:
+            self._cleanup(db, module)
+
+    def test_unparseable_file_still_succeeds_with_null_text(self, client, db, teacher):
+        """Non-fatal contract: a file that can't be parsed must NOT block the
+        upload; it just stores no text. (Locks in the best-effort behaviour the
+        existing junk-byte tests rely on incidentally.)"""
+        module = self._module(db, teacher, "Book unparseable")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("broken.pdf", b"%PDF-1.4 not a real pdf body", "application/pdf")},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            record = _record_for(db, module)
+            assert record is not None
+            assert record.extracted_text is None
+        finally:
+            self._cleanup(db, module)
