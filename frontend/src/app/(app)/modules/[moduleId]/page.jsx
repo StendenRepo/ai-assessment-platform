@@ -26,7 +26,7 @@ import {
   deleteRubric,
   uploadModuleBook,
   deleteModuleBook,
-} from '@/lib/modulesApi';
+} from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
@@ -704,9 +704,8 @@ export default function ModulePage() {
             >
               <p className="text-xs text-muted-foreground">
                 Upload the module book so the AI understands the course content.
-                Only{' '}
-                <span className="font-semibold text-foreground">PDF</span> or{' '}
-                <span className="font-semibold text-foreground">Word</span>{' '}
+                Only <span className="font-semibold text-foreground">PDF</span>{' '}
+                or <span className="font-semibold text-foreground">Word</span>{' '}
                 (.docx) files are accepted.
               </p>
 

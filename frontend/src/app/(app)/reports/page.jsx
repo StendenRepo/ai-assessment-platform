@@ -10,7 +10,7 @@ import {
   Shield,
   ChevronRight,
 } from 'lucide-react';
-import { listModules } from '@/lib/modulesApi';
+import { listModules } from '@/lib/api/modulesApi';
 
 const reportTypes = [
   {

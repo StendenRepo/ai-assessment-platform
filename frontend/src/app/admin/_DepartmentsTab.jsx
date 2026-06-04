@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
-import { adminFetch } from '@/lib/adminFetch';
+import { adminFetch } from '@/lib/api/adminFetch';
 import {
   DeleteConfirm,
   Field,
