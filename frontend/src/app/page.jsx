@@ -21,6 +21,18 @@ export default function RootPage() {
     }
   }, [ready, user, router, isAdmin]);
 
+  // Show why the user was redirected here (e.g. an expired session) and clear
+  // the query param so the notice doesn't persist on refresh.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const notice = params.get('notice');
+    if (notice) {
+      setError(notice);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
+
   const handleModeSwitch = (adminMode) => {
     setIsAdmin(adminMode);
     setError('');

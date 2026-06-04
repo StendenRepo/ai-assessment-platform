@@ -15,7 +15,11 @@ export async function adminFetch(path, options = {}) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
       clearSession();
-      if (typeof window !== 'undefined') window.location.assign('/');
+      if (typeof window !== 'undefined') {
+        // Surface a reason on the login page so the user understands the redirect.
+        const notice = 'Your session has expired. Please sign in again.';
+        window.location.assign(`/?notice=${encodeURIComponent(notice)}`);
+      }
     }
     throw new Error(data.detail || `Request failed (${res.status})`);
   }
