@@ -175,14 +175,21 @@ def update_teacher(
     if not teacher:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher not found")
 
-    if str(admin.id) == teacher_id and not payload.is_admin:
+    is_admin_downgrade = teacher.is_admin and not payload.is_admin
+
+    if str(admin.id) == teacher_id and is_admin_downgrade:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own administrator access")
 
-    if teacher.is_seed and not payload.is_admin:
+    if teacher.is_seed and is_admin_downgrade:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access cannot be removed from the seed account")
 
     if teacher.is_seed and payload.email != teacher.email:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The seed admin account email cannot be changed")
+
+    if teacher.is_seed:
+        # Preserve and auto-heal seed account admin access on non-role edits
+        # (e.g., password updates).
+        payload.is_admin = True
 
     if payload.email != teacher.email:
         if db.query(Teacher).filter(Teacher.email == payload.email, Teacher.id != teacher.id).first():
