@@ -7,7 +7,7 @@ import {
   setConsent as apiSetConsent,
   listRecordings,
   appendRecording,
-} from '@/lib/recording';
+} from '@/lib/api/recording';
 import ConsentBadge from '@/components/recording/ConsentBadge';
 import ConsentPromptDialog from '@/components/recording/ConsentPromptDialog';
 import RecordingRow from '@/components/recording/RecordingRow';

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload, X, Plus, FileText } from 'lucide-react';
-import { createModule } from '@/lib/modulesApi';
+import { createModule } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =

@@ -9,7 +9,7 @@ import {
   Clock,
   TrendingUp,
 } from 'lucide-react';
-import { listModules, listProjectStudents } from '@/lib/modulesApi';
+import { listModules, listProjectStudents } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
 const statusConfig = {

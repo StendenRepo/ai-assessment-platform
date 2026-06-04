@@ -19,7 +19,7 @@ import {
   renameRecording,
   extendRecordingExpiry,
   deleteRecording,
-} from '@/lib/recording';
+} from '@/lib/api/recording';
 import ExtendExpiryDialog from '@/components/recording/ExtendExpiryDialog';
 
 const statusConfig = {

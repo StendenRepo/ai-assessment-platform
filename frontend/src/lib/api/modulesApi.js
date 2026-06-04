@@ -1,28 +1,15 @@
-import { authHeaders } from '@/lib/auth';
-import { normalizeErrorDetail } from '@/lib/apiErrors';
+import { apiRequest } from '@/lib/api/apiClient';
+import { normalizeErrorDetail } from '@/lib/api/apiErrors';
 import { API_PATHS } from '@/lib/routes';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 async function request(path, options = {}) {
-  const isFormData = options.body instanceof FormData;
-  const res = await fetch(`${API_URL}/api/v1${path}`, {
+  return apiRequest(path, {
     ...options,
-    headers: {
-      // Let the browser set the multipart boundary for FormData uploads.
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...authHeaders(),
-      ...(options.headers ?? {}),
-    },
+    basePath: '/api/v1',
+    onUnauthorized: false,
+    errorMessage: (data, res) =>
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`,
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const message =
-      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`;
-    throw new Error(message);
-  }
-  if (res.status === 204) return null;
-  return res.json();
 }
 
 export const listModules = () => request(API_PATHS.modules);

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Building2, Settings, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Header from '@/components/layout/Header';
-import { adminFetch } from '@/lib/adminFetch';
+import { adminFetch } from '@/lib/api/adminFetch';
 import { APP_PATHS } from '@/lib/routes';
 import { TabBtn } from './_ui';
 import { TeachersTab } from './_TeachersTab';

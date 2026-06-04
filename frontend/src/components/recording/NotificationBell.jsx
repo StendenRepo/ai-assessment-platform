@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Bell } from 'lucide-react';
-import { listNotifications, markNotificationRead } from '@/lib/recording';
+import { listNotifications, markNotificationRead } from '@/lib/api/recording';
 
 /**
  * Header bell showing recording deletion reminders (G2-142).
