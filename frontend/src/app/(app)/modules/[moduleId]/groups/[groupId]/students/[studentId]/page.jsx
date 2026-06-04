@@ -10,10 +10,6 @@ import {
   ChevronRight,
   Shield,
   Bot,
-  Mic,
-  Pause,
-  Play,
-  Square,
   Upload,
   FileText,
   XCircle,
@@ -25,6 +21,8 @@ import {
   mockAIInsights,
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
+import RecordingPanel from '@/components/recording/RecordingPanel';
+import { resolveAssessmentForStudent } from '@/lib/recording';
 
 const API_BASE_STUDENT =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -367,9 +365,7 @@ function EvidenceUpload({ studentId }) {
             className={dragOver ? 'text-primary' : 'text-muted-foreground'}
           />
           <p className="text-sm font-medium text-foreground">
-            {uploading
-              ? 'Uploading…'
-              : 'Drop a file here or click to browse'}
+            {uploading ? 'Uploading…' : 'Drop a file here or click to browse'}
           </p>
           <p className="text-xs text-muted-foreground">
             Accepted: {allowedExtensions.join(', ')}
@@ -462,12 +458,7 @@ export default function StudentAssessmentPage() {
   const [expanded, setExpanded] = useState(null);
   const [scores, setScores] = useState({});
   const [comments, setComments] = useState({});
-  const [showConsent, setShowConsent] = useState(false);
-  const [consentGiven, setConsentGiven] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef(null);
+  const [assessmentId, setAssessmentId] = useState(null);
 
   useEffect(() => {
     listProjectStudents(moduleId)
@@ -479,16 +470,17 @@ export default function StudentAssessmentPage() {
       .catch((e) => setLoadError(e.message));
   }, [moduleId, studentId]);
 
+  // Resolve (or lazily create) the assessment for this student so the recording
+  // panel has a real assessment id to drive the recording/consent endpoints.
   useEffect(() => {
-    if (isRecording && !isPaused) {
-      timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
+    let active = true;
+    resolveAssessmentForStudent(studentId)
+      .then((s) => active && setAssessmentId(s.assessment_id))
+      .catch((e) => active && setLoadError(e.message));
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      active = false;
     };
-  }, [isRecording, isPaused]);
+  }, [studentId]);
 
   if (loadError)
     return <div className="text-sm text-red-400 p-4">{loadError}</div>;
@@ -507,9 +499,6 @@ export default function StudentAssessmentPage() {
           Object.values(scores).length
         ).toFixed(1)
       : '—';
-
-  const formatTime = (s) =>
-    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
   return (
     <div className="space-y-6">
@@ -537,19 +526,11 @@ export default function StudentAssessmentPage() {
               {overallScore}
             </div>
           </div>
-          {!isRecording && (
-            <button
-              onClick={() => setShowConsent(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shrink-0 cursor-pointer"
-            >
-              <Mic size={15} /> Start Assessment
-            </button>
-          )}
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        <div className={isRecording ? 'col-span-2' : 'col-span-3'}>
+        <div className="col-span-2">
           <div className="rounded-lg bg-card border border-border overflow-hidden">
             <div className="flex border-b border-border">
               {['Contributions & Evidence', 'Assessment'].map((tab, i) => (
@@ -635,9 +616,9 @@ export default function StudentAssessmentPage() {
                                     )}
                                     <div className="text-[10px] text-muted-foreground">
                                       Uploaded{' '}
-                                      {new Date(ev.uploadDate).toLocaleDateString(
-                                        'en-US'
-                                      )}
+                                      {new Date(
+                                        ev.uploadDate
+                                      ).toLocaleDateString('en-US')}
                                     </div>
                                   </div>
                                 ))}
@@ -757,117 +738,13 @@ export default function StudentAssessmentPage() {
           </div>
         </div>
 
-        {isRecording && (
-          <div className="col-span-1 space-y-4">
-            <div className="rounded-lg bg-card border border-border p-5 space-y-4 sticky top-4">
-              <h3 className="text-sm font-semibold text-foreground">
-                Recording
-              </h3>
-              <div className="rounded-lg bg-red-500/5 border border-red-500/20 p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
-                    {isPaused ? 'Paused' : 'Recording'}
-                  </span>
-                </div>
-                <div className="text-2xl font-bold text-foreground font-mono">
-                  {formatTime(elapsed)}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <button
-                  onClick={() => setIsPaused((p) => !p)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-border text-sm font-medium text-foreground hover:bg-secondary transition-all"
-                >
-                  {isPaused ? <Play size={14} /> : <Pause size={14} />}
-                  {isPaused ? 'Resume' : 'Pause'}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsRecording(false);
-                    setElapsed(0);
-                    setIsPaused(false);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-foreground text-background text-sm font-semibold hover:bg-foreground/90 transition-colors"
-                >
-                  <Square size={14} /> Stop & Save
-                </button>
-              </div>
-              <div className="flex items-start gap-2 rounded-md bg-secondary border border-border p-3">
-                <Shield
-                  size={12}
-                  className="text-muted-foreground mt-0.5 shrink-0"
-                />
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Recording stored securely on-premises. Accessible only to
-                  authorized personnel.
-                </p>
-              </div>
-            </div>
+        <div className="col-span-1 space-y-4">
+          <div className="sticky top-4 space-y-4">
+            {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
             <AIInsightsPanel studentId={studentId} />
           </div>
-        )}
-      </div>
-
-      {showConsent && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-xl p-7 max-w-md w-full shadow-2xl">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                <Mic size={16} className="text-primary" />
-              </div>
-              <h3 className="text-lg font-bold text-foreground">
-                Recording Consent Required
-              </h3>
-            </div>
-            <div className="space-y-3 text-sm text-muted-foreground mb-6">
-              <p>
-                Before starting, we need your consent to record this assessment
-                session.
-              </p>
-              <p>
-                The recording includes audio and video, used solely for
-                assessment purposes and stored securely in accordance with GDPR
-                guidelines.
-              </p>
-            </div>
-            <label className="flex items-start gap-3 rounded-lg bg-secondary border border-border p-4 cursor-pointer mb-6">
-              <input
-                type="checkbox"
-                checked={consentGiven}
-                onChange={(e) => setConsentGiven(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-primary"
-              />
-              <span className="text-sm text-foreground">
-                I consent to this session being recorded for assessment purposes
-                and confirm I understand it will be handled in accordance with
-                GDPR regulations.
-              </span>
-            </label>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowConsent(false);
-                  setConsentGiven(false);
-                }}
-                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!consentGiven}
-                onClick={() => {
-                  setShowConsent(false);
-                  setIsRecording(true);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${consentGiven ? 'bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer' : 'bg-secondary text-muted-foreground cursor-not-allowed'}`}
-              >
-                <Mic size={14} /> Start Recording
-              </button>
-            </div>
-          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

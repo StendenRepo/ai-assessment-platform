@@ -31,6 +31,8 @@ services:
                 condition: service_healthy
             ollama:
                 condition: service_started
+            stt:
+                condition: service_healthy
         command: >
             sh -c "
             alembic upgrade head &&
@@ -77,6 +79,33 @@ services:
                         echo 'Models ready';
             "
         restart: 'no'
+    stt:
+        build:
+            context: ./stt
+        container_name: stt
+        environment:
+            WHISPER_MODEL: ${WHISPER_MODEL:-base}
+            WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+        healthcheck:
+            test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:9000/health'')" || exit 1']
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+        restart: unless-stopped
+    worker:
+        build:
+            context: ./backend
+            target: production
+        container_name: worker
+        env_file: .env
+        volumes:
+            - platform_data:/app/data
+        depends_on:
+            postgres:
+                condition: service_healthy
+        command: ['python', '-m', 'app.worker']
+        restart: unless-stopped
     postgres:
         image: postgres:16-alpine
         container_name: postgres

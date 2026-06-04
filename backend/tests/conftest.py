@@ -4,7 +4,7 @@ import uuid as _uuid_mod
 # SQLite can't render UUID, JSONB, or INET. We swap them for generic SQLAlchemy
 # types so the in-memory test database works without touching production code.
 import sqlalchemy.dialects.postgresql as _pg
-from sqlalchemy import String, Text, TypeDecorator
+from sqlalchemy import JSON, String, Text, TypeDecorator
 
 
 class _SQLiteUUID(TypeDecorator):
@@ -19,7 +19,7 @@ class _SQLiteUUID(TypeDecorator):
 
 
 _pg.UUID = lambda as_uuid=True: _SQLiteUUID()  # used as UUID(as_uuid=True)
-_pg.JSONB = Text    # used as bare class: Column(JSONB, ...)
+_pg.JSONB = JSON    # used as bare class: Column(JSONB, ...) — JSON binds dicts on SQLite
 _pg.INET = String   # used as bare class: Column(INET, ...)
 
 # ── App imports (models now see the patched UUID) ─────────────────────────────
