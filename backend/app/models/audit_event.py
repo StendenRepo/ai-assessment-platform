@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, BigInteger, Enum, ForeignKey
+from sqlalchemy import Column, String, DateTime, BigInteger, Integer, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -9,7 +9,12 @@ from app.models.enums import AuditSource
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    # BigInteger on Postgres; Integer on SQLite so it aliases rowid and autoincrements (tests).
+    id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     assessment_id = Column(UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=True)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=True)
     action = Column(String, nullable=False)

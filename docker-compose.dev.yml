@@ -39,6 +39,29 @@ services:
             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
             "
         restart: unless-stopped
+    stt:
+        build:
+            context: ./stt
+        container_name: stt
+        ports:
+            - '9000:9000'
+        environment:
+            WHISPER_MODEL: ${WHISPER_MODEL:-base}
+            WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+        restart: unless-stopped
+    worker:
+        build:
+            context: ./backend
+            target: dev
+        container_name: worker
+        env_file: .env
+        volumes:
+            - ./backend:/app
+        depends_on:
+            postgres:
+                condition: service_healthy
+        command: ['python', '-m', 'app.worker']
+        restart: unless-stopped
     ollama:
         image: ollama/ollama:latest
         container_name: ollama

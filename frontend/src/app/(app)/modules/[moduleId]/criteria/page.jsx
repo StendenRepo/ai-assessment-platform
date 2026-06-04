@@ -45,7 +45,7 @@ export default function CriteriaPage() {
           Assessment Criteria & Rubrics
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Define criteria for evaluating this project's students
+          Define criteria for evaluating this project&apos;s students
         </p>
       </div>
 

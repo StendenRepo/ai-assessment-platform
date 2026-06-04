@@ -56,3 +56,20 @@ class AuditSource(str, enum.Enum):
     system = "system"
     teacher = "teacher"
     ai = "ai"
+
+
+class ConsentStatus(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+    declined = "declined"
+
+
+class TranscriptionStatus(str, enum.Enum):
+    pending = "pending"
+    processing = "processing"
+    completed = "completed"
+    failed = "failed"
+
+
+class NotificationType(str, enum.Enum):
+    deletion_reminder = "deletion_reminder"

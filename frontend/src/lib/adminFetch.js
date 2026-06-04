@@ -1,4 +1,4 @@
-import { authHeaders } from '@/lib/auth';
+import { authHeaders, clearSession } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -13,6 +13,10 @@ export async function adminFetch(path, options = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      clearSession();
+      if (typeof window !== 'undefined') window.location.assign('/');
+    }
     throw new Error(data.detail || `Request failed (${res.status})`);
   }
   if (res.status === 204) return null;
