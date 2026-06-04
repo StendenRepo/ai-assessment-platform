@@ -5,7 +5,7 @@ recordings table, removes the one-to-one assessments.recording_file_id, adds
 file_records.extension_count (GDPR extension cap), and migrates any existing
 single recording into one recordings row.
 
-Revision ID: a7b8c9d0e1f2
+Revision ID: d60d6f56f4a3
 Revises: f6a7b8c9d0e1
 Create Date: 2026-06-03 00:00:00.000000
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "a7b8c9d0e1f2"
+revision: str = "d60d6f56f4a3"
 down_revision: Union[str, None] = "f6a7b8c9d0e1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
