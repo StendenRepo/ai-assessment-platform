@@ -1,8 +1,10 @@
 import uuid
-from sqlalchemy import Column, String, DateTime
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from datetime import datetime
+
 from app.database import Base
 
 
@@ -13,10 +15,18 @@ class Teacher(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True)
     pin_hash = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
+    is_admin = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_seed = Column(Boolean, nullable=False, default=False, server_default="false")
+    department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
-    # Relationships
+    department = relationship("Department", back_populates="teachers")
     modules = relationship("Module", back_populates="teacher")
-    assessments = relationship("Assessment", back_populates="teacher")
+    assessments = relationship(
+        "Assessment",
+        back_populates="teacher",
+        foreign_keys="Assessment.teacher_id",
+    )
     audit_events = relationship("AuditEvent", back_populates="teacher")

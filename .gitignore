@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -42,6 +43,7 @@ next-env.d.ts
 
 # Python
 venv/
+.venv/
 __pycache__/
 backend/__pycache__/
 backend/.env
@@ -61,4 +63,11 @@ backend/venv/
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.env
-!backend/.env.example
+backend/database/
+
+# Uploaded files / runtime data (stored on disk, not committed)
+backend/data/
+
+# SQLite databases (never track)
+*.db
+*.log

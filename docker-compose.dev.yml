@@ -8,10 +8,12 @@ services:
         container_name: frontend
         ports:
             - '3000:3000'
+        env_file: .env
         volumes:
             - ./frontend:/app
             - /app/node_modules
         environment:
+            - PORT=3000
             - CHOKIDAR_USEPOLLING=true
         restart: unless-stopped
     backend:
@@ -21,14 +23,14 @@ services:
         container_name: backend
         ports:
             - '8000:8000'
+        env_file: .env
         environment:
-            DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/ai_assessment}
-            UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
-            RECORDING_DIR: ${RECORDING_DIR:-/app/data/recordings}
-            EXPORT_DIR: ${EXPORT_DIR:-/app/data/exports}
+            OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
         depends_on:
             postgres:
                 condition: service_healthy
+            ollama:
+                condition: service_started
         volumes:
             - ./backend:/app
         command: >
@@ -37,6 +39,65 @@ services:
             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
             "
         restart: unless-stopped
+    stt:
+        build:
+            context: ./stt
+            target: dev
+        container_name: stt
+        ports:
+            - '9000:9000'
+        environment:
+            WHISPER_MODEL: ${WHISPER_MODEL:-base}
+            WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+        restart: unless-stopped
+    worker:
+        build:
+            context: ./backend
+            target: dev
+        container_name: worker
+        env_file: .env
+        volumes:
+            - ./backend:/app
+        depends_on:
+            postgres:
+                condition: service_healthy
+        command: ['python', '-m', 'app.worker']
+        restart: unless-stopped
+    ollama:
+        image: ollama/ollama:latest
+        container_name: ollama
+        ports:
+            - '11434:11434'
+        volumes:
+            - ollama_data:/root/.ollama
+        command: serve
+        restart: unless-stopped
+    ollama-init:
+        image: ollama/ollama:latest
+        container_name: ollama-init
+        env_file: .env
+        environment:
+            OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
+            OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+        depends_on:
+            ollama:
+                condition: service_started
+        entrypoint: ['/bin/sh', '-lc']
+        command: >
+            "
+            set -e;
+            echo 'Waiting for Ollama API...';
+            until ollama list >/dev/null 2>&1; do sleep 2; done;
+                        echo 'Pulling primary model: ${OLLAMA_MODEL}';
+            ollama pull ${OLLAMA_MODEL};
+                        if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
+                            echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
+                            ollama pull ${OLLAMA_MODEL_BACKUP};
+                        fi;
+                        echo 'Models ready';
+            "
+        restart: 'no'
     postgres:
         image: postgres:16-alpine
         container_name: postgres
@@ -69,3 +130,4 @@ services:
 
 volumes:
     postgres_data:
+    ollama_data:

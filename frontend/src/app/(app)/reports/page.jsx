@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Download,
   FileText,
@@ -10,7 +10,7 @@ import {
   Shield,
   ChevronRight,
 } from 'lucide-react';
-import { mockProjects } from '@/lib/mockData';
+import { listModules } from '@/lib/api/modulesApi';
 
 const reportTypes = [
   {
@@ -64,9 +64,22 @@ const inputClass =
   'bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 
 export default function ReportsPage() {
+  const [modules, setModules] = useState([]);
+  const [loadingModules, setLoadingModules] = useState(true);
+  const [modulesError, setModulesError] = useState('');
   const [selectedProject, setSelectedProject] = useState('');
   const [reportType, setReportType] = useState('individual');
   const [exportFormat, setExportFormat] = useState('pdf');
+
+  useEffect(() => {
+    listModules()
+      .then((data) => {
+        setModules(data);
+        setModulesError('');
+      })
+      .catch((e) => setModulesError(e.message))
+      .finally(() => setLoadingModules(false));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -86,20 +99,31 @@ export default function ReportsPage() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Select Project *
+                Select Module *
               </label>
               <select
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
-                className={`w-full ${inputClass}`}
+                className={`w-full ${inputClass} cursor-pointer`}
+                disabled={loadingModules || !!modulesError}
               >
-                <option value="">— Choose a project —</option>
-                {mockProjects.map((p) => (
+                <option value="">
+                  {loadingModules
+                    ? 'Loading modules...'
+                    : modulesError
+                      ? 'Failed to load modules'
+                      : '— Choose a module —'}
+                </option>
+                {modules.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} — {p.course}
+                    {p.name}
+                    {p.academic_year ? ` — ${p.academic_year}` : ''}
                   </option>
                 ))}
               </select>
+              {modulesError && (
+                <p className="text-xs text-red-400">{modulesError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
