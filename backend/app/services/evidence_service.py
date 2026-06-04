@@ -131,15 +131,17 @@ class EvidenceService:
         # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(EVIDENCE_UPLOAD_DIR))
 
-        # Create DB record — status starts as processing, then set to completed
-        # once the file is safely written to disk.
+        # Create DB record. The file is stored and its text extracted, but no
+        # embedding step has run yet, so the status stays "pending" until the
+        # AI pipeline processes it. (Was incorrectly "completed", which claimed
+        # embedding had finished when nothing had embedded the file.)
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
             source_type=SourceType.upload,
-            embedding_status=EmbeddingStatus.completed,
+            embedding_status=EmbeddingStatus.pending,
         )
         db.add(evidence)
         db.commit()
