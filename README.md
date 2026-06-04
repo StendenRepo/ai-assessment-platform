@@ -1,19 +1,19 @@
 # AI Assessment Platform
 
-An AI-supported assessment platform designed for educational institutions to assist with the evaluation of student group projects.
+An on-premise AI-assisted platform for assessing student work in module-based education.
 
 ## Project Overview
 
 This project is being developed as part of an Informatica HBO project at NHL Stenden.
 
-The platform aims to support teachers and assessors by:
+The platform supports teachers and assessors by:
 
-- Managing modules and projects
-- Managing students and groups
-- Uploading and managing assessment-related documents
-- Supporting assessment workflows
-- Assisting with AI-supported individual contribution analysis
-- Improving consistency and efficiency within group assessments
+- Managing modules, module groups, and students
+- Uploading and managing evidence and module documents
+- Running assessment workflows with per-student scoring and feedback
+- Recording assessments with consent, retention, and audit trails
+- Using local AI support for evidence analysis and overlap detection
+- Improving consistency and speed of individual contribution assessment
 
 The project is currently in the prototype and development phase.
 
