@@ -10,6 +10,8 @@ export const APP_PATHS = {
 };
 
 export const API_PATHS = {
+  authLogin: '/auth/login',
+  authMe: '/auth/me',
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,

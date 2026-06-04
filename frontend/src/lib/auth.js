@@ -1,3 +1,5 @@
+import { API_PATHS } from '@/lib/routes';
+
 const TOKEN_KEY = 'assessai_token';
 const USER_KEY = 'assessai_user';
 
@@ -29,7 +31,7 @@ export function clearSession() {
 }
 
 export async function apiLogin(email, password) {
-  const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+  const res = await fetch(`${API_URL}/api/v1${API_PATHS.authLogin}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -42,7 +44,7 @@ export async function apiLogin(email, password) {
 
   const { access_token } = await res.json();
 
-  const meRes = await fetch(`${API_URL}/api/v1/auth/me`, {
+  const meRes = await fetch(`${API_URL}/api/v1${API_PATHS.authMe}`, {
     headers: { Authorization: `Bearer ${access_token}` },
   });
 
@@ -50,24 +52,6 @@ export async function apiLogin(email, password) {
   const user = await meRes.json();
 
   saveSession(access_token, user);
-  return user;
-}
-
-export async function fetchCurrentUser() {
-  const token = getToken();
-  if (!token) return null;
-
-  const res = await fetch(`${API_URL}/api/v1/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    clearSession();
-    return null;
-  }
-
-  const user = await res.json();
-  saveSession(token, user);
   return user;
 }
 
