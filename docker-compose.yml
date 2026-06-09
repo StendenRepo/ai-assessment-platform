@@ -6,6 +6,8 @@ services:
             context: ./frontend
             target: production
         container_name: frontend
+        volumes:
+            - frontend_tmp:/tmp
         ports:
             - '3000:3000'
         healthcheck:
@@ -57,6 +59,8 @@ services:
         image: ollama/ollama:latest
         container_name: ollama-init
         env_file: .env
+        volumes:
+            - ollama_data:/root/.ollama
         environment:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
             OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
@@ -84,6 +88,8 @@ services:
             context: ./stt
             target: production
         container_name: stt
+        volumes:
+            - stt_cache:/root/.cache
         environment:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
@@ -127,3 +133,5 @@ volumes:
     postgres_data:
     platform_data:
     ollama_data:
+    frontend_tmp:
+    stt_cache:
