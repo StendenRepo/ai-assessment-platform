@@ -1,7 +1,9 @@
+import io
 import json
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -856,3 +858,128 @@ def get_module_overlap_warning(
     signals = OverlapService.get_module_signals(db, str(module.id))
     warning_data = OverlapService.build_warning(signals)
     return OverlapWarningOut(**warning_data)
+
+
+# ---------------------------------------------------------------------------
+# Excel grade export
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{module_id}/export/grades",
+    summary="Export student grades as Excel",
+    response_class=StreamingResponse,
+)
+def export_grades_excel(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Return an .xlsx file with one row per student: name, student number,
+    group, assessment status and final grade."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # ── Collect data ─────────────────────────────────────────────────────
+    projects = db.query(Project).filter(Project.module_id == module.id).all()
+    project_name_by_id = {str(p.id): p.name for p in projects}
+    project_ids = [p.id for p in projects]
+
+    students = (
+        db.query(Student)
+        .filter(Student.project_id.in_(project_ids))
+        .order_by(Student.name)
+        .all()
+    ) if project_ids else []
+
+    latest_assessment: dict = {}
+    if students:
+        for a in db.query(Assessment).filter(
+            Assessment.student_id.in_([s.id for s in students])
+        ).all():
+            existing = latest_assessment.get(a.student_id)
+            if existing is None or a.created_at > existing.created_at:
+                latest_assessment[a.student_id] = a
+
+    # ── Build workbook ───────────────────────────────────────────────────
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Grades"
+
+    # Header style
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    center = Alignment(horizontal="center", vertical="center")
+
+    headers = ["#", "Student Name", "Student Number", "Group", "Assessment Status", "Grade"]
+    col_widths = [5, 30, 18, 25, 22, 12]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 22
+
+    # Data rows
+    for row_idx, student in enumerate(students, start=2):
+        assessment = latest_assessment.get(student.id)
+        ast_status = _assessment_status(assessment)
+        grade = _assessment_grade(assessment) or "—"
+        group_name = project_name_by_id.get(str(student.project_id), "—")
+
+        row_data = [
+            row_idx - 1,
+            student.name,
+            student.student_number or "—",
+            group_name,
+            ast_status.replace("-", " ").title(),
+            grade,
+        ]
+
+        # Alternate row shading
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = Alignment(
+                horizontal="center" if col_idx in (1, 3, 5, 6) else "left",
+                vertical="center",
+            )
+
+        ws.row_dimensions[row_idx].height = 18
+
+    # Freeze header row
+    ws.freeze_panes = "A2"
+
+    # ── Stream response ──────────────────────────────────────────────────
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from datetime import date
+    safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in module.name).strip("_")
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"{safe_name}_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
