@@ -50,18 +50,18 @@ services:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
         restart: unless-stopped
-    worker:
+    retention-worker:
         build:
             context: ./backend
             target: dev
-        container_name: worker
+        container_name: retention-worker
         env_file: .env
         volumes:
             - ./backend:/app
         depends_on:
             postgres:
                 condition: service_healthy
-        command: ['python', '-m', 'app.worker']
+        command: ['python', '-m', 'app.retention_worker']
         restart: unless-stopped
     ollama:
         image: ollama/ollama:latest
