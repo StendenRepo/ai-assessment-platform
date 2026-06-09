@@ -16,9 +16,9 @@ from app.services import retention_service
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [worker] %(levelname)s %(message)s",
+    format="%(asctime)s [retention-worker] %(levelname)s %(message)s",
 )
-logger = logging.getLogger("worker")
+logger = logging.getLogger("retention-worker")
 
 # How often to run the retention sweep, in seconds (default: daily).
 RUN_INTERVAL_SECONDS = int(os.getenv("WORKER_INTERVAL_SECONDS", str(24 * 60 * 60)))
