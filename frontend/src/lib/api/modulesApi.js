@@ -1,6 +1,9 @@
 import { apiRequest } from '@/lib/api/apiClient';
 import { normalizeErrorDetail } from '@/lib/api/apiErrors';
+import { authHeaders } from '@/lib/auth';
 import { API_PATHS } from '@/lib/routes';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 async function request(path, options = {}) {
   return apiRequest(path, {
@@ -101,3 +104,31 @@ export const renameModule = (moduleId, name) =>
 
 export const deleteModule = (moduleId) =>
   request(API_PATHS.module(moduleId), { method: 'DELETE' });
+
+/**
+ * Download the grades Excel file for a module.
+ * Returns a Blob that can be used to trigger a browser download.
+ * @param {string} moduleId
+ * @param {string} moduleName  - used to build the filename client-side
+ */
+export async function exportGradesExcel(moduleId, moduleName = '') {
+  const res = await fetch(
+    `${API_URL}/api/v1${API_PATHS.moduleGradesExport(moduleId)}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+
+  // Build filename the same way the backend does:
+  // replace every non-alphanumeric / non-underscore / non-dash char with '_'
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const safeName = moduleName
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, ''); // trim leading/trailing underscores
+  const filename = safeName ? `${safeName}_${today}.xlsx` : `export_${today}.xlsx`;
+
+  return { blob, filename };
+}

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
   CheckCircle2,
+  Download,
   FileText,
   FolderPlus,
   Search,
@@ -26,6 +27,7 @@ import {
   deleteRubric,
   uploadModuleBook,
   deleteModuleBook,
+  exportGradesExcel,
 } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
@@ -86,6 +88,9 @@ export default function ModulePage() {
   const [uploadingModuleBook, setUploadingModuleBook] = useState(false);
   const [deletingModuleBook, setDeletingModuleBook] = useState(false);
   const [moduleBookError, setModuleBookError] = useState('');
+
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const groupProgress = useMemo(() => {
     return students.reduce((summary, student) => {
@@ -359,6 +364,26 @@ export default function ModulePage() {
   const rubric = project?.rubric_file;
   const moduleBook = project?.module_book_file;
 
+  const handleExportGrades = async () => {
+    setExportError('');
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportGradesExcel(moduleId, project?.name || '');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -371,14 +396,28 @@ export default function ModulePage() {
               Manage the students in this module to set up the assessment
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
-            className="shrink-0 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-          >
-            Manage Groups & Students
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleExportGrades}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Download size={14} />
+              {exporting ? 'Exporting…' : 'Export Grades'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
+              className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+            >
+              Manage Groups & Students
+            </button>
+          </div>
         </div>
+        {exportError && (
+          <p className="mt-2 text-xs text-red-400">{exportError}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-6">
