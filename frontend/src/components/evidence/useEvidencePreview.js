@@ -19,6 +19,7 @@ export function useEvidencePreview() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewContent, setPreviewContent] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [showImageExtractedText, setShowImageExtractedText] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -38,6 +39,7 @@ export function useEvidencePreview() {
   const resetPreviewState = () => {
     releasePreviewUrl();
     setPreviewContent('');
+    setShowImageExtractedText(false);
   };
 
   const openPreview = async (evidence) => {
@@ -70,6 +72,35 @@ export function useEvidencePreview() {
     setPreviewLoading(false);
   };
 
+  const toggleImageExtractedText = async () => {
+    if (!previewEvidence || previewEvidence.file_type !== 'image') return;
+
+    if (showImageExtractedText) {
+      setShowImageExtractedText(false);
+      return;
+    }
+
+    if (previewContent) {
+      setShowImageExtractedText(true);
+      return;
+    }
+
+    setPreviewLoading(true);
+    try {
+      const content = await getEvidenceContent(previewEvidence.id);
+      setPreviewContent(content);
+      setShowImageExtractedText(true);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const basePreviewKind = getEvidencePreviewKind(previewEvidence);
+  const activePreviewKind =
+    basePreviewKind === 'image' && showImageExtractedText
+      ? 'text'
+      : basePreviewKind;
+
   const downloadEvidence = async (evidence) => {
     const blob = await getEvidenceFileBlob(evidence.id);
     const blobUrl = URL.createObjectURL(blob);
@@ -87,10 +118,13 @@ export function useEvidencePreview() {
     previewUrl,
     previewContent,
     previewLoading,
-    activePreviewKind: getEvidencePreviewKind(previewEvidence),
+    activePreviewKind,
+    basePreviewKind,
+    showImageExtractedText,
     canPreview: (evidence) => getEvidencePreviewKind(evidence) !== null,
     openPreview,
     closePreview,
+    toggleImageExtractedText,
     downloadEvidence,
   };
 }

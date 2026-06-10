@@ -231,9 +231,12 @@ function EvidenceUpload({ studentId }) {
     previewContent,
     previewLoading,
     activePreviewKind,
+    basePreviewKind,
+    showImageExtractedText,
     canPreview,
     openPreview,
     closePreview,
+    toggleImageExtractedText,
     downloadEvidence,
   } = useEvidencePreview();
 
@@ -451,9 +454,19 @@ function EvidenceUpload({ studentId }) {
       <EvidencePreviewDialog
         evidence={previewEvidence}
         previewKind={activePreviewKind}
+        basePreviewKind={basePreviewKind}
         previewUrl={previewUrl}
         previewContent={previewContent}
         loading={previewLoading}
+        showImageExtractedText={showImageExtractedText}
+        onToggleImageExtractedText={async () => {
+          setError(null);
+          try {
+            await toggleImageExtractedText();
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
         onClose={closePreview}
       />
     </div>

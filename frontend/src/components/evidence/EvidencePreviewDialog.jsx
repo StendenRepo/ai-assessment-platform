@@ -6,9 +6,12 @@ import { XCircle } from 'lucide-react';
 export default function EvidencePreviewDialog({
   evidence,
   previewKind,
+  basePreviewKind,
   previewUrl,
   previewContent,
   loading,
+  showImageExtractedText,
+  onToggleImageExtractedText,
   onClose,
 }) {
   if (!evidence && !loading) return null;
@@ -17,7 +20,7 @@ export default function EvidencePreviewDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative h-[92vh] w-full max-w-[96vw] rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-foreground">
               {evidence?.file_name ?? 'Loading preview'}
@@ -30,12 +33,25 @@ export default function EvidencePreviewDialog({
                   : 'Raw evidence preview'}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <XCircle size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {basePreviewKind === 'image' && (
+              <button
+                onClick={onToggleImageExtractedText}
+                disabled={loading}
+                className="rounded border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {showImageExtractedText
+                  ? 'Back to image'
+                  : 'View extracted text'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <XCircle size={16} />
+            </button>
+          </div>
         </div>
         <div className="flex h-[calc(92vh-73px)] items-center justify-center bg-secondary/30 p-5">
           {loading ? (
