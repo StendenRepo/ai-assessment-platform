@@ -130,6 +130,8 @@ Starts all services with hot-reload for frontend and backend, plus local AI serv
 docker compose -f docker-compose.dev.yml up -d --build
 ```
 
+Development uploads, recordings, and exports are stored in [backend/data](backend/data) on the host so files created by the Dockerized backend are visible locally.
+
 | Service  | URL                    |
 | -------- | ---------------------- |
 | Frontend | http://localhost:3000  |
