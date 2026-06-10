@@ -112,7 +112,7 @@ class TestUploadMarkdownEvidence:
         assert body["file_name"] == "evidence.md"
         assert body["file_type"] == "markdown"
         assert body["source_type"] == "upload"
-        assert body["embedding_status"] == "pending"
+        assert body["embedding_status"] == "completed"
 
     def test_upload_invalid_image_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
@@ -137,7 +137,7 @@ class TestUploadImageEvidence:
         assert body["file_name"] == "diagram.png"
         assert body["file_type"] == "image"
         assert body["source_type"] == "upload"
-        assert body["embedding_status"] == "pending"
+        assert body["embedding_status"] == "completed"
 
     def test_upload_without_auth_returns_401(self, client, student):
         url = UPLOAD_URL.format(student_id=str(student.id))
