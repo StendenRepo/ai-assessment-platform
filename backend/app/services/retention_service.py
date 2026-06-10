@@ -1,7 +1,8 @@
 """Recording retention logic (G2-141 deletion flagging, G2-142 reminders).
 
-Pure functions invoked by the worker container on a daily schedule. Logic lives
-here (not in the worker entrypoint) so it can be unit-tested against SQLite.
+Pure functions invoked by the retention-worker container on a daily schedule.
+Logic lives here (not in the worker entrypoint) so it can be unit-tested
+against SQLite.
 """
 from datetime import datetime, timedelta
 
