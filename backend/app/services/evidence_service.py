@@ -1,11 +1,12 @@
 import io
 import mimetypes
+import re
 import uuid as _uuid
 from pathlib import Path
 
 from docx import Document as DocxDocument
 from fastapi import HTTPException, UploadFile, status
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
@@ -134,7 +135,7 @@ def _extract_image_text(raw: bytes, filename: str) -> str:
     try:
         import pytesseract
 
-        text = pytesseract.image_to_string(image)
+        text = _extract_image_text_with_ocr(image, pytesseract)
     except Exception:
         text = ""
     finally:
@@ -145,6 +146,107 @@ def _extract_image_text(raw: bytes, filename: str) -> str:
         return text
 
     return f"[Image evidence uploaded: {filename}]"
+
+
+def _extract_image_text_with_ocr(image: Image.Image, pytesseract_module) -> str:
+    """Try OCR strategies and return the best candidate text.
+
+    Fast mode trades a little accuracy for significantly lower latency by
+    limiting combinations and returning early once confidence is high enough.
+    """
+    best_text = ""
+    best_score = 0
+
+    for candidate, lang, config in _iter_ocr_attempts(image):
+        try:
+            raw_text = pytesseract_module.image_to_string(
+                candidate,
+                lang=lang,
+                config=config,
+            )
+        except Exception:
+            continue
+
+        normalized = _normalize_ocr_text(raw_text)
+        score = _ocr_text_score(normalized)
+        if score > best_score:
+            best_score = score
+            best_text = normalized
+            if best_score >= settings.OCR_EARLY_EXIT_SCORE:
+                break
+
+    return best_text if best_score >= settings.OCR_MIN_ACCEPT_SCORE else ""
+
+
+def _iter_ocr_attempts(image: Image.Image):
+    candidates = _build_ocr_candidates(image)
+
+    if settings.OCR_FAST_MODE:
+        attempt_plan = [
+            ("merged", "eng+nld", "--oem 3 --psm 6"),
+            ("up2", "eng+nld", "--oem 3 --psm 6"),
+            ("contrast", "eng+nld", "--oem 3 --psm 6"),
+            ("threshold", "eng+nld", "--oem 3 --psm 11"),
+            ("up2", "eng", "--oem 3 --psm 6"),
+            ("up2", "nld", "--oem 3 --psm 6"),
+        ]
+    else:
+        attempt_plan = [
+            (name, lang, config)
+            for name in candidates.keys()
+            for lang in ("eng+nld", "eng", "nld")
+            for config in ("--oem 3 --psm 6", "--oem 3 --psm 11", "")
+        ]
+
+    try:
+        for name, lang, config in attempt_plan:
+            candidate = candidates.get(name)
+            if candidate is None:
+                continue
+            yield candidate, lang, config
+    finally:
+        for name, candidate in candidates.items():
+            if name != "original":
+                candidate.close()
+
+
+def _build_ocr_candidates(image: Image.Image) -> dict[str, Image.Image]:
+    """Create OCR-friendly image variants from an uploaded source image."""
+    base = image.convert("RGBA")
+    # Flatten transparency so OCR sees dark text on a white background.
+    background = Image.new("RGBA", base.size, (255, 255, 255, 255))
+    merged = Image.alpha_composite(background, base).convert("RGB")
+
+    gray = ImageOps.grayscale(merged)
+    up2 = gray.resize((max(gray.width * 2, 1), max(gray.height * 2, 1)))
+    up3 = gray.resize((max(gray.width * 3, 1), max(gray.height * 3, 1)))
+    contrast = ImageOps.autocontrast(up2)
+    threshold = contrast.point(lambda p: 255 if p > 165 else 0)
+    sharpen = up2.filter(ImageFilter.SHARPEN)
+
+    return {
+        "original": image,
+        "merged": merged,
+        "up2": up2,
+        "up3": up3,
+        "contrast": contrast,
+        "threshold": threshold,
+        "sharpen": sharpen,
+    }
+
+
+def _normalize_ocr_text(value: str) -> str:
+    text = (value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    # Remove noisy empty lines that commonly appear in OCR output.
+    text = "\n".join(line.strip() for line in text.split("\n") if line.strip())
+    return text
+
+
+def _ocr_text_score(value: str) -> int:
+    if not value:
+        return 0
+    # Favor candidates containing actual words over punctuation noise.
+    return len(re.findall(r"[A-Za-z0-9]", value))
 
 
 class EvidenceService:

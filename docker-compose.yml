@@ -45,6 +45,14 @@ services:
             interval: 30s
             timeout: 10s
             retries: 3
+        deploy:
+            resources:
+                limits:
+                    cpus: '${BACKEND_CPU_LIMIT:-2.0}'
+                    memory: ${BACKEND_MEMORY_LIMIT:-2G}
+                reservations:
+                    cpus: '${BACKEND_CPU_RESERVATION:-0.5}'
+                    memory: ${BACKEND_MEMORY_RESERVATION:-512M}
         restart: unless-stopped
     ollama:
         image: ollama/ollama:latest

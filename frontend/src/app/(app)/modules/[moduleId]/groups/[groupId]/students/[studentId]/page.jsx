@@ -11,6 +11,7 @@ import {
   Shield,
   Bot,
   Upload,
+  CheckCircle2,
   XCircle,
 } from 'lucide-react';
 import {
@@ -24,12 +25,12 @@ import EvidenceListItem from '@/components/evidence/EvidenceListItem';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
 import {
   deleteEvidence,
   getSupportedEvidenceTypes,
   listStudentEvidence,
-  uploadStudentEvidence,
 } from '@/lib/api/evidence';
 
 const UUID_RE =
@@ -209,8 +210,8 @@ const UUID_REGEX =
 function EvidenceUpload({ studentId }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  // All evidence for this student (existing + newly uploaded this session)
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState('');
+  // Confirmed evidence from the server (existing + newly completed uploads)
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -218,6 +219,12 @@ function EvidenceUpload({ studentId }) {
   const [allowedExtensions, setAllowedExtensions] = useState(
     DEFAULT_EVIDENCE_EXTENSIONS
   );
+  const {
+    startUpload,
+    registerCallbacks,
+    getStudentLocalItems,
+    consumeCompletedItems,
+  } = useEvidenceUpload();
   const {
     previewEvidence,
     previewUrl,
@@ -231,6 +238,12 @@ function EvidenceUpload({ studentId }) {
   } = useEvidencePreview();
 
   const isValidUUID = UUID_REGEX.test(studentId);
+
+  // In-flight items from the persistent context (survive navigation)
+  const localItems = isValidUUID ? getStudentLocalItems(studentId) : [];
+  const uploading = localItems.length > 0;
+  // Show the latest in-flight filename in the upload panel
+  const uploadingFileName = localItems[0]?.file_name ?? '';
 
   // Fetch supported types from the API on mount (only when we have a real UUID)
   useEffect(() => {
@@ -246,14 +259,41 @@ function EvidenceUpload({ studentId }) {
       });
   }, [isValidUUID]);
 
-  // Fetch existing evidence for this student on mount
+  // Register live callbacks with the context so completed uploads update this
+  // component's state even when initiated from a previous mount of this page.
+  useEffect(() => {
+    if (!isValidUUID) return;
+    return registerCallbacks(studentId, {
+      onCompleted: (data) => {
+        setAllEvidence((prev) => {
+          if (prev.some((e) => e.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+        setUploadSuccessMessage(`Upload complete: ${data.file_name}`);
+        window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+      },
+      onError: (err) => {
+        setError(err.message);
+      },
+    });
+  }, [studentId, isValidUUID]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch existing evidence for this student on mount; also merge any items
+  // that completed while we were navigated away.
   useEffect(() => {
     if (!isValidUUID) return;
     const load = async () => {
       setEvidenceLoading(true);
       try {
         const data = await listStudentEvidence(studentId).catch(() => []);
-        setAllEvidence(Array.isArray(data) ? data : []);
+        const fetched = Array.isArray(data) ? data : [];
+        // Prepend items that finished uploading while this page was unmounted
+        const stashed = consumeCompletedItems(studentId);
+        const stashedIds = new Set(stashed.map((e) => e.id));
+        setAllEvidence([
+          ...stashed,
+          ...fetched.filter((e) => !stashedIds.has(e.id)),
+        ]);
       } catch {
         setAllEvidence([]);
       } finally {
@@ -261,7 +301,7 @@ function EvidenceUpload({ studentId }) {
       }
     };
     load();
-  }, [studentId, isValidUUID]);
+  }, [studentId, isValidUUID]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Guard: only render the upload UI when studentId is a real UUID
   if (!isValidUUID) {
@@ -278,7 +318,7 @@ function EvidenceUpload({ studentId }) {
     return allowedExtensions.includes(ext);
   };
 
-  const handleFile = async (file) => {
+  const handleSingleFile = (file) => {
     setError(null);
     if (!isAllowed(file.name)) {
       setError(
@@ -287,28 +327,24 @@ function EvidenceUpload({ studentId }) {
       return;
     }
 
-    setUploading(true);
-    try {
-      const data = await uploadStudentEvidence(studentId, file);
-      setAllEvidence((prev) => [data, ...prev]);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
-    }
+    startUpload(studentId, file);
   };
 
   const onInputChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      void handleSingleFile(file);
+    });
     e.target.value = '';
   };
 
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    files.forEach((file) => {
+      void handleSingleFile(file);
+    });
   };
 
   const handleDelete = async (evidenceId) => {
@@ -347,6 +383,8 @@ function EvidenceUpload({ studentId }) {
         title="Upload Evidence"
         acceptedLabel={allowedExtensions.join(', ')}
         uploading={uploading}
+        uploadingCount={localItems.length}
+        uploadingFileName={uploadingFileName}
         dragOver={dragOver}
         fileInputRef={fileInputRef}
         accept={acceptAttr}
@@ -360,6 +398,13 @@ function EvidenceUpload({ studentId }) {
         onOpenFilePicker={() => fileInputRef.current?.click()}
       />
 
+      {uploadSuccessMessage && (
+        <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+          <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+          <p className="text-xs text-emerald-400">{uploadSuccessMessage}</p>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
           <XCircle size={13} className="text-red-400 shrink-0" />
@@ -369,29 +414,37 @@ function EvidenceUpload({ studentId }) {
 
       <div className="rounded-lg border border-border overflow-hidden">
         <div className="p-5 space-y-2">
-          <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-            Evidence ({allEvidence.length})
-          </p>
-          {evidenceLoading ? (
-            <div className="flex justify-center py-4">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : allEvidence.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">
-              No evidence uploaded yet.
-            </p>
-          ) : (
-            allEvidence.map((ev) => (
-              <EvidenceListItem
-                key={ev.id}
-                evidence={ev}
-                canPreview={canPreview(ev)}
-                onPreview={handlePreview}
-                onDownload={handleDownload}
-                onDelete={handleDelete}
-              />
-            ))
-          )}
+          {/* localItems are in-flight (context survives navigation); allEvidence is fetched */}
+          {(() => {
+            const displayedEvidence = [...localItems, ...allEvidence];
+            return (
+              <>
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                  Evidence ({displayedEvidence.length})
+                </p>
+                {evidenceLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : displayedEvidence.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    No evidence uploaded yet.
+                  </p>
+                ) : (
+                  displayedEvidence.map((ev) => (
+                    <EvidenceListItem
+                      key={ev.id}
+                      evidence={ev}
+                      canPreview={!ev.__localProcessing && canPreview(ev)}
+                      onPreview={handlePreview}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                    />
+                  ))
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 
