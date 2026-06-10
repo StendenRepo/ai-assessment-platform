@@ -1,8 +1,8 @@
+import base64
 import io
 import mimetypes
 import uuid as _uuid
 from pathlib import Path
-import base64
 
 from docx import Document as DocxDocument
 from fastapi import HTTPException, UploadFile, status
@@ -31,12 +31,25 @@ def _evidence_upload_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence"
 
 
+def _evidence_text_dir() -> Path:
+    return Path(settings.UPLOAD_DIR) / "evidence_text"
+
+
 def _full_path_for(relative_path: str) -> Path:
     return _evidence_upload_dir() / relative_path
 
 
 def _text_path_for(file_path: Path) -> Path:
-    return file_path.with_name(f"{file_path.name}.txt")
+    evidence_root = _evidence_upload_dir()
+    try:
+        relative_path = file_path.relative_to(evidence_root)
+    except ValueError:
+        relative_path = Path(file_path.name)
+    return _evidence_text_dir() / relative_path.parent / f"{relative_path.name}.txt"
+
+
+def _should_store_text_sidecar(file_type: FileType) -> bool:
+    return file_type == FileType.image
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -108,9 +121,6 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=f"Text extraction not implemented for file type '{file_type}'",
     )
-
-
-import base64
 
 
 def _extract_image_text(raw: bytes, filename: str) -> str:
@@ -226,7 +236,10 @@ class EvidenceService:
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
         file_path.write_bytes(raw)
-        _text_path_for(file_path).write_text(content, encoding="utf-8")
+        if _should_store_text_sidecar(file_type):
+            text_path = _text_path_for(file_path)
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+            text_path.write_text(content, encoding="utf-8")
 
         # Store path relative to the evidence upload root so the record stays
         # portable when the base upload directory changes.
@@ -367,18 +380,26 @@ class EvidenceService:
     def _read_or_rebuild_text_content(evidence: Evidence) -> str:
         full_path = _full_path_for(evidence.file_path)
         text_path = _text_path_for(full_path)
-        if text_path.exists():
+        file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
+
+        if _should_store_text_sidecar(file_type) and text_path.exists():
             return text_path.read_text(encoding="utf-8")
 
-        try:
-            return full_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            return EvidenceService._extract_and_store_text(evidence, full_path)
+        if file_type == FileType.markdown:
+            try:
+                return full_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return EvidenceService._extract_and_store_text(evidence, full_path)
+
+        return EvidenceService._extract_and_store_text(evidence, full_path)
 
     @staticmethod
     def _extract_and_store_text(evidence: Evidence, full_path: Path) -> str:
         file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
         raw = full_path.read_bytes()
         content = _extract_text(raw, file_type, evidence.file_name)
-        _text_path_for(full_path).write_text(content, encoding="utf-8")
+        if _should_store_text_sidecar(file_type):
+            text_path = _text_path_for(full_path)
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+            text_path.write_text(content, encoding="utf-8")
         return content

@@ -47,6 +47,10 @@ def _evidence_root(tmp_path):
     return tmp_path / "evidence"
 
 
+def _evidence_text_root(tmp_path):
+    return tmp_path / "evidence_text"
+
+
 @pytest.fixture
 def student(db, teacher):
     """Create a minimal module + project + student linked to the teacher."""
@@ -188,9 +192,25 @@ class TestEvidenceLinkedToStudent:
         assert saved_path.exists()
         assert saved_path.read_bytes().startswith(b"\x89PNG")
 
-        text_path = saved_path.with_name(f"{saved_path.name}.txt")
+        text_path = _evidence_text_root(tmp_path) / res.json()["file_path"]
+        text_path = text_path.with_name(f"{text_path.name}.txt")
         assert text_path.exists()
         assert text_path.read_text(encoding="utf-8") == "[Image evidence uploaded: proof.png]"
+
+    def test_upload_markdown_does_not_write_text_sidecar(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.id))
+        res = client.post(url, files=[_make_md_file(filename="notes.md")], headers=headers)
+        assert res.status_code == 201
+
+        saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
+        assert saved_path.exists()
+        assert saved_path.read_text(encoding="utf-8") == "# Hello\n\nThis is evidence."
+
+        text_path = saved_path.with_name(f"{saved_path.name}.txt")
+        assert not text_path.exists()
 
 
 # ── AC 3: Content is read correctly ──────────────────────────────────────────
@@ -258,8 +278,9 @@ class TestReadEvidenceContent:
         assert upload_res.status_code == 201
 
         relative_path = upload_res.json()["file_path"]
-        text_path = _evidence_root(tmp_path) / relative_path
+        text_path = _evidence_text_root(tmp_path) / relative_path
         text_sidecar = text_path.with_name(f"{text_path.name}.txt")
+        text_sidecar.parent.mkdir(parents=True, exist_ok=True)
         text_sidecar.write_text("stale text", encoding="utf-8")
 
         from app.services.evidence_service import EvidenceService
