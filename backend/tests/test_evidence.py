@@ -14,6 +14,7 @@ import io
 import uuid
 
 import pytest
+from PIL import Image
 
 UPLOAD_URL = "/api/v1/students/{student_id}/evidence"
 LIST_URL = "/api/v1/students/{student_id}/evidence"
@@ -31,6 +32,14 @@ def _auth_header(client, teacher):
 
 def _make_md_file(content: str = "# Hello\n\nThis is evidence.", filename: str = "evidence.md"):
     return ("file", (filename, io.BytesIO(content.encode()), "text/markdown"))
+
+
+def _make_png_file(filename: str = "evidence.png"):
+    image = Image.new("RGB", (2, 2), color=(255, 255, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return ("file", (filename, buffer, "image/png"))
 
 
 @pytest.fixture
@@ -99,12 +108,30 @@ class TestUploadMarkdownEvidence:
         assert body["source_type"] == "upload"
         assert body["embedding_status"] == "pending"
 
-    def test_upload_non_md_returns_422(self, client, teacher, student):
+    def test_upload_invalid_image_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.id))
-        bad_file = ("file", ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf"))
+        bad_file = ("file", ("broken.png", io.BytesIO(b"not-an-image"), "image/png"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
+
+
+class TestUploadImageEvidence:
+    def test_upload_png_returns_201(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.id))
+        res = client.post(url, files=[_make_png_file()], headers=headers)
+        assert res.status_code == 201
+
+    def test_upload_png_response_marks_image_type(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.id))
+        res = client.post(url, files=[_make_png_file(filename="diagram.png")], headers=headers)
+        body = res.json()
+        assert body["file_name"] == "diagram.png"
+        assert body["file_type"] == "image"
+        assert body["source_type"] == "upload"
+        assert body["embedding_status"] == "pending"
 
     def test_upload_without_auth_returns_401(self, client, student):
         url = UPLOAD_URL.format(student_id=str(student.id))
@@ -176,6 +203,26 @@ class TestReadEvidenceContent:
         res = client.get(url, headers=headers)
         assert res.status_code == 404
 
+    def test_image_content_endpoint_returns_fallback_text(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.id))
+        upload_res = client.post(
+            url,
+            files=[_make_png_file(filename="whiteboard.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        content_url = CONTENT_URL.format(evidence_id=evidence_id)
+        res = client.get(content_url, headers=headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["file_name"] == "whiteboard.png"
+        assert body["content"] == "[Image evidence uploaded: whiteboard.png]"
+
 
 # ── Extensibility: supported-types endpoint ───────────────────────────────────
 
@@ -191,11 +238,16 @@ class TestSupportedTypes:
         res = client.get("/api/v1/evidence/supported-types")
         assert ".md" in res.json()["supported_extensions"]
 
+    def test_png_is_in_supported_types(self, client):
+        res = client.get("/api/v1/evidence/supported-types")
+        assert ".png" in res.json()["supported_extensions"]
+
     def test_unsupported_extension_error_mentions_allowed_types(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.id))
-        bad_file = ("file", ("image.png", io.BytesIO(b"\x89PNG"), "image/png"))
+        bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
         # Error message should mention the allowed extensions
         assert ".md" in res.json()["detail"]
+        assert ".png" in res.json()["detail"]

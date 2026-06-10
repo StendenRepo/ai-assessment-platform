@@ -3,8 +3,9 @@ import uuid as _uuid
 from pathlib import Path
 
 from docx import Document as DocxDocument
-from pypdf import PdfReader
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -35,6 +36,9 @@ SUPPORTED_EXTENSIONS: dict[str, FileType] = {
     ".md": FileType.markdown,
     ".docx": FileType.docx,
     ".pdf": FileType.pdf,
+    ".png": FileType.image,
+    ".jpg": FileType.image,
+    ".jpeg": FileType.image,
 }
 
 
@@ -85,11 +89,52 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
                 detail=f"Could not parse '{filename}' as a valid PDF",
             )
 
+    if file_type == FileType.image:
+        return _extract_image_text(raw, filename)
+
     # Fallback for any future types not yet handled
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=f"Text extraction not implemented for file type '{file_type}'",
     )
+
+
+def _extract_image_text(raw: bytes, filename: str) -> str:
+    """Validate an image upload and extract text when OCR is available.
+
+    OCR is optional in the current stack. If an OCR engine is not installed or
+    returns no text, keep the upload successful and persist a readable marker so
+    the evidence record still has content for downstream consumers.
+    """
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+    except UnidentifiedImageError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not parse '{filename}' as a valid image",
+        )
+    except OSError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not parse '{filename}' as a valid image",
+        )
+
+    text = ""
+    try:
+        import pytesseract
+
+        text = pytesseract.image_to_string(image)
+    except Exception:
+        text = ""
+    finally:
+        image.close()
+
+    text = text.strip()
+    if text:
+        return text
+
+    return f"[Image evidence uploaded: {filename}]"
 
 
 class EvidenceService:
