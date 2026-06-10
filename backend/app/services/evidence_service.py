@@ -149,11 +149,15 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
 
 
 def _extract_image_text(raw: bytes, filename: str) -> str:
-    """Validate an image and describe it using the Ollama vision model.
+    """Validate an image and describe it using the Ollama vision model."""
+    _validate_image(raw, filename)
 
-    Falls back to a placeholder marker when the vision model is unavailable so
-    the evidence record is never empty.
-    """
+    text = _extract_image_text_with_vision(raw, filename)
+    return text.strip() or _image_placeholder_text(filename)
+
+
+def _validate_image(raw: bytes, filename: str) -> None:
+    """Ensure uploaded bytes are a valid image payload."""
     try:
         image = Image.open(io.BytesIO(raw))
         image.load()
@@ -163,10 +167,6 @@ def _extract_image_text(raw: bytes, filename: str) -> str:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Could not parse '{filename}' as a valid image",
         )
-
-    text = _extract_image_text_with_vision(raw, filename)
-    return text.strip() or _image_placeholder_text(filename)
-
 
 def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
     """Describe an image using the configured Ollama vision model.
