@@ -58,12 +58,12 @@ def student(db, teacher):
     db.flush()
 
     s = Student(
-        id=uuid.uuid4(),
-        project_id=project.id,
         name="Alice",
-        student_number="S001",
+        student_number="1001",
     )
     db.add(s)
+    db.flush()
+    s.projects.append(project)
     db.commit()
     db.refresh(s)
     yield s
@@ -72,8 +72,10 @@ def student(db, teacher):
     # rolls back the teardown and leaves a committed teacher row behind —
     # cascading into UNIQUE(teachers.email) errors in later test files.
     from app.models.evidence import Evidence
+    from app.models.student import student_projects
 
-    db.query(Evidence).filter(Evidence.student_id == s.id).delete()
+    db.query(Evidence).filter(Evidence.student_id == s.student_number).delete()
+    db.execute(student_projects.delete().where(student_projects.c.student_id == s.student_number))
     db.delete(s)
     db.delete(project)
     db.delete(module)
@@ -85,13 +87,13 @@ def student(db, teacher):
 class TestUploadMarkdownEvidence:
     def test_upload_md_returns_201(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         res = client.post(url, files=[_make_md_file()], headers=headers)
         assert res.status_code == 201
 
     def test_upload_md_response_contains_expected_fields(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         res = client.post(url, files=[_make_md_file()], headers=headers)
         body = res.json()
         assert body["file_name"] == "evidence.md"
@@ -101,13 +103,13 @@ class TestUploadMarkdownEvidence:
 
     def test_upload_non_md_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         bad_file = ("file", ("report.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
 
     def test_upload_without_auth_returns_401(self, client, student):
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         res = client.post(url, files=[_make_md_file()])
         assert res.status_code == 401
 
@@ -123,10 +125,10 @@ class TestUploadMarkdownEvidence:
 class TestEvidenceLinkedToStudent:
     def test_uploaded_evidence_appears_in_list(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         client.post(url, files=[_make_md_file(filename="linked.md")], headers=headers)
 
-        list_url = LIST_URL.format(student_id=str(student.id))
+        list_url = LIST_URL.format(student_id=str(student.student_number))
         res = client.get(list_url, headers=headers)
         assert res.status_code == 200
         names = [e["file_name"] for e in res.json()]
@@ -134,9 +136,9 @@ class TestEvidenceLinkedToStudent:
 
     def test_evidence_student_id_matches(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         res = client.post(url, files=[_make_md_file()], headers=headers)
-        assert res.json()["student_id"] == str(student.id)
+        assert res.json()["student_id"] == student.student_number
 
     def test_list_unknown_student_returns_404(self, client, teacher):
         headers = _auth_header(client, teacher)
@@ -154,7 +156,7 @@ class TestReadEvidenceContent:
 
         headers = _auth_header(client, teacher)
         md_content = "# My Evidence\n\nThis is the content."
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         upload_res = client.post(
             url,
             files=[_make_md_file(content=md_content)],
@@ -193,7 +195,7 @@ class TestSupportedTypes:
 
     def test_unsupported_extension_error_mentions_allowed_types(self, client, teacher, student):
         headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.id))
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
         bad_file = ("file", ("image.png", io.BytesIO(b"\x89PNG"), "image/png"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422

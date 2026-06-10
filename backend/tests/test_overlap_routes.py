@@ -29,26 +29,19 @@ def _seed_module_with_overlap(db, teacher):
     db.add(group_b)
     db.commit()
 
-    alice = Student(
-        id=uuid.uuid4(),
-        project_id=group_a.id,
-        name="Alice",
-        student_number="S-ALICE",
-    )
-    bob = Student(
-        id=uuid.uuid4(),
-        project_id=group_b.id,
-        name="Bob",
-        student_number="S-BOB",
-    )
+    alice = Student(name="Alice", student_number="1001001")
+    bob = Student(name="Bob", student_number="1001002")
     db.add(alice)
     db.add(bob)
+    db.flush()
+    alice.projects.append(group_a)
+    bob.projects.append(group_b)
     db.commit()
 
     # Same file name across students should trigger a high-confidence textual signal.
     ev_a = Evidence(
         id=uuid.uuid4(),
-        student_id=alice.id,
+        student_id=alice.student_number,
         file_name="Architecture_Report.pdf",
         file_type=FileType.pdf,
         file_path="/tmp/alice-architecture-report.pdf",
@@ -56,7 +49,7 @@ def _seed_module_with_overlap(db, teacher):
     )
     ev_b = Evidence(
         id=uuid.uuid4(),
-        student_id=bob.id,
+        student_id=bob.student_number,
         file_name="Architecture_Report.pdf",
         file_type=FileType.pdf,
         file_path="/tmp/bob-architecture-report.pdf",
@@ -85,7 +78,7 @@ def _cleanup_module_seed(db, seed):
 
     module = seed["module"]
     project_ids = [seed["group_a"].id, seed["group_b"].id]
-    student_ids = [seed["alice"].id, seed["bob"].id]
+    student_ids = [seed["alice"].student_number, seed["bob"].student_number]
 
     (
         db.query(OverlapSignal)
@@ -95,10 +88,12 @@ def _cleanup_module_seed(db, seed):
         )
         .delete(synchronize_session=False)
     )
+    from app.models.student import student_projects
     db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).delete(
         synchronize_session=False
     )
-    db.query(Student).filter(Student.id.in_(student_ids)).delete(
+    db.execute(student_projects.delete().where(student_projects.c.student_id.in_(student_ids)))
+    db.query(Student).filter(Student.student_number.in_(student_ids)).delete(
         synchronize_session=False
     )
     db.query(Project).filter(Project.id.in_(project_ids)).delete(

@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -11,7 +11,7 @@ class Assessment(Base):
     __tablename__ = "assessments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False)
+    student_id = Column(String, ForeignKey("students.student_number"), nullable=False)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
     status = Column(Enum(AssessmentStatus), default=AssessmentStatus.draft)
     draft_form_json = Column(JSONB, nullable=True)

@@ -11,7 +11,7 @@ from app.models.evidence import Evidence
 from app.models.enums import OverlapType
 from app.models.overlap_signal import OverlapSignal
 from app.models.project import Project
-from app.models.student import Student
+from app.models.student import Student, student_projects
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _MAX_SIGNALS_PER_RUN = 100
@@ -51,14 +51,15 @@ class OverlapService:
     def analyze_module_overlap(db: Session, module_id: str) -> List[OverlapSignal]:
         students = (
             db.query(Student)
-            .join(Project, Student.project_id == Project.id)
+            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .join(Project, student_projects.c.project_id == Project.id)
             .filter(Project.module_id == module_id)
             .all()
         )
         if not students:
             return []
 
-        student_ids = [s.id for s in students]
+        student_ids = [s.student_number for s in students]
         evidence_items = db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).all()
         if not evidence_items:
             OverlapService._clear_module_signals(db, student_ids)
@@ -166,8 +167,9 @@ class OverlapService:
     def get_module_signals(db: Session, module_id: str) -> List[OverlapSignal]:
         return (
             db.query(OverlapSignal)
-            .join(Student, OverlapSignal.student_a_id == Student.id)
-            .join(Project, Student.project_id == Project.id)
+            .join(Student, OverlapSignal.student_a_id == Student.student_number)
+            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .join(Project, student_projects.c.project_id == Project.id)
             .filter(Project.module_id == module_id)
             .order_by(OverlapSignal.confidence.desc(), OverlapSignal.detected_at.desc())
             .all()
