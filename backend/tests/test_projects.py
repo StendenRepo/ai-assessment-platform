@@ -243,7 +243,6 @@ class TestAuthorizationScoping:
     def test_other_teachers_project_is_hidden(self, client, teacher, db):
         from app.models.module import Module
         from app.models.project import Project
-        from app.models.student import Student
         from app.models.teacher import Teacher
 
         other, module, project = self._other_teachers_project(db)

@@ -8,9 +8,7 @@ Depends On: None
 """
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "i4j5k6l7m8n9"
 down_revision: Union[str, None] = "h3i4j5k6l7m8"
