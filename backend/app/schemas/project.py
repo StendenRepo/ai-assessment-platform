@@ -7,7 +7,7 @@ from pydantic import BaseModel, field_validator
 class StudentCreate(BaseModel):
     name: str
     student_number: str
-    project_id: Optional[str] = None
+    project_id: Optional[str] = None  # optional group hint used by the modules endpoint
 
     @field_validator("name", "student_number")
     @classmethod
@@ -17,16 +17,23 @@ class StudentCreate(BaseModel):
             raise ValueError("must not be blank")
         return value
 
+    @field_validator("student_number")
+    @classmethod
+    def _digits_only(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("student number must contain digits only")
+        return value
+
 
 class StudentOut(BaseModel):
     id: str
-    project_id: str
     name: str
     student_number: str
     status: str
     consent_given: bool = False
     assessment_status: str = "not-started"
     grade: Optional[str] = None
+    project_id: Optional[str] = None  # populated in module context to identify the student's group
 
     model_config = {"from_attributes": True}
 

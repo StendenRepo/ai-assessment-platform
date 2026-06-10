@@ -34,9 +34,18 @@ def project(db, teacher):
     yield project
     from app.models.project import Project
     from app.models.module import Module
-    from app.models.student import Student
+    from app.models.student import Student, student_projects
 
-    db.query(Student).filter(Student.project_id == project.id).delete()
+    student_ids = [
+        row.student_id
+        for row in db.execute(
+            student_projects.select().where(student_projects.c.project_id == project.id)
+        ).all()
+    ]
+    db.execute(student_projects.delete().where(student_projects.c.project_id == project.id))
+    for sid in student_ids:
+        if not db.execute(student_projects.select().where(student_projects.c.student_id == sid)).first():
+            db.query(Student).filter(Student.student_number == sid).delete()
     db.query(Project).filter(Project.id == project.id).delete()
     db.query(Module).filter(Module.id == module.id).delete()
     db.commit()
@@ -47,13 +56,13 @@ class TestAddStudent:
         headers = _auth_headers(client)
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Lisa Anderson", "student_number": "S2034567"},
+            json={"name": "Lisa Anderson", "student_number": "2034567"},
             headers=headers,
         )
         assert res.status_code == 201
         body = res.json()
         assert body["name"] == "Lisa Anderson"
-        assert body["student_number"] == "S2034567"
+        assert body["student_number"] == "2034567"
         assert body["project_id"] == str(project.id)
         assert body["status"] == "active"
         assert "id" in body
@@ -62,17 +71,17 @@ class TestAddStudent:
         headers = _auth_headers(client)
         client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Thomas Johnson", "student_number": "S2034789"},
+            json={"name": "Thomas Johnson", "student_number": "2034789"},
             headers=headers,
         )
         res = client.get(f"{PROJECTS_URL}/{project.id}/students", headers=headers)
         assert res.status_code == 200
         numbers = [s["student_number"] for s in res.json()]
-        assert "S2034789" in numbers
+        assert "2034789" in numbers
 
     def test_duplicate_student_number_same_project_rejected(self, client, project):
         headers = _auth_headers(client)
-        payload = {"name": "Maya Patel", "student_number": "S2035012"}
+        payload = {"name": "Maya Patel", "student_number": "2035012"}
         first = client.post(
             f"{PROJECTS_URL}/{project.id}/students", json=payload, headers=headers
         )
@@ -80,7 +89,7 @@ class TestAddStudent:
 
         dup = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Different Name", "student_number": "S2035012"},
+            json={"name": "Different Name", "student_number": "2035012"},
             headers=headers,
         )
         assert dup.status_code == 409
@@ -91,21 +100,30 @@ class TestAddStudent:
         try:
             client.post(
                 f"{PROJECTS_URL}/{project.id}/students",
-                json={"name": "Mark Davis", "student_number": "S2034891"},
+                json={"name": "Mark Davis", "student_number": "2034891"},
                 headers=headers,
             )
             res = client.post(
                 f"{PROJECTS_URL}/{other.id}/students",
-                json={"name": "Mark Davis", "student_number": "S2034891"},
+                json={"name": "Mark Davis", "student_number": "2034891"},
                 headers=headers,
             )
             assert res.status_code == 201
         finally:
             from app.models.project import Project
             from app.models.module import Module
-            from app.models.student import Student
+            from app.models.student import Student, student_projects
 
-            db.query(Student).filter(Student.project_id == other.id).delete()
+            other_student_ids = [
+                row.student_id
+                for row in db.execute(
+                    student_projects.select().where(student_projects.c.project_id == other.id)
+                ).all()
+            ]
+            db.execute(student_projects.delete().where(student_projects.c.project_id == other.id))
+            for sid in other_student_ids:
+                if not db.execute(student_projects.select().where(student_projects.c.student_id == sid)).first():
+                    db.query(Student).filter(Student.student_number == sid).delete()
             db.query(Project).filter(Project.id == other.id).delete()
             db.query(Module).filter(Module.id == other_module.id).delete()
             db.commit()
@@ -114,19 +132,19 @@ class TestAddStudent:
         headers = _auth_headers(client)
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "  Padded Name  ", "student_number": "  S999  "},
+            json={"name": "  Padded Name  ", "student_number": "  999  "},
             headers=headers,
         )
         assert res.status_code == 201
         body = res.json()
         assert body["name"] == "Padded Name"
-        assert body["student_number"] == "S999"
+        assert body["student_number"] == "999"
 
     def test_missing_name_returns_422(self, client, project):
         headers = _auth_headers(client)
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"student_number": "S111"},
+            json={"student_number": "111"},
             headers=headers,
         )
         assert res.status_code == 422
@@ -135,7 +153,7 @@ class TestAddStudent:
         headers = _auth_headers(client)
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "   ", "student_number": "S111"},
+            json={"name": "   ", "student_number": "111"},
             headers=headers,
         )
         assert res.status_code == 422
@@ -153,7 +171,7 @@ class TestAddStudent:
         headers = _auth_headers(client)
         res = client.post(
             f"{PROJECTS_URL}/{uuid.uuid4()}/students",
-            json={"name": "Ghost", "student_number": "S000"},
+            json={"name": "Ghost", "student_number": "1000000"},
             headers=headers,
         )
         assert res.status_code == 404
@@ -161,7 +179,7 @@ class TestAddStudent:
     def test_add_without_token_returns_401(self, client, project):
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Lisa", "student_number": "S1"},
+            json={"name": "Lisa", "student_number": "1"},
         )
         assert res.status_code == 401
 
@@ -178,7 +196,7 @@ class TestListProjects:
         headers = _auth_headers(client)
         client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Counted", "student_number": "S-COUNT"},
+            json={"name": "Counted", "student_number": "1000001"},
             headers=headers,
         )
         res = client.get(f"{PROJECTS_URL}/{project.id}", headers=headers)
@@ -244,13 +262,14 @@ class TestAuthorizationScoping:
             assert (
                 client.post(
                     f"{PROJECTS_URL}/{project.id}/students",
-                    json={"name": "X", "student_number": "S1"},
+                    json={"name": "X", "student_number": "1"},
                     headers=headers,
                 ).status_code
                 == 404
             )
         finally:
-            db.query(Student).filter(Student.project_id == project.id).delete()
+            from app.models.student import student_projects
+            db.execute(student_projects.delete().where(student_projects.c.project_id == project.id))
             db.query(Project).filter(Project.id == project.id).delete()
             db.query(Module).filter(Module.id == module.id).delete()
             db.query(Teacher).filter(Teacher.id == other.id).delete()
