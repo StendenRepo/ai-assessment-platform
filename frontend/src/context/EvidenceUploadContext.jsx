@@ -22,7 +22,7 @@ export function EvidenceUploadProvider({ children }) {
   const completedWhileAwayRef = useRef(new Map());
   // Map<studentId, {onCompleted, onError}> — live callbacks registered by the mounted page
   const liveCallbacksRef = useRef(new Map());
-  const ocrTimeoutsRef = useRef(new Map());
+  const imageStatusTimeoutsRef = useRef(new Map());
 
   /** Called by the mounted page to register live callbacks. Returns a cleanup fn. */
   const registerCallbacks = (studentId, callbacks) => {
@@ -83,7 +83,7 @@ export function EvidenceUploadProvider({ children }) {
           __statusLabel: 'Processing image with AI',
         });
       }, 1800);
-      ocrTimeoutsRef.current.set(localId, tid);
+      imageStatusTimeoutsRef.current.set(localId, tid);
     }
 
     uploadStudentEvidence(studentId, file)
@@ -105,10 +105,10 @@ export function EvidenceUploadProvider({ children }) {
         live?.onError?.(err);
       })
       .finally(() => {
-        const tid = ocrTimeoutsRef.current.get(localId);
+        const tid = imageStatusTimeoutsRef.current.get(localId);
         if (tid) {
           window.clearTimeout(tid);
-          ocrTimeoutsRef.current.delete(localId);
+          imageStatusTimeoutsRef.current.delete(localId);
         }
       });
   };

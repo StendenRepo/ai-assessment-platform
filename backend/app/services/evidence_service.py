@@ -137,7 +137,7 @@ def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
     """Describe an image using the configured Ollama vision model.
 
     Returns empty string if the model is unavailable or fails so the caller
-    can fall through to OCR.
+    can fall back to the default placeholder text.
     """
     model = settings.VISION_MODEL
     if not model:
