@@ -13,6 +13,12 @@ def _resolve_dir(value: str) -> str:
     return value if os.path.isabs(value) else os.path.normpath(os.path.join(BASE_DIR, value))
 
 
+def _as_bool(value: str, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     PROJECT_NAME: str = "AI Assessment Service"
     VERSION: str = "0.1.0"
@@ -39,6 +45,11 @@ class Settings:
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))
+
+    # OCR tuning for image evidence extraction.
+    OCR_FAST_MODE: bool = _as_bool(os.getenv("OCR_FAST_MODE"), True)
+    OCR_MIN_ACCEPT_SCORE: int = int(os.getenv("OCR_MIN_ACCEPT_SCORE", "12"))
+    OCR_EARLY_EXIT_SCORE: int = int(os.getenv("OCR_EARLY_EXIT_SCORE", "80"))
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.

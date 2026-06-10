@@ -11,6 +11,8 @@ evidence_service.py controls which file types are accepted.
 """
 
 import io
+import sys
+import types
 import uuid
 
 import pytest
@@ -19,7 +21,6 @@ from PIL import Image
 UPLOAD_URL = "/api/v1/students/{student_id}/evidence"
 LIST_URL = "/api/v1/students/{student_id}/evidence"
 CONTENT_URL = "/api/v1/evidence/{evidence_id}/content"
-REPROCESS_CONTENT_URL = "/api/v1/evidence/{evidence_id}/content/reprocess"
 FILE_URL = "/api/v1/evidence/{evidence_id}/file"
 LOGIN_URL = "/api/v1/auth/login"
 
@@ -245,7 +246,7 @@ class TestReadEvidenceContent:
         assert body["file_name"] == "whiteboard.png"
         assert body["content"] == "[Image evidence uploaded: whiteboard.png]"
 
-    def test_reprocess_rebuilds_text_from_stored_file(self, client, teacher, student, tmp_path, monkeypatch):
+    def test_service_reprocess_rebuilds_text_from_stored_file(self, client, teacher, student, db, tmp_path, monkeypatch):
         monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
 
         headers = _auth_header(client, teacher)
@@ -262,11 +263,39 @@ class TestReadEvidenceContent:
         text_sidecar = text_path.with_name(f"{text_path.name}.txt")
         text_sidecar.write_text("stale text", encoding="utf-8")
 
-        reprocess_url = REPROCESS_CONTENT_URL.format(evidence_id=upload_res.json()["id"])
-        res = client.post(reprocess_url, headers=headers)
-        assert res.status_code == 200
-        assert res.json()["content"] == "[Image evidence uploaded: board.png]"
+        from app.services.evidence_service import EvidenceService
+
+        _, content = EvidenceService.reprocess_content(upload_res.json()["id"], db)
+        assert content == "[Image evidence uploaded: board.png]"
         assert text_sidecar.read_text(encoding="utf-8") == "[Image evidence uploaded: board.png]"
+
+    def test_image_ocr_text_is_saved_when_available(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        fake_pytesseract = types.SimpleNamespace(
+            image_to_string=lambda *_args, **_kwargs: "Detected OCR text"
+        )
+        monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.id))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="ocr.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
+        content_res = client.get(content_url, headers=headers)
+        assert content_res.status_code == 200
+        assert content_res.json()["content"] == "Detected OCR text"
+
+        relative_path = upload_res.json()["file_path"]
+        text_sidecar = (_evidence_root(tmp_path) / relative_path).with_name(
+            f"{(_evidence_root(tmp_path) / relative_path).name}.txt"
+        )
+        assert text_sidecar.read_text(encoding="utf-8") == "Detected OCR text"
 
 
 class TestReadEvidenceFile:

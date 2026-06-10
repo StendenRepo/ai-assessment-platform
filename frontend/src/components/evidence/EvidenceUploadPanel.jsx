@@ -6,6 +6,8 @@ export default function EvidenceUploadPanel({
   title = 'Upload Evidence',
   acceptedLabel,
   uploading = false,
+  uploadingCount = 0,
+  uploadingFileName = '',
   dragOver = false,
   fileInputRef,
   accept,
@@ -15,6 +17,14 @@ export default function EvidenceUploadPanel({
   onDrop,
   onOpenFilePicker,
 }) {
+  const uploadStatusText = uploading
+    ? `Uploading ${uploadingCount} file${uploadingCount === 1 ? '' : 's'}...`
+    : 'Drop file(s) here or click to browse';
+
+  const uploadDetailText = uploading
+    ? 'You can continue adding more files while OCR runs in the background.'
+    : `Accepted: ${acceptedLabel}`;
+
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-secondary/30">
@@ -46,15 +56,19 @@ export default function EvidenceUploadPanel({
             className={dragOver ? 'text-primary' : 'text-muted-foreground'}
           />
           <p className="text-sm font-medium text-foreground">
-            {uploading ? 'Uploading…' : 'Drop a file here or click to browse'}
+            {uploadStatusText}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Accepted: {acceptedLabel}
-          </p>
+          <p className="text-xs text-muted-foreground">{uploadDetailText}</p>
+          {uploadingFileName && (
+            <p className="text-[11px] font-mono text-muted-foreground text-center break-all">
+              Latest: {uploadingFileName}
+            </p>
+          )}
           <input
             ref={fileInputRef}
             type="file"
             accept={accept}
+            multiple
             className="hidden"
             onChange={onInputChange}
           />
