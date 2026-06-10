@@ -8,8 +8,6 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from uuid import UUID
-
 from app.models.assessment import Assessment
 from app.models.enums import ConsentStatus
 from app.models.student import Student
@@ -18,7 +16,7 @@ from app.services import audit_service
 
 
 def get_or_create_for_student(
-    db: Session, *, student_id: UUID, teacher: Teacher
+    db: Session, *, student_id: str, teacher: Teacher
 ) -> Assessment | None:
     """Return the current teacher's assessment for a student, creating one if none.
 
@@ -26,7 +24,7 @@ def get_or_create_for_student(
     the student, so it resolves (or lazily creates) the assessment here. Returns
     None if the student does not exist (caller raises 404).
     """
-    student = db.query(Student).filter(Student.id == student_id).first()
+    student = db.get(Student, student_id)
     if student is None:
         return None
 
