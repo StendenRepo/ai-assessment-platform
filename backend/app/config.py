@@ -41,15 +41,13 @@ class Settings:
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
     OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
     OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+    # Vision model for image evidence description (must support images via Ollama API)
+    VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
+    VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "60"))
 
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))
-
-    # OCR tuning for image evidence extraction.
-    OCR_FAST_MODE: bool = _as_bool(os.getenv("OCR_FAST_MODE"), True)
-    OCR_MIN_ACCEPT_SCORE: int = int(os.getenv("OCR_MIN_ACCEPT_SCORE", "12"))
-    OCR_EARLY_EXIT_SCORE: int = int(os.getenv("OCR_EARLY_EXIT_SCORE", "80"))
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.

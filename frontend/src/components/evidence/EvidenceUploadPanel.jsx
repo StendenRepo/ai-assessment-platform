@@ -22,7 +22,7 @@ export default function EvidenceUploadPanel({
     : 'Drop file(s) here or click to browse';
 
   const uploadDetailText = uploading
-    ? 'You can continue adding more files while OCR runs in the background.'
+    ? 'You can continue adding more files while AI image processing runs in the background.'
     : `Accepted: ${acceptedLabel}`;
 
   return (
