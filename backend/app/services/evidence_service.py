@@ -25,7 +25,16 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
         )
 
 
-EVIDENCE_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "evidence"
+def _evidence_upload_dir() -> Path:
+    return Path(settings.UPLOAD_DIR) / "evidence"
+
+
+def _full_path_for(relative_path: str) -> Path:
+    return _evidence_upload_dir() / relative_path
+
+
+def _text_path_for(file_path: Path) -> Path:
+    return file_path.with_name(f"{file_path.name}.txt")
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -165,16 +174,17 @@ class EvidenceService:
         content = _extract_text(raw, file_type, filename)
 
         # Persist to disk
-        upload_dir = EVIDENCE_UPLOAD_DIR / str(student_id)
+        upload_dir = _evidence_upload_dir() / str(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
-        file_path.write_text(content, encoding="utf-8")
+        file_path.write_bytes(raw)
+        _text_path_for(file_path).write_text(content, encoding="utf-8")
 
-        # Store path relative to EVIDENCE_UPLOAD_DIR so the record stays
+        # Store path relative to the evidence upload root so the record stays
         # portable when the base upload directory changes.
-        relative_path = str(file_path.relative_to(EVIDENCE_UPLOAD_DIR))
+        relative_path = str(file_path.relative_to(_evidence_upload_dir()))
 
         # Create DB record. The file is stored and its text extracted, but no
         # embedding step has run yet, so the status stays "pending" until the
@@ -224,12 +234,15 @@ class EvidenceService:
                 detail="Evidence not found",
             )
         # Reconstruct full path from the stored relative path
-        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
 
-        # Remove file from disk (ignore if already gone)
+        # Remove evidence artifacts from disk (ignore if already gone)
         try:
             if full_path.exists():
                 full_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
         except OSError:
             pass  # Log in production; don't block the DB delete
 
@@ -247,11 +260,49 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+        full_path = _full_path_for(evidence.file_path)
         if not full_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence file not found on disk",
             )
-        content = full_path.read_text(encoding="utf-8")
+        content = EvidenceService._read_or_rebuild_text_content(evidence)
         return evidence, content
+
+    @staticmethod
+    def reprocess_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file not found on disk",
+            )
+
+        content = EvidenceService._extract_and_store_text(evidence, full_path)
+        return evidence, content
+
+    @staticmethod
+    def _read_or_rebuild_text_content(evidence: Evidence) -> str:
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
+        if text_path.exists():
+            return text_path.read_text(encoding="utf-8")
+
+        try:
+            return full_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return EvidenceService._extract_and_store_text(evidence, full_path)
+
+    @staticmethod
+    def _extract_and_store_text(evidence: Evidence, full_path: Path) -> str:
+        file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
+        raw = full_path.read_bytes()
+        content = _extract_text(raw, file_type, evidence.file_name)
+        _text_path_for(full_path).write_text(content, encoding="utf-8")
+        return content
