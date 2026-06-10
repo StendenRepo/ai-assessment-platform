@@ -35,6 +35,7 @@ class Settings:
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production-use-a-long-random-string")
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+    EVIDENCE_PATH_SALT: str = os.getenv("EVIDENCE_PATH_SALT", JWT_SECRET_KEY)
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")

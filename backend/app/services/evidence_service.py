@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import io
 import mimetypes
 import uuid as _uuid
@@ -50,6 +52,16 @@ def _text_path_for(file_path: Path) -> Path:
 
 def _should_store_text_sidecar(file_type: FileType) -> bool:
     return file_type == FileType.image
+
+
+def _student_storage_key(student_id: str) -> str:
+    # Deterministic pseudonymization to avoid exposing raw student numbers in paths.
+    digest = hmac.new(
+        settings.EVIDENCE_PATH_SALT.encode("utf-8"),
+        str(student_id).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"s_{digest[:24]}"
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -228,7 +240,7 @@ class EvidenceService:
         content = _extract_text(raw, file_type, filename)
 
         # Persist to disk
-        upload_dir = _evidence_upload_dir() / str(student_id)
+        upload_dir = _evidence_upload_dir() / _student_storage_key(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
