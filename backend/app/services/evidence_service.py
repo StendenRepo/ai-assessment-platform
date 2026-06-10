@@ -1,4 +1,5 @@
 import io
+import mimetypes
 import uuid as _uuid
 from pathlib import Path
 
@@ -286,6 +287,25 @@ class EvidenceService:
 
         content = EvidenceService._extract_and_store_text(evidence, full_path)
         return evidence, content
+
+    @staticmethod
+    def get_raw_file(evidence_id: str, db: Session) -> tuple[Evidence, Path, str]:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file not found on disk",
+            )
+
+        media_type, _ = mimetypes.guess_type(evidence.file_name)
+        return evidence, full_path, media_type or "application/octet-stream"
 
     @staticmethod
     def _read_or_rebuild_text_content(evidence: Evidence) -> str:
