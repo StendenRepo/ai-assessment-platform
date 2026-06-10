@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
@@ -70,3 +71,21 @@ def reprocess_evidence_content(
         "file_name": evidence.file_name,
         "content": content,
     }
+
+
+@router.get(
+    "/{evidence_id}/file",
+    summary="Download or preview the raw evidence file",
+)
+def get_evidence_file(
+    evidence_id: str,
+    db: Session = Depends(get_db),
+    _: Teacher = Depends(get_current_teacher),
+):
+    """Return the stored raw evidence file for authenticated preview/download."""
+    evidence, full_path, media_type = EvidenceService.get_raw_file(evidence_id, db)
+    return FileResponse(
+        path=full_path,
+        media_type=media_type,
+        filename=evidence.file_name,
+    )
