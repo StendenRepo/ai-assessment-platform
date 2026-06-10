@@ -12,6 +12,7 @@ import {
   Bot,
   Upload,
   FileText,
+  Image as ImageIcon,
   XCircle,
   Trash2,
 } from 'lucide-react';
@@ -186,9 +187,17 @@ function AIInsightsPanel({ studentId }) {
   );
 }
 
-// ─── Markdown Evidence Upload ─────────────────────────────────────────────────
+// ─── Evidence Upload ──────────────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const DEFAULT_EVIDENCE_EXTENSIONS = [
+  '.md',
+  '.docx',
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+];
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -202,7 +211,9 @@ function EvidenceUpload({ studentId }) {
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
   // Allowed extensions fetched from the backend — starts with a safe default
-  const [allowedExtensions, setAllowedExtensions] = useState(['.md']);
+  const [allowedExtensions, setAllowedExtensions] = useState(
+    DEFAULT_EVIDENCE_EXTENSIONS
+  );
 
   const isValidUUID = UUID_REGEX.test(studentId);
 
@@ -325,6 +336,8 @@ function EvidenceUpload({ studentId }) {
 
   // Build the <input accept> string from the dynamic list
   const acceptAttr = allowedExtensions.join(',');
+  const evidenceIcon = (fileType) =>
+    fileType === 'image' ? ImageIcon : FileText;
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -401,33 +414,40 @@ function EvidenceUpload({ studentId }) {
               No evidence uploaded yet.
             </p>
           ) : (
-            allEvidence.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
-              >
-                <FileText size={14} className="text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground font-mono truncate">
-                    {ev.file_name}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {new Date(ev.uploaded_at).toLocaleString('nl-NL')}
-                    {' · '}
-                    <span className="capitalize">{ev.file_type}</span>
-                    {' · '}
-                    <span className="capitalize">{ev.embedding_status}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDelete(ev.id)}
-                  title="Delete evidence"
-                  className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))
+            allEvidence.map((ev) =>
+              (() => {
+                const EvidenceIcon = evidenceIcon(ev.file_type);
+                return (
+                  <div
+                    key={ev.id}
+                    className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
+                  >
+                    <EvidenceIcon size={14} className="text-primary shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-foreground font-mono truncate">
+                        {ev.file_name}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {new Date(ev.uploaded_at).toLocaleString('nl-NL')}
+                        {' · '}
+                        <span className="capitalize">{ev.file_type}</span>
+                        {' · '}
+                        <span className="capitalize">
+                          {ev.embedding_status}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(ev.id)}
+                      title="Delete evidence"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })()
+            )
           )}
         </div>
       </div>
