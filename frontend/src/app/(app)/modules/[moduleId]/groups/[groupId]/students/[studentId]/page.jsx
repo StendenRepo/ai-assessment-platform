@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import {
@@ -26,10 +25,16 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
+import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
+import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
+import {
+  deleteEvidence,
+  getSupportedEvidenceTypes,
+  listStudentEvidence,
+  uploadStudentEvidence,
+} from '@/lib/api/evidence';
 
-const API_BASE_STUDENT =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { listProjectStudents } from '@/lib/api/modulesApi';
@@ -192,7 +197,6 @@ function AIInsightsPanel({ studentId }) {
 
 // ─── Evidence Upload ──────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const DEFAULT_EVIDENCE_EXTENSIONS = [
   '.md',
   '.docx',
@@ -213,21 +217,28 @@ function EvidenceUpload({ studentId }) {
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [previewEvidence, setPreviewEvidence] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
   // Allowed extensions fetched from the backend — starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(
     DEFAULT_EVIDENCE_EXTENSIONS
   );
+  const {
+    previewEvidence,
+    previewUrl,
+    previewContent,
+    previewLoading,
+    activePreviewKind,
+    canPreview,
+    openPreview,
+    closePreview,
+    downloadEvidence,
+  } = useEvidencePreview();
 
   const isValidUUID = UUID_REGEX.test(studentId);
 
   // Fetch supported types from the API on mount (only when we have a real UUID)
   useEffect(() => {
     if (!isValidUUID) return;
-    fetch(`${API_BASE}/api/v1/evidence/supported-types`)
-      .then((r) => r.json())
+    getSupportedEvidenceTypes()
       .then((data) => {
         if (Array.isArray(data.supported_extensions)) {
           setAllowedExtensions(data.supported_extensions);
@@ -244,11 +255,7 @@ function EvidenceUpload({ studentId }) {
     const load = async () => {
       setEvidenceLoading(true);
       try {
-        const r = await fetch(
-          `${API_BASE}/api/v1/students/${studentId}/evidence`,
-          { headers: authHeaders() }
-        );
-        const data = r.ok ? await r.json() : [];
+        const data = await listStudentEvidence(studentId).catch(() => []);
         setAllEvidence(Array.isArray(data) ? data : []);
       } catch {
         setAllEvidence([]);
@@ -258,14 +265,6 @@ function EvidenceUpload({ studentId }) {
     };
     load();
   }, [studentId, isValidUUID]);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
 
   // Guard: only render the upload UI when studentId is a real UUID
   if (!isValidUUID) {
@@ -293,24 +292,7 @@ function EvidenceUpload({ studentId }) {
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch(
-        `${API_BASE}/api/v1/students/${studentId}/evidence`,
-        {
-          method: 'POST',
-          headers: authHeaders(),
-          body: formData,
-        }
-      );
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? `Upload failed (${res.status})`);
-      }
-
-      const data = await res.json();
+      const data = await uploadStudentEvidence(studentId, file);
       setAllEvidence((prev) => [data, ...prev]);
     } catch (err) {
       setError(err.message);
@@ -334,75 +316,8 @@ function EvidenceUpload({ studentId }) {
 
   const handleDelete = async (evidenceId) => {
     try {
-      const res = await fetch(`${API_BASE}/api/v1/evidence/${evidenceId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? `Delete failed (${res.status})`);
-      }
+      await deleteEvidence(evidenceId);
       setAllEvidence((prev) => prev.filter((ev) => ev.id !== evidenceId));
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
-  const releasePreviewUrl = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-  };
-
-  const fetchEvidenceBlob = async (evidenceId) => {
-    const res = await fetch(`${API_BASE}/api/v1/evidence/${evidenceId}/file`, {
-      headers: authHeaders(),
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail ?? `File fetch failed (${res.status})`);
-    }
-
-    return res.blob();
-  };
-
-  const handlePreview = async (evidence) => {
-    setError(null);
-    setPreviewLoading(true);
-    try {
-      releasePreviewUrl();
-      const blob = await fetchEvidenceBlob(evidence.id);
-      const blobUrl = URL.createObjectURL(blob);
-      setPreviewEvidence(evidence);
-      setPreviewUrl(blobUrl);
-    } catch (err) {
-      setError(err.message);
-      setPreviewEvidence(null);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const closePreview = () => {
-    releasePreviewUrl();
-    setPreviewEvidence(null);
-    setPreviewLoading(false);
-  };
-
-  const handleDownload = async (evidence) => {
-    setError(null);
-    try {
-      const blob = await fetchEvidenceBlob(evidence.id);
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = evidence.file_name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(blobUrl);
     } catch (err) {
       setError(err.message);
     }
@@ -412,7 +327,24 @@ function EvidenceUpload({ studentId }) {
   const acceptAttr = allowedExtensions.join(',');
   const evidenceIcon = (fileType) =>
     fileType === 'image' ? ImageIcon : FileText;
-  const canPreview = (evidence) => evidence.file_type === 'image';
+
+  const handlePreview = async (evidence) => {
+    setError(null);
+    try {
+      await openPreview(evidence);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDownload = async (evidence) => {
+    setError(null);
+    try {
+      await downloadEvidence(evidence);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -543,50 +475,14 @@ function EvidenceUpload({ studentId }) {
         </div>
       </div>
 
-      {(previewEvidence || previewLoading) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/70"
-            onClick={closePreview}
-          />
-          <div className="relative w-full max-w-4xl rounded-xl border border-border bg-card shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {previewEvidence?.file_name ?? 'Loading preview'}
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  Raw evidence preview
-                </p>
-              </div>
-              <button
-                onClick={closePreview}
-                className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-              >
-                <XCircle size={16} />
-              </button>
-            </div>
-            <div className="flex min-h-72 items-center justify-center bg-secondary/30 p-5">
-              {previewLoading ? (
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              ) : previewUrl ? (
-                <Image
-                  src={previewUrl}
-                  alt={previewEvidence?.file_name ?? 'Evidence preview'}
-                  width={1600}
-                  height={1200}
-                  unoptimized
-                  className="max-h-[70vh] w-auto max-w-full rounded-lg border border-border bg-background object-contain"
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Preview unavailable.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <EvidencePreviewDialog
+        evidence={previewEvidence}
+        previewKind={activePreviewKind}
+        previewUrl={previewUrl}
+        previewContent={previewContent}
+        loading={previewLoading}
+        onClose={closePreview}
+      />
     </div>
   );
 }

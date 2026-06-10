@@ -1,0 +1,71 @@
+'use client';
+
+import Image from 'next/image';
+import { XCircle } from 'lucide-react';
+
+export default function EvidencePreviewDialog({
+  evidence,
+  previewKind,
+  previewUrl,
+  previewContent,
+  loading,
+  onClose,
+}) {
+  if (!evidence && !loading) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative h-[92vh] w-full max-w-[96vw] rounded-xl border border-border bg-card shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-foreground">
+              {evidence?.file_name ?? 'Loading preview'}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {previewKind === 'pdf'
+                ? 'PDF preview'
+                : previewKind === 'text'
+                  ? 'Extracted text preview'
+                  : 'Raw evidence preview'}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <XCircle size={16} />
+          </button>
+        </div>
+        <div className="flex h-[calc(92vh-73px)] items-center justify-center bg-secondary/30 p-5">
+          {loading ? (
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          ) : previewKind === 'image' && previewUrl ? (
+            <Image
+              src={previewUrl}
+              alt={evidence?.file_name ?? 'Evidence preview'}
+              width={1600}
+              height={1200}
+              unoptimized
+              className="max-h-full w-auto max-w-full rounded-lg border border-border bg-background object-contain"
+            />
+          ) : previewKind === 'pdf' && previewUrl ? (
+            <iframe
+              src={previewUrl}
+              title={evidence?.file_name ?? 'PDF preview'}
+              className="h-full w-full rounded-lg border border-border bg-background"
+            />
+          ) : previewKind === 'text' ? (
+            <pre className="h-full w-full overflow-auto rounded-lg border border-border bg-background p-4 text-left text-xs text-foreground whitespace-pre-wrap wrap-break-word">
+              {previewContent || 'No extracted text available for this file.'}
+            </pre>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Preview unavailable.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
