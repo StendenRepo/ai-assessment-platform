@@ -16,7 +16,7 @@ from app.models.enums import ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.project import Project
-from app.models.student import Student
+from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.module import (
     ModuleCreate,
@@ -78,16 +78,17 @@ def _student_to_out(
     s: Student,
     assessment_status: str = "not-started",
     grade: Optional[str] = None,
+    project_id: Optional[str] = None,
 ) -> StudentOut:
     return StudentOut(
-        id=str(s.id),
-        project_id=str(s.project_id),
+        id=s.student_number,
         name=s.name,
         student_number=s.student_number,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         assessment_status=assessment_status,
         grade=grade,
+        project_id=project_id,
     )
 
 
@@ -160,10 +161,32 @@ def _module_project_ids(db: Session, module_id: str) -> list[str]:
 def _module_project_counts(db: Session, module_id: str) -> tuple[int, int]:
     projects = db.query(Project).filter(Project.module_id == module_id).all()
     project_count = len(projects)
-    student_count = 0
-    for project in projects:
-        student_count += db.query(Student).filter(Student.project_id == project.id).count()
+    student_count = sum(
+        db.query(student_projects).filter(student_projects.c.project_id == p.id).count()
+        for p in projects
+    )
     return project_count, student_count
+
+
+def _students_in_projects(db: Session, project_ids: list) -> List[Student]:
+    if not project_ids:
+        return []
+    return (
+        db.query(Student)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(student_projects.c.project_id.in_(project_ids))
+        .all()
+    )
+
+
+def _build_student_project_map(db: Session, project_ids: list) -> dict:
+    """Returns {student_id: project_id} for students in the given projects."""
+    if not project_ids:
+        return {}
+    rows = db.execute(
+        student_projects.select().where(student_projects.c.project_id.in_(project_ids))
+    ).all()
+    return {row.student_id: row.project_id for row in rows}
 
 
 def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
@@ -189,9 +212,9 @@ def _module_signal_context(db: Session, module: Module):
     if not project_ids:
         return {}, {}
 
-    students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
-    student_names = {s.id: s.name for s in students}
-    student_ids = [s.id for s in students]
+    students = _students_in_projects(db, project_ids)
+    student_names = {s.student_number: s.name for s in students}
+    student_ids = [s.student_number for s in students]
     evidence_names = {}
     if student_ids:
         for e in db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).all():
@@ -232,12 +255,18 @@ def _resolve_group_for_module(
     return _get_or_create_default_group(db, module)
 
 
-def _student_duplicate_query(db: Session, project_ids: list[str], student_number: str):
+def _student_duplicate_in_module(db: Session, project_ids: list[str], student_number: str) -> bool:
+    if not project_ids:
+        return False
     return (
         db.query(Student)
-        .filter(Student.project_id.in_(project_ids), Student.student_number == student_number)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(
+            student_projects.c.project_id.in_(project_ids),
+            Student.student_number == student_number,
+        )
         .first()
-    )
+    ) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -317,65 +346,72 @@ def delete_module(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    """Permanently delete a module and all its groups, students, evidence records
-    and the associated files on disk (evidence uploads + rubric)."""
+    """Permanently delete a module and all its groups. Students who belong only
+    to this module (and no other) are also deleted along with their evidence."""
     from pathlib import Path
     from app.services.module_service import RUBRIC_UPLOAD_DIR
 
-    # Evidence files are stored relative to <UPLOAD_DIR>/evidence/
     EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-
-    # Collect and delete evidence files on disk ──────────────────────────
     project_ids = _module_project_ids(db, module.id)
-    if project_ids:
-        students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
-        student_ids = [s.id for s in students]
-        if student_ids:
-            evidence_records = (
-                db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).all()
-            )
-            for ev in evidence_records:
-                try:
-                    file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
-                    if file_path.exists():
-                        file_path.unlink()
-                except OSError:
-                    pass  # Log in production; don't block the delete
 
-    # Delete rubric file on disk ─────────────────────────────────────────
-    if module.rubric_file_id:
-        rubric_record = (
-            db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+    # Collect student_ids enrolled in this module
+    student_ids = [
+        row.student_id
+        for row in db.execute(
+            student_projects.select().where(student_projects.c.project_id.in_(project_ids))
+        ).all()
+    ] if project_ids else []
+
+    # Remove student_projects associations for this module's projects
+    if project_ids:
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.project_id.in_(project_ids)
+            )
         )
+
+    # Find students who are now orphaned (no remaining project associations)
+    orphaned_ids = [
+        sid for sid in student_ids
+        if not db.execute(
+            student_projects.select().where(student_projects.c.student_id == sid)
+        ).first()
+    ]
+
+    # Delete evidence files on disk and DB records for orphaned students
+    if orphaned_ids:
+        evidence_records = db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).all()
+        for ev in evidence_records:
+            try:
+                file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+                if file_path.exists():
+                    file_path.unlink()
+            except OSError:
+                pass
+        db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).delete(
+            synchronize_session=False
+        )
+        db.query(Student).filter(Student.student_number.in_(orphaned_ids)).delete(
+            synchronize_session=False
+        )
+
+    # Delete rubric file on disk
+    if module.rubric_file_id:
+        rubric_record = db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
         if rubric_record:
             try:
                 rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_record.path
                 if rubric_path.exists():
                     rubric_path.unlink()
-                # Remove the now-empty module rubric directory if possible
                 rubric_dir = RUBRIC_UPLOAD_DIR / str(module.id)
                 if rubric_dir.exists() and not any(rubric_dir.iterdir()):
                     rubric_dir.rmdir()
             except OSError:
                 pass
 
-    # Delete DB records explicitly (no ORM cascade configured) ──────────
-    # Delete in leaf-to-root order to respect FK constraints.
-    if project_ids:
-        students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
-        student_ids = [s.id for s in students]
-        if student_ids:
-            db.query(Evidence).filter(Evidence.student_id.in_(student_ids)).delete(
-                synchronize_session=False
-            )
-        db.query(Student).filter(Student.project_id.in_(project_ids)).delete(
-            synchronize_session=False
-        )
-    db.query(Project).filter(Project.module_id == module.id).delete(
-        synchronize_session=False
-    )
+    db.query(Project).filter(Project.module_id == module.id).delete(synchronize_session=False)
     db.delete(module)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -477,25 +513,34 @@ def list_module_groups(
     )
     if not projects:
         return []
+
     project_ids = [p.id for p in projects]
-    students = db.query(Student).filter(Student.project_id.in_(project_ids)).all()
+    student_project_map = _build_student_project_map(db, project_ids)
+
+    # Group student counts by project
+    student_count_by_project: dict = {}
+    for project_id in student_project_map.values():
+        student_count_by_project[project_id] = student_count_by_project.get(project_id, 0) + 1
+
+    # Count evidence files per project via student membership
     student_ids_by_project: dict = {}
-    for s in students:
-        student_ids_by_project.setdefault(s.project_id, []).append(s.id)
-    all_student_ids = [s.id for s in students]
+    for sid, pid in student_project_map.items():
+        student_ids_by_project.setdefault(pid, []).append(sid)
+
+    all_student_ids = list(student_project_map.keys())
     file_counts: dict = {}
     if all_student_ids:
-        for row in db.query(Evidence.student_id, func.count(Evidence.id)).filter(
+        for sid, cnt in db.query(Evidence.student_id, func.count(Evidence.id)).filter(
             Evidence.student_id.in_(all_student_ids)
         ).group_by(Evidence.student_id).all():
-            sid, cnt = row
-            project_id = next((s.project_id for s in students if s.id == sid), None)
-            if project_id is not None:
-                file_counts[project_id] = file_counts.get(project_id, 0) + cnt
+            pid = student_project_map.get(sid)
+            if pid is not None:
+                file_counts[pid] = file_counts.get(pid, 0) + cnt
+
     return [
         _group_to_out(
             project,
-            len(student_ids_by_project.get(project.id, [])),
+            student_count_by_project.get(project.id, 0),
             file_counts.get(project.id, 0),
         )
         for project in projects
@@ -536,16 +581,10 @@ def update_module_group(
         .first()
     )
     if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
     if payload.name is None and payload.group_name is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No group updates provided",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
 
     if payload.name is not None:
         group.name = payload.name
@@ -554,12 +593,17 @@ def update_module_group(
 
     db.commit()
     db.refresh(group)
-    student_count = db.query(Student).filter(Student.project_id == group.id).count()
-    file_count = 0
+
+    student_count = db.query(student_projects).filter(
+        student_projects.c.project_id == group.id
+    ).count()
     student_ids = [
-        sid
-        for (sid,) in db.query(Student.id).filter(Student.project_id == group.id).all()
+        row.student_id
+        for row in db.execute(
+            student_projects.select().where(student_projects.c.project_id == group.id)
+        ).all()
     ]
+    file_count = 0
     if student_ids:
         file_count = (
             db.query(func.count(Evidence.id))
@@ -584,10 +628,7 @@ def delete_module_group(
         .first()
     )
     if not group:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Group not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
 
     if group.name == _DEFAULT_GROUP_NAME:
         raise HTTPException(
@@ -596,9 +637,33 @@ def delete_module_group(
         )
 
     default_group = _get_or_create_default_group(db, module)
-    students = db.query(Student).filter(Student.project_id == group.id).all()
-    for student in students:
-        student.project_id = default_group.id
+
+    # Move all students from deleted group to default group
+    student_ids_in_group = [
+        row.student_id
+        for row in db.execute(
+            student_projects.select().where(student_projects.c.project_id == group.id)
+        ).all()
+    ]
+    if student_ids_in_group:
+        # Remove existing associations with the deleted group
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.project_id == group.id
+            )
+        )
+        # Add associations to the default group (skip if already there)
+        already_in_default = {
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id == default_group.id)
+            ).all()
+        }
+        for sid in student_ids_in_group:
+            if sid not in already_in_default:
+                db.execute(
+                    student_projects.insert().values(student_id=sid, project_id=default_group.id)
+                )
 
     db.delete(group)
     db.commit()
@@ -618,18 +683,20 @@ def list_module_students(
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
-    if not project_ids:
-        return []
     students = (
         db.query(Student)
-        .filter(Student.project_id.in_(project_ids))
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(student_projects.c.project_id.in_(project_ids))
         .order_by(Student.name)
         .all()
-    )
+    ) if project_ids else []
+
+    student_project_map = _build_student_project_map(db, project_ids)
+
     latest_assessment: dict = {}
     if students:
         for a in db.query(Assessment).filter(
-            Assessment.student_id.in_([s.id for s in students])
+            Assessment.student_id.in_([s.student_number for s in students])
         ).all():
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
@@ -637,8 +704,9 @@ def list_module_students(
     return [
         _student_to_out(
             s,
-            _assessment_status(latest_assessment.get(s.id)),
-            _assessment_grade(latest_assessment.get(s.id)),
+            _assessment_status(latest_assessment.get(s.student_number)),
+            _assessment_grade(latest_assessment.get(s.student_number)),
+            project_id=str(student_project_map[s.student_number]) if s.student_number in student_project_map else None,
         )
         for s in students
     ]
@@ -654,23 +722,24 @@ def add_module_student(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
-    duplicate = _student_duplicate_query(db, _module_project_ids(db, module.id), payload.student_number)
-    if duplicate:
+    if _student_duplicate_in_module(db, _module_project_ids(db, module.id), payload.student_number):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
 
-    student = Student(
-        project_id=project.id,
-        name=payload.name,
-        student_number=payload.student_number,
-    )
-    db.add(student)
+    # Reuse existing student record if one with this number already exists
+    student = db.query(Student).filter(Student.student_number == payload.student_number).first()
+    if student is None:
+        student = Student(name=payload.name, student_number=payload.student_number)
+        db.add(student)
+        db.flush()
+
+    student.projects.append(project)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
-    return _student_to_out(student)
+    return _student_to_out(student, project_id=str(project.id))
 
 
 @router.patch("/{module_id}/students/{student_id}", response_model=StudentOut)
@@ -683,9 +752,14 @@ def move_student_to_group(
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
+
     student = (
         db.query(Student)
-        .filter(Student.id == student_id, Student.project_id.in_(project_ids))
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(
+            Student.student_number == student_id,
+            student_projects.c.project_id.in_(project_ids),
+        )
         .first()
     )
     if not student:
@@ -697,10 +771,7 @@ def move_student_to_group(
         and payload.student_number is None
         and payload.status is None
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No student updates provided",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No student updates provided")
 
     if payload.project_id is not None:
         target = (
@@ -710,23 +781,35 @@ def move_student_to_group(
         )
         if not target:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found in this module")
-        student.project_id = target.id
+
+        # Move student from current group(s) in this module to the target group
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.student_id == student.student_number,
+                student_projects.c.project_id.in_(project_ids),
+            )
+        )
+        db.execute(
+            student_projects.insert().values(student_id=student.student_number, project_id=target.id)
+        )
 
     if payload.name is not None:
         student.name = payload.name
 
     if payload.student_number is not None:
-        duplicate = (
-            db.query(Student)
-            .filter(
-                Student.project_id.in_(project_ids),
-                Student.student_number == payload.student_number,
-                Student.id != student.id,
+        if _student_duplicate_in_module(db, project_ids, payload.student_number):
+            existing = (
+                db.query(Student)
+                .join(student_projects, Student.student_number == student_projects.c.student_id)
+                .filter(
+                    student_projects.c.project_id.in_(project_ids),
+                    Student.student_number == payload.student_number,
+                    Student.student_number != student.student_number,
+                )
+                .first()
             )
-            .first()
-        )
-        if duplicate:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+            if existing:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
         student.student_number = payload.student_number
 
     if payload.status is not None:
@@ -734,7 +817,20 @@ def move_student_to_group(
 
     db.commit()
     db.refresh(student)
-    return _student_to_out(student)
+    # Resolve the student's current group within this module for the response
+    current_project_id = None
+    if payload.project_id is not None:
+        current_project_id = str(target.id)
+    else:
+        row = db.execute(
+            student_projects.select().where(
+                student_projects.c.student_id == student.student_number,
+                student_projects.c.project_id.in_(project_ids),
+            )
+        ).first()
+        if row:
+            current_project_id = str(row.project_id)
+    return _student_to_out(student, project_id=current_project_id)
 
 
 @router.post("/{module_id}/students/import", response_model=StudentImportResult)
@@ -754,12 +850,16 @@ async def import_module_students(
     except ImportParseError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
+    module_project_ids = _module_project_ids(db, module.id)
     existing_numbers = {
-        number
-        for (number,) in db.query(Student.student_number).filter(
-            Student.project_id.in_(_module_project_ids(db, module.id))
+        s.student_number
+        for s in (
+            db.query(Student)
+            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .filter(student_projects.c.project_id.in_(module_project_ids))
+            .all()
         )
-        if number
+        if s.student_number
     }
 
     seen: set[str] = set()
@@ -771,29 +871,30 @@ async def import_module_students(
         number = row.student_number.strip()
 
         if not name:
-            errors.append(
-                ImportRowError(row=row.row_number, student_number=number or None, message="Missing name")
-            )
+            errors.append(ImportRowError(row=row.row_number, student_number=number or None, message="Missing name"))
             continue
         if not number:
             errors.append(ImportRowError(row=row.row_number, message="Missing student number"))
             continue
+        if not number.isdigit():
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number must contain digits only"))
+            continue
         if number in seen:
-            errors.append(
-                ImportRowError(row=row.row_number, student_number=number, message="Duplicate student number in file")
-            )
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Duplicate student number in file"))
             continue
         if number in existing_numbers:
-            errors.append(
-                ImportRowError(row=row.row_number, student_number=number, message="Student number already exists in this module")
-            )
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number already exists in this module"))
             continue
 
         seen.add(number)
-        to_add.append(Student(project_id=project.id, name=name, student_number=number))
+        student = db.query(Student).filter(Student.student_number == number).first()
+        if student is None:
+            student = Student(name=name, student_number=number)
+            db.add(student)
+            db.flush()
+        student.projects.append(project)
+        to_add.append(student)
 
-    for student in to_add:
-        db.add(student)
     try:
         db.commit()
     except IntegrityError:
@@ -803,12 +904,15 @@ async def import_module_students(
             detail="Import conflicted with a concurrent change. Please try again.",
         )
 
+    for s in to_add:
+        db.refresh(s)
+
     return StudentImportResult(
         imported_count=len(to_add),
         error_count=len(errors),
         total_rows=len(rows),
         errors=errors,
-        students=[_student_to_out(s) for s in to_add],
+        students=[_student_to_out(s, project_id=str(project.id)) for s in to_add],
     )
 
 
@@ -889,33 +993,35 @@ def export_grades_excel(
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
 
-    # ── Collect data ─────────────────────────────────────────────────────
     projects = db.query(Project).filter(Project.module_id == module.id).all()
-    project_name_by_id = {str(p.id): p.name for p in projects}
+    project_name_by_id = {p.id: p.name for p in projects}
     project_ids = [p.id for p in projects]
 
     students = (
         db.query(Student)
-        .filter(Student.project_id.in_(project_ids))
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(student_projects.c.project_id.in_(project_ids))
         .order_by(Student.name)
         .all()
     ) if project_ids else []
 
+    # Build student -> project mapping for the group column
+    student_project_map = _build_student_project_map(db, project_ids)
+
     latest_assessment: dict = {}
     if students:
         for a in db.query(Assessment).filter(
-            Assessment.student_id.in_([s.id for s in students])
+            Assessment.student_id.in_([s.student_number for s in students])
         ).all():
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
 
-    # ── Build workbook ───────────────────────────────────────────────────
+    # Build workbook
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Grades"
 
-    # Header style
     header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
     center = Alignment(horizontal="center", vertical="center")
@@ -932,12 +1038,12 @@ def export_grades_excel(
 
     ws.row_dimensions[1].height = 22
 
-    # Data rows
     for row_idx, student in enumerate(students, start=2):
-        assessment = latest_assessment.get(student.id)
+        assessment = latest_assessment.get(student.student_number)
         ast_status = _assessment_status(assessment)
         grade = _assessment_grade(assessment) or "—"
-        group_name = project_name_by_id.get(str(student.project_id), "—")
+        group_pid = student_project_map.get(student.student_number)
+        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
 
         row_data = [
             row_idx - 1,
@@ -948,7 +1054,6 @@ def export_grades_excel(
             grade,
         ]
 
-        # Alternate row shading
         row_fill = PatternFill(
             start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
@@ -965,10 +1070,8 @@ def export_grades_excel(
 
         ws.row_dimensions[row_idx].height = 18
 
-    # Freeze header row
     ws.freeze_panes = "A2"
 
-    # ── Stream response ──────────────────────────────────────────────────
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)

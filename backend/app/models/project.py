@@ -19,4 +19,4 @@ class Project(Base):
 
     # Relationships
     module = relationship("Module", back_populates="projects")
-    students = relationship("Student", back_populates="project")
+    students = relationship("Student", secondary="student_projects", back_populates="projects")

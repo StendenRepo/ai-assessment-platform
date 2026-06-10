@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_teacher, get_db
 from app.models.module import Module
 from app.models.project import Project
-from app.models.student import Student
+from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.project import (
     ImportRowError,
@@ -23,14 +23,14 @@ router = APIRouter()
 _DUPLICATE_DETAIL = "A student with that student number already exists in this project"
 
 
-def _student_to_out(s: Student) -> StudentOut:
+def _student_to_out(s: Student, project_id: str = None) -> StudentOut:
     return StudentOut(
-        id=str(s.id),
-        project_id=str(s.project_id),
+        id=s.student_number,
         name=s.name,
         student_number=s.student_number,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
+        project_id=project_id,
     )
 
 
@@ -56,15 +56,18 @@ def _owned_projects_query(db: Session, teacher: Teacher):
 
 
 def _get_owned_project_or_404(db: Session, project_id: str, teacher: Teacher) -> Project:
-    """Fetch a project the teacher owns.
-
-    Returns 404 (not 403) for both missing and not-owned projects so we don't
-    leak the existence of other teachers' projects.
-    """
     project = _owned_projects_query(db, teacher).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
+
+
+def _student_count_for_project(db: Session, project_id) -> int:
+    return (
+        db.query(student_projects)
+        .filter(student_projects.c.project_id == project_id)
+        .count()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +80,7 @@ def list_projects(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     projects = _owned_projects_query(db, current_teacher).order_by(Project.created_at.desc()).all()
-    result = []
-    for p in projects:
-        count = db.query(Student).filter(Student.project_id == p.id).count()
-        result.append(_project_to_out(p, count))
-    return result
+    return [_project_to_out(p, _student_count_for_project(db, p.id)) for p in projects]
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -91,8 +90,7 @@ def get_project(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
-    count = db.query(Student).filter(Student.project_id == project.id).count()
-    return _project_to_out(project, count)
+    return _project_to_out(project, _student_count_for_project(db, project.id))
 
 
 # ---------------------------------------------------------------------------
@@ -105,14 +103,15 @@ def list_project_students(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    _get_owned_project_or_404(db, project_id, current_teacher)
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
     students = (
         db.query(Student)
-        .filter(Student.project_id == project_id)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(student_projects.c.project_id == project.id)
         .order_by(Student.name)
         .all()
     )
-    return [_student_to_out(s) for s in students]
+    return [_student_to_out(s, project_id=str(project.id)) for s in students]
 
 
 @router.post(
@@ -128,32 +127,37 @@ def add_project_student(
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
 
-    duplicate = (
-        db.query(Student)
-        .filter(
-            Student.project_id == project.id,
-            Student.student_number == payload.student_number,
+    # Check if this student is already linked to this project
+    existing = db.query(Student).filter(Student.student_number == payload.student_number).first()
+    if existing:
+        already_in_project = (
+            db.query(student_projects)
+            .filter(
+                student_projects.c.student_id == existing.student_number,
+                student_projects.c.project_id == project.id,
+            )
+            .first()
         )
-        .first()
-    )
-    if duplicate:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        if already_in_project:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        existing.projects.append(project)
+        db.commit()
+        db.refresh(existing)
+        return _student_to_out(existing, project_id=str(project.id))
 
     student = Student(
-        project_id=project.id,
         name=payload.name,
         student_number=payload.student_number,
     )
+    student.projects.append(project)
     db.add(student)
     try:
         db.commit()
     except IntegrityError:
-        # Backstop for a concurrent insert that slipped past the check above;
-        # the (project_id, student_number) unique constraint catches it.
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
-    return _student_to_out(student)
+    return _student_to_out(student, project_id=str(project.id))
 
 
 @router.post(
@@ -174,12 +178,14 @@ async def import_project_students(
     except ImportParseError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    existing_numbers = {
-        number
-        for (number,) in db.query(Student.student_number).filter(
-            Student.project_id == project.id
+    # Student numbers already linked to this project
+    existing_in_project = {
+        row.student_number
+        for row in (
+            db.query(Student.student_number)
+            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .filter(student_projects.c.project_id == project.id)
         )
-        if number
     }
 
     seen: set[str] = set()
@@ -196,18 +202,25 @@ async def import_project_students(
         if not number:
             errors.append(ImportRowError(row=row.row_number, message="Missing student number"))
             continue
+        if not number.isdigit():
+            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number must contain digits only"))
+            continue
         if number in seen:
             errors.append(ImportRowError(row=row.row_number, student_number=number, message="Duplicate student number in file"))
             continue
-        if number in existing_numbers:
+        if number in existing_in_project:
             errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number already exists in this project"))
             continue
 
         seen.add(number)
-        to_add.append(Student(project_id=project.id, name=name, student_number=number))
+        # Reuse an existing student record (same number, different project) or create new
+        student = db.query(Student).filter(Student.student_number == number).first()
+        if student is None:
+            student = Student(name=name, student_number=number)
+            db.add(student)
+        student.projects.append(project)
+        to_add.append(student)
 
-    for student in to_add:
-        db.add(student)
     try:
         db.commit()
     except IntegrityError:
@@ -217,10 +230,13 @@ async def import_project_students(
             detail="Import conflicted with a concurrent change. Please try again.",
         )
 
+    for student in to_add:
+        db.refresh(student)
+
     return StudentImportResult(
         imported_count=len(to_add),
         error_count=len(errors),
         total_rows=len(rows),
         errors=errors,
-        students=[_student_to_out(s) for s in to_add],
+        students=[_student_to_out(s, project_id=str(project.id)) for s in to_add],
     )

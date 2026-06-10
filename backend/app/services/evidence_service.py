@@ -102,9 +102,7 @@ class EvidenceService:
         file: UploadFile,
         db: Session,
     ) -> Evidence:
-        # Validate student_id is a proper UUID, then verify student exists
-        _parse_uuid(student_id, "student_id")
-        student = db.query(Student).filter(Student.id == student_id).first()
+        student = db.get(Student, student_id)
         if not student:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -153,8 +151,7 @@ class EvidenceService:
     # ------------------------------------------------------------------
     @staticmethod
     def list_for_student(student_id: str, db: Session) -> list[Evidence]:
-        _parse_uuid(student_id, "student_id")
-        student = db.query(Student).filter(Student.id == student_id).first()
+        student = db.get(Student, student_id)
         if not student:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
