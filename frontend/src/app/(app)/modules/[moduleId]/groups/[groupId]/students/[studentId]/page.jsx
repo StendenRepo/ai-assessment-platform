@@ -11,12 +11,7 @@ import {
   Shield,
   Bot,
   Upload,
-  Eye,
-  Download,
-  FileText,
-  Image as ImageIcon,
   XCircle,
-  Trash2,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -25,7 +20,9 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
+import EvidenceListItem from '@/components/evidence/EvidenceListItem';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
+import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
 import {
@@ -325,8 +322,6 @@ function EvidenceUpload({ studentId }) {
 
   // Build the <input accept> string from the dynamic list
   const acceptAttr = allowedExtensions.join(',');
-  const evidenceIcon = (fileType) =>
-    fileType === 'image' ? ImageIcon : FileText;
 
   const handlePreview = async (evidence) => {
     setError(null);
@@ -347,68 +342,33 @@ function EvidenceUpload({ studentId }) {
   };
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-secondary/30">
-        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center">
-          <Upload size={13} className="text-primary" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            Upload Evidence
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            Accepted:{' '}
-            <code className="font-mono">{allowedExtensions.join(', ')}</code>
-          </p>
-        </div>
-      </div>
+    <div className="space-y-4">
+      <EvidenceUploadPanel
+        title="Upload Evidence"
+        acceptedLabel={allowedExtensions.join(', ')}
+        uploading={uploading}
+        dragOver={dragOver}
+        fileInputRef={fileInputRef}
+        accept={acceptAttr}
+        onInputChange={onInputChange}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onOpenFilePicker={() => fileInputRef.current?.click()}
+      />
 
-      <div className="p-5 space-y-4">
-        {/* Drop zone */}
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
-            dragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/50 hover:bg-secondary/50'
-          }`}
-        >
-          <Upload
-            size={22}
-            className={dragOver ? 'text-primary' : 'text-muted-foreground'}
-          />
-          <p className="text-sm font-medium text-foreground">
-            {uploading ? 'Uploading…' : 'Drop a file here or click to browse'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Accepted: {allowedExtensions.join(', ')}
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={acceptAttr}
-            className="hidden"
-            onChange={onInputChange}
-          />
+      {error && (
+        <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
+          <XCircle size={13} className="text-red-400 shrink-0" />
+          <p className="text-xs text-red-400">{error}</p>
         </div>
+      )}
 
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
-            <XCircle size={13} className="text-red-400 shrink-0" />
-            <p className="text-xs text-red-400">{error}</p>
-          </div>
-        )}
-
-        {/* All evidence list */}
-        <div className="space-y-2">
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="p-5 space-y-2">
           <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
             Evidence ({allEvidence.length})
           </p>
@@ -421,56 +381,16 @@ function EvidenceUpload({ studentId }) {
               No evidence uploaded yet.
             </p>
           ) : (
-            allEvidence.map((ev) =>
-              (() => {
-                const EvidenceIcon = evidenceIcon(ev.file_type);
-                return (
-                  <div
-                    key={ev.id}
-                    className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
-                  >
-                    <EvidenceIcon size={14} className="text-primary shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-foreground font-mono truncate">
-                        {ev.file_name}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(ev.uploaded_at).toLocaleString('nl-NL')}
-                        {' · '}
-                        <span className="capitalize">{ev.file_type}</span>
-                        {' · '}
-                        <span className="capitalize">
-                          {ev.embedding_status}
-                        </span>
-                      </p>
-                    </div>
-                    {canPreview(ev) && (
-                      <button
-                        onClick={() => handlePreview(ev)}
-                        title="Preview evidence"
-                        className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                      >
-                        <Eye size={13} />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDownload(ev)}
-                      title="Download evidence"
-                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                    >
-                      <Download size={13} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(ev.id)}
-                      title="Delete evidence"
-                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                );
-              })()
-            )
+            allEvidence.map((ev) => (
+              <EvidenceListItem
+                key={ev.id}
+                evidence={ev}
+                canPreview={canPreview(ev)}
+                onPreview={handlePreview}
+                onDownload={handleDownload}
+                onDelete={handleDelete}
+              />
+            ))
           )}
         </div>
       </div>

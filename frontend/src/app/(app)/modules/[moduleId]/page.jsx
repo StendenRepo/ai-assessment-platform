@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
-  CheckCircle2,
   Download,
   FileText,
   FolderPlus,
@@ -16,6 +15,7 @@ import {
   Users,
   Upload,
 } from 'lucide-react';
+import EvidenceStatusIndicator from '@/components/evidence/EvidenceStatusIndicator';
 import {
   getProject,
   listProjectGroups,
@@ -33,8 +33,6 @@ import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
-
-const ALLOWED_RUBRIC_LABEL = 'PDF or Excel (.xlsx)';
 
 function formatBytes(bytes) {
   if (!bytes) return '';
@@ -368,7 +366,10 @@ export default function ModulePage() {
     setExportError('');
     setExporting(true);
     try {
-      const { blob, filename } = await exportGradesExcel(moduleId, project?.name || '');
+      const { blob, filename } = await exportGradesExcel(
+        moduleId,
+        project?.name || ''
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -655,10 +656,7 @@ export default function ModulePage() {
                         <span className="text-sm font-semibold text-foreground truncate">
                           {rubric.file_name || 'rubric'}
                         </span>
-                        <CheckCircle2
-                          size={13}
-                          className="text-emerald-400 shrink-0"
-                        />
+                        <EvidenceStatusIndicator status="completed" size={13} />
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {rubric.file_type && (
@@ -759,10 +757,7 @@ export default function ModulePage() {
                         <span className="text-sm font-semibold text-foreground truncate">
                           {moduleBook.file_name || 'module book'}
                         </span>
-                        <CheckCircle2
-                          size={13}
-                          className="text-emerald-400 shrink-0"
-                        />
+                        <EvidenceStatusIndicator status="completed" size={13} />
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {moduleBook.file_type && (

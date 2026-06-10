@@ -148,6 +148,26 @@ def _extract_image_text(raw: bytes, filename: str) -> str:
 
 
 class EvidenceService:
+    @staticmethod
+    def _mark_completed_if_ready(evidence: Evidence, db: Session) -> bool:
+        if evidence.embedding_status != EmbeddingStatus.pending:
+            return False
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            return False
+
+        text_path = _text_path_for(full_path)
+        if not text_path.exists():
+            try:
+                EvidenceService._extract_and_store_text(evidence, full_path)
+            except HTTPException:
+                return False
+
+        evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        return True
+
     # ------------------------------------------------------------------
     # Upload a file as evidence for a student
     # ------------------------------------------------------------------
@@ -187,17 +207,15 @@ class EvidenceService:
         # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(_evidence_upload_dir()))
 
-        # Create DB record. The file is stored and its text extracted, but no
-        # embedding step has run yet, so the status stays "pending" until the
-        # AI pipeline processes it. (Was incorrectly "completed", which claimed
-        # embedding had finished when nothing had embedded the file.)
+        # The evidence is immediately usable once the raw file and extracted
+        # text sidecar have been written, so mark it completed at upload time.
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
             source_type=SourceType.upload,
-            embedding_status=EmbeddingStatus.pending,
+            embedding_status=EmbeddingStatus.completed,
         )
         db.add(evidence)
         db.commit()
@@ -216,12 +234,18 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Student not found",
             )
-        return (
+        evidence_list = (
             db.query(Evidence)
             .filter(Evidence.student_id == student_id)
             .order_by(Evidence.uploaded_at.desc())
             .all()
         )
+        changed = False
+        for evidence in evidence_list:
+            changed = EvidenceService._mark_completed_if_ready(evidence, db) or changed
+        if changed:
+            db.commit()
+        return evidence_list
 
     # ------------------------------------------------------------------
     # Delete an evidence record (DB + file on disk)
@@ -268,6 +292,8 @@ class EvidenceService:
                 detail="Evidence file not found on disk",
             )
         content = EvidenceService._read_or_rebuild_text_content(evidence)
+        if EvidenceService._mark_completed_if_ready(evidence, db):
+            db.commit()
         return evidence, content
 
     @staticmethod
@@ -286,6 +312,9 @@ class EvidenceService:
             )
 
         content = EvidenceService._extract_and_store_text(evidence, full_path)
+        evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        db.commit()
         return evidence, content
 
     @staticmethod
@@ -305,6 +334,8 @@ class EvidenceService:
             )
 
         media_type, _ = mimetypes.guess_type(evidence.file_name)
+        if EvidenceService._mark_completed_if_ready(evidence, db):
+            db.commit()
         return evidence, full_path, media_type or "application/octet-stream"
 
     @staticmethod
