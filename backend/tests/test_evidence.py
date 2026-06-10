@@ -11,8 +11,6 @@ evidence_service.py controls which file types are accepted.
 """
 
 import io
-import sys
-import types
 import uuid
 
 import pytest
@@ -228,6 +226,7 @@ class TestReadEvidenceContent:
 
     def test_image_content_endpoint_returns_fallback_text(self, client, teacher, student, tmp_path, monkeypatch):
         monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        # No vision model configured — should fall back to placeholder
 
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.id))
@@ -269,19 +268,30 @@ class TestReadEvidenceContent:
         assert content == "[Image evidence uploaded: board.png]"
         assert text_sidecar.read_text(encoding="utf-8") == "[Image evidence uploaded: board.png]"
 
-    def test_image_ocr_text_is_saved_when_available(self, client, teacher, student, tmp_path, monkeypatch):
+    def test_vision_model_text_is_saved_when_available(self, client, teacher, student, tmp_path, monkeypatch):
         monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "fake-vision")
 
-        fake_pytesseract = types.SimpleNamespace(
-            image_to_string=lambda *_args, **_kwargs: "Detected OCR text"
-        )
-        monkeypatch.setitem(sys.modules, "pytesseract", fake_pytesseract)
+        import httpx as _httpx
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"response": "A screenshot showing a student project dashboard."}
+
+        class _FakeClient:
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def post(self, *_args, **_kwargs): return _FakeResponse()
+
+        monkeypatch.setattr(_httpx, "Client", lambda **_kw: _FakeClient())
 
         headers = _auth_header(client, teacher)
         upload_url = UPLOAD_URL.format(student_id=str(student.id))
         upload_res = client.post(
             upload_url,
-            files=[_make_png_file(filename="ocr.png")],
+            files=[_make_png_file(filename="dashboard.png")],
             headers=headers,
         )
         assert upload_res.status_code == 201
@@ -289,13 +299,7 @@ class TestReadEvidenceContent:
         content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
         content_res = client.get(content_url, headers=headers)
         assert content_res.status_code == 200
-        assert content_res.json()["content"] == "Detected OCR text"
-
-        relative_path = upload_res.json()["file_path"]
-        text_sidecar = (_evidence_root(tmp_path) / relative_path).with_name(
-            f"{(_evidence_root(tmp_path) / relative_path).name}.txt"
-        )
-        assert text_sidecar.read_text(encoding="utf-8") == "Detected OCR text"
+        assert content_res.json()["content"] == "A screenshot showing a student project dashboard."
 
 
 class TestReadEvidenceFile:

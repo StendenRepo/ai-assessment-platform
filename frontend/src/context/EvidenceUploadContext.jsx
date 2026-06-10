@@ -79,7 +79,9 @@ export function EvidenceUploadProvider({ children }) {
 
     if (isImage) {
       const tid = window.setTimeout(() => {
-        _updateItem(studentId, localId, { __statusLabel: 'Processing OCR' });
+        _updateItem(studentId, localId, {
+          __statusLabel: 'Processing image with AI',
+        });
       }, 1800);
       ocrTimeoutsRef.current.set(localId, tid);
     }

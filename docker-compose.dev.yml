@@ -40,14 +40,6 @@ services:
             alembic upgrade head &&
             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
             "
-        deploy:
-            resources:
-                limits:
-                    cpus: '${BACKEND_CPU_LIMIT:-2.0}'
-                    memory: ${BACKEND_MEMORY_LIMIT:-2G}
-                reservations:
-                    cpus: '${BACKEND_CPU_RESERVATION:-0.5}'
-                    memory: ${BACKEND_MEMORY_RESERVATION:-512M}
         restart: unless-stopped
     stt:
         build:
@@ -75,11 +67,6 @@ services:
             postgres:
                 condition: service_healthy
         command: ['python', '-m', 'app.retention_worker']
-        deploy:
-            resources:
-                limits:
-                    cpus: '${BACKEND_CPU_LIMIT:-2.0}'
-                    memory: ${BACKEND_MEMORY_LIMIT:-2G}
         restart: unless-stopped
     ollama:
         image: ollama/ollama:latest
@@ -89,6 +76,14 @@ services:
         volumes:
             - ollama_data:/root/.ollama
         command: serve
+        deploy:
+            resources:
+                limits:
+                    cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+                    memory: ${OLLAMA_MEMORY_LIMIT:-4G}
+                reservations:
+                    cpus: '${OLLAMA_CPU_RESERVATION:-1.0}'
+                    memory: ${OLLAMA_MEMORY_RESERVATION:-1G}
         restart: unless-stopped
     ollama-init:
         image: ollama/ollama:latest
@@ -100,6 +95,7 @@ services:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
             OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
             OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            VISION_MODEL: ${VISION_MODEL:-llava:7b}
         depends_on:
             ollama:
                 condition: service_started
@@ -114,6 +110,10 @@ services:
                         if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
                             echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
                             ollama pull ${OLLAMA_MODEL_BACKUP};
+                        fi;
+                        if [ -n "${VISION_MODEL}" ]; then
+                            echo 'Pulling vision model: ${VISION_MODEL}';
+                            ollama pull ${VISION_MODEL};
                         fi;
                         echo 'Models ready';
             "
