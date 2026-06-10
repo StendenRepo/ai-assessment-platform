@@ -324,6 +324,52 @@ class TestReadEvidenceContent:
         assert content_res.status_code == 200
         assert content_res.json()["content"] == "A screenshot showing a student project dashboard."
 
+    def test_content_read_retries_ai_when_sidecar_has_placeholder(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "")
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="retry.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        # Simulate vision becoming available later; content read should refresh placeholder text.
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "fake-vision")
+        import httpx as _httpx
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"response": "Recovered AI text for retry image."}
+
+        class _FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+            def post(self, *_args, **_kwargs):
+                return _FakeResponse()
+
+        monkeypatch.setattr(_httpx, "Client", lambda **_kw: _FakeClient())
+
+        content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
+        content_res = client.get(content_url, headers=headers)
+        assert content_res.status_code == 200
+        assert content_res.json()["content"] == "Recovered AI text for retry image."
+
+        sidecar = (_evidence_text_root(tmp_path) / upload_res.json()["file_path"]).with_name(
+            f"{(_evidence_text_root(tmp_path) / upload_res.json()['file_path']).name}.txt"
+        )
+        assert sidecar.read_text(encoding="utf-8") == "Recovered AI text for retry image."
+
 
 class TestReadEvidenceFile:
     def test_file_endpoint_returns_raw_image_bytes(self, client, teacher, student, tmp_path, monkeypatch):

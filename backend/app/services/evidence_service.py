@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import io
+import logging
 import mimetypes
 import uuid as _uuid
 from pathlib import Path
@@ -16,6 +17,9 @@ from app.config import settings
 from app.models.enums import EmbeddingStatus, FileType, SourceType
 from app.models.evidence import Evidence
 from app.models.student import Student
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
@@ -52,6 +56,15 @@ def _text_path_for(file_path: Path) -> Path:
 
 def _should_store_text_sidecar(file_type: FileType) -> bool:
     return file_type == FileType.image
+
+
+def _image_placeholder_text(filename: str) -> str:
+    return f"[Image evidence uploaded: {filename}]"
+
+
+def _is_image_placeholder_text(text: str) -> bool:
+    value = (text or "").strip()
+    return value.startswith("[Image evidence uploaded:") and value.endswith("]")
 
 
 def _student_storage_key(student_id: str) -> str:
@@ -152,7 +165,7 @@ def _extract_image_text(raw: bytes, filename: str) -> str:
         )
 
     text = _extract_image_text_with_vision(raw, filename)
-    return text.strip() or f"[Image evidence uploaded: {filename}]"
+    return text.strip() or _image_placeholder_text(filename)
 
 
 def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
@@ -189,7 +202,13 @@ def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
             response.raise_for_status()
             text = (response.json().get("response") or "").strip()
             return text
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "Vision extraction failed for '%s' using model '%s': %s",
+            filename,
+            model,
+            exc,
+        )
         return ""
 
 
@@ -392,7 +411,12 @@ class EvidenceService:
         file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
 
         if _should_store_text_sidecar(file_type) and text_path.exists():
-            return text_path.read_text(encoding="utf-8")
+            sidecar_text = text_path.read_text(encoding="utf-8")
+            # Retry AI extraction when the sidecar still contains fallback text.
+            if file_type == FileType.image and _is_image_placeholder_text(sidecar_text):
+                refreshed = EvidenceService._extract_and_store_text(evidence, full_path)
+                return refreshed
+            return sidecar_text
 
         if file_type == FileType.markdown:
             try:
