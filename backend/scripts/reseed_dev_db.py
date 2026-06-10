@@ -187,18 +187,22 @@ def build_seed_database(seed_path: str) -> None:
     for project in projects:
         count = 3 if project.status == ProjectStatus.archived else 6
         for i in range(count):
-            students.append(
-                Student(
-                    id=uid(f"student-{project.id}-{i}"),
-                    project_id=project.id,
-                    name=f"Student {student_index:03d}",
-                    student_number=f"S{student_index:06d}",
-                    status=StudentStatus.active if i < count - 1 else StudentStatus.inactive,
-                    consent_given=(i % 2 == 0),
-                )
+            s = Student(
+                name=f"Student {student_index:03d}",
+                student_number=f"{student_index:07d}",
+                status=StudentStatus.active if i < count - 1 else StudentStatus.inactive,
+                consent_given=(i % 2 == 0),
             )
+            s.projects.append(project)
+            students.append(s)
             student_index += 1
     session.add_all(students)
+    session.flush()
+
+    # Build lookup maps after flush so student_projects rows exist
+    from app.models.student import student_projects as sp_table
+    student_project_rows = session.execute(sp_table.select()).all()
+    student_to_project = {row.student_id: row.project_id for row in student_project_rows}
 
     project_by_id = {p.id: p for p in projects}
     module_by_id = {m.id: m for m in modules}
@@ -208,7 +212,10 @@ def build_seed_database(seed_path: str) -> None:
         if i % 7 == 0:
             continue
 
-        project = project_by_id[student.project_id]
+        project_id = student_to_project.get(student.student_number)
+        if project_id is None:
+            continue
+        project = project_by_id[project_id]
         module = module_by_id[project.module_id]
 
         if i % 5 == 0:
@@ -223,8 +230,8 @@ def build_seed_database(seed_path: str) -> None:
 
         assessments.append(
             Assessment(
-                id=uid(f"assessment-{student.id}"),
-                student_id=student.id,
+                id=uid(f"assessment-{student.student_number}"),
+                student_id=student.student_number,
                 teacher_id=module.teacher_id,
                 status=status,
                 draft_form_json='{"criteria": {"analysis": "good progress", "implementation": "solid"}}',
