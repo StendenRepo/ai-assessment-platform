@@ -25,7 +25,7 @@ from app.services import (
 def assessment(db, teacher):
     a = Assessment(
         id=uuid.uuid4(),
-        student_id=uuid.uuid4(),  # FKs are not enforced under SQLite tests
+        student_id="9999999",  # FKs are not enforced under SQLite tests
         teacher_id=teacher.id,
     )
     db.add(a)

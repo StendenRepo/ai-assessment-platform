@@ -305,16 +305,16 @@ class TestDeleteModule:
         db.commit()
 
         student = Student(
-            id=uuid.uuid4(),
-            project_id=project.id,
             name="Test Student",
-            student_number="S999",
+            student_number="999",
         )
         db.add(student)
+        db.flush()
+        student.projects.append(project)
         db.commit()
 
         # Write a fake evidence file to disk
-        student_dir = fake_evidence_dir / str(student.id)
+        student_dir = fake_evidence_dir / str(student.student_number)
         student_dir.mkdir(parents=True)
         fake_file = student_dir / "abc123_report.md"
         fake_file.write_text("# Evidence content")
@@ -322,7 +322,7 @@ class TestDeleteModule:
         relative_path = str(fake_file.relative_to(fake_evidence_dir))
         ev = Evidence(
             id=uuid.uuid4(),
-            student_id=student.id,
+            student_id=student.student_number,
             file_name="report.md",
             file_type=FileType.markdown,
             file_path=relative_path,

@@ -204,9 +204,6 @@ const DEFAULT_EVIDENCE_EXTENSIONS = [
   '.jpeg',
 ];
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function EvidenceUpload({ studentId }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -240,17 +237,17 @@ function EvidenceUpload({ studentId }) {
     downloadEvidence,
   } = useEvidencePreview();
 
-  const isValidUUID = UUID_REGEX.test(studentId);
+  const hasStudentId = Boolean(String(studentId || '').trim());
 
   // In-flight items from the persistent context (survive navigation)
-  const localItems = isValidUUID ? getStudentLocalItems(studentId) : [];
+  const localItems = hasStudentId ? getStudentLocalItems(studentId) : [];
   const uploading = localItems.length > 0;
   // Show the latest in-flight filename in the upload panel
   const uploadingFileName = localItems[0]?.file_name ?? '';
 
   // Fetch supported types from the API on mount (only when we have a real UUID)
   useEffect(() => {
-    if (!isValidUUID) return;
+    if (!hasStudentId) return;
     getSupportedEvidenceTypes()
       .then((data) => {
         if (Array.isArray(data.supported_extensions)) {
@@ -260,12 +257,12 @@ function EvidenceUpload({ studentId }) {
       .catch(() => {
         // Keep the default if the request fails
       });
-  }, [isValidUUID]);
+  }, [hasStudentId]);
 
   // Register live callbacks with the context so completed uploads update this
   // component's state even when initiated from a previous mount of this page.
   useEffect(() => {
-    if (!isValidUUID) return;
+    if (!hasStudentId) return;
     return registerCallbacks(studentId, {
       onCompleted: (data) => {
         setAllEvidence((prev) => {
@@ -279,12 +276,12 @@ function EvidenceUpload({ studentId }) {
         setError(err.message);
       },
     });
-  }, [studentId, isValidUUID]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch existing evidence for this student on mount; also merge any items
   // that completed while we were navigated away.
   useEffect(() => {
-    if (!isValidUUID) return;
+    if (!hasStudentId) return;
     const load = async () => {
       setEvidenceLoading(true);
       try {
@@ -304,10 +301,10 @@ function EvidenceUpload({ studentId }) {
       }
     };
     load();
-  }, [studentId, isValidUUID]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Guard: only render the upload UI when studentId is a real UUID
-  if (!isValidUUID) {
+  // Guard: only render the upload UI when a student identifier is available
+  if (!hasStudentId) {
     return (
       <div className="rounded-lg border border-dashed border-border px-5 py-4 text-xs text-muted-foreground">
         Evidence upload is available once this student is linked to a real
