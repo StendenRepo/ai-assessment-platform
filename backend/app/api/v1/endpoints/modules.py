@@ -339,8 +339,11 @@ def delete_module(
             for ev in evidence_records:
                 try:
                     file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+                    text_path = file_path.with_name(f"{file_path.name}.txt")
                     if file_path.exists():
                         file_path.unlink()
+                    if text_path.exists():
+                        text_path.unlink()
                 except OSError:
                     pass  # Log in production; don't block the delete
 

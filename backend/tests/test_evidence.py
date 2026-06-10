@@ -19,6 +19,7 @@ from PIL import Image
 UPLOAD_URL = "/api/v1/students/{student_id}/evidence"
 LIST_URL = "/api/v1/students/{student_id}/evidence"
 CONTENT_URL = "/api/v1/evidence/{evidence_id}/content"
+REPROCESS_CONTENT_URL = "/api/v1/evidence/{evidence_id}/content/reprocess"
 LOGIN_URL = "/api/v1/auth/login"
 
 
@@ -40,6 +41,10 @@ def _make_png_file(filename: str = "evidence.png"):
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return ("file", (filename, buffer, "image/png"))
+
+
+def _evidence_root(tmp_path):
+    return tmp_path / "evidence"
 
 
 @pytest.fixture
@@ -171,6 +176,22 @@ class TestEvidenceLinkedToStudent:
         res = client.get(url, headers=headers)
         assert res.status_code == 404
 
+    def test_upload_preserves_raw_image_and_writes_text_sidecar(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.id))
+        res = client.post(url, files=[_make_png_file(filename="proof.png")], headers=headers)
+        assert res.status_code == 201
+
+        saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
+        assert saved_path.exists()
+        assert saved_path.read_bytes().startswith(b"\x89PNG")
+
+        text_path = saved_path.with_name(f"{saved_path.name}.txt")
+        assert text_path.exists()
+        assert text_path.read_text(encoding="utf-8") == "[Image evidence uploaded: proof.png]"
+
 
 # ── AC 3: Content is read correctly ──────────────────────────────────────────
 
@@ -222,6 +243,29 @@ class TestReadEvidenceContent:
         body = res.json()
         assert body["file_name"] == "whiteboard.png"
         assert body["content"] == "[Image evidence uploaded: whiteboard.png]"
+
+    def test_reprocess_rebuilds_text_from_stored_file(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.id))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="board.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        relative_path = upload_res.json()["file_path"]
+        text_path = _evidence_root(tmp_path) / relative_path
+        text_sidecar = text_path.with_name(f"{text_path.name}.txt")
+        text_sidecar.write_text("stale text", encoding="utf-8")
+
+        reprocess_url = REPROCESS_CONTENT_URL.format(evidence_id=upload_res.json()["id"])
+        res = client.post(reprocess_url, headers=headers)
+        assert res.status_code == 200
+        assert res.json()["content"] == "[Image evidence uploaded: board.png]"
+        assert text_sidecar.read_text(encoding="utf-8") == "[Image evidence uploaded: board.png]"
 
 
 # ── Extensibility: supported-types endpoint ───────────────────────────────────

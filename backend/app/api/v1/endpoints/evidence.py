@@ -52,3 +52,21 @@ def get_evidence_content(
         "file_name": evidence.file_name,
         "content": content,
     }
+
+
+@router.post(
+    "/{evidence_id}/content/reprocess",
+    summary="Rebuild the extracted text for an evidence file",
+)
+def reprocess_evidence_content(
+    evidence_id: str,
+    db: Session = Depends(get_db),
+    _: Teacher = Depends(get_current_teacher),
+):
+    """Re-run extraction from the stored evidence file and overwrite cached text."""
+    evidence, content = EvidenceService.reprocess_content(evidence_id, db)
+    return {
+        "id": str(evidence.id),
+        "file_name": evidence.file_name,
+        "content": content,
+    }
