@@ -34,7 +34,7 @@ services:
                 condition: service_started
         volumes:
             - ./backend:/app
-            - backend_data:/app/data
+            - ./backend/data:/app/data
         command: >
             sh -c "
             alembic upgrade head &&
@@ -62,7 +62,7 @@ services:
         env_file: .env
         volumes:
             - ./backend:/app
-            - backend_data:/app/data
+            - ./backend/data:/app/data
         depends_on:
             postgres:
                 condition: service_healthy
@@ -142,6 +142,5 @@ volumes:
     ollama_data:
     frontend_node_modules:
     frontend_next_cache:
-    backend_data:
     stt_cache:
     pgadmin_data:
