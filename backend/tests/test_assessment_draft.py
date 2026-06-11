@@ -10,7 +10,6 @@ from app.models.audit_event import AuditEvent
 from app.models.chat_message import ChatMessage
 from app.models.enums import AssessmentStatus, AuditSource
 from app.models.evidence import Evidence
-from app.models.enums import EmbeddingStatus, FileType, SourceType
 from app.services import draft_assessment_service
 
 

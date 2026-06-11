@@ -1,7 +1,6 @@
 """Pydantic models for assessment draft, override, chat, and finalization."""
 from datetime import datetime
 from typing import Any, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 

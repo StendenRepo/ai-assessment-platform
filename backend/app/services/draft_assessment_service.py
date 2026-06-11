@@ -21,7 +21,6 @@ from app.models.evidence import Evidence
 from app.models.evidence_match import EvidenceMatch
 from app.models.file_record import FileRecord
 from app.models.module import Module
-from app.models.project import Project
 from app.models.recording import Recording
 from app.models.student import Student
 from app.models.teacher import Teacher
