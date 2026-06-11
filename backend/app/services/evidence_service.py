@@ -213,6 +213,63 @@ def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
 
 
 
+def run_vision_background(evidence_id: str) -> None:
+    """FastAPI background task: run vision AI on an image evidence record.
+
+    Creates its own DB session so it executes outside the original request
+    context.  On success the sidecar is replaced with the AI description and
+    ``embedding_status`` is set to ``completed``.  On any failure the status
+    is set to ``failed`` so the frontend can surface the error.
+    """
+    from app.database import SessionLocal  # imported here to avoid circular import at module level
+
+    db = SessionLocal()
+    try:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            return
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            evidence.embedding_status = EmbeddingStatus.failed
+            db.add(evidence)
+            db.commit()
+            return
+
+        raw = full_path.read_bytes()
+        text = _extract_image_text_with_vision(raw, evidence.file_name)
+        content = text.strip() or _image_placeholder_text(evidence.file_name)
+
+        text_path = _text_path_for(full_path)
+        text_path.parent.mkdir(parents=True, exist_ok=True)
+        text_path.write_text(content, encoding="utf-8")
+
+        # Only mark completed when AI produced real text. Placeholder means the
+        # vision call failed/unavailable and should be surfaced as failed.
+        if _is_image_placeholder_text(content):
+            evidence.embedding_status = EmbeddingStatus.failed
+            logger.warning(
+                "Vision returned no content for '%s'; keeping placeholder and marking failed",
+                evidence.file_name,
+            )
+        else:
+            evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        db.commit()
+    except Exception:
+        logger.exception("Background vision task failed for evidence %s", evidence_id)
+        try:
+            ev = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+            if ev:
+                ev.embedding_status = EmbeddingStatus.failed
+                db.add(ev)
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 class EvidenceService:
     @staticmethod
     def _mark_completed_if_ready(evidence: Evidence, db: Session) -> bool:
@@ -254,9 +311,20 @@ class EvidenceService:
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
 
-        # Read raw bytes and extract plain-text content per file type
+        # Read raw bytes
         raw = file.file.read()
-        content = _extract_text(raw, file_type, filename)
+
+        # For images: validate bytes immediately (catches corrupt uploads early)
+        # but defer the slow vision AI call to a background task so the HTTP
+        # response is returned right away with status=processing.
+        # For all other file types extract text synchronously as before.
+        if file_type == FileType.image:
+            _validate_image(raw, filename)
+            initial_status = EmbeddingStatus.processing
+            sidecar_content: str | None = _image_placeholder_text(filename)
+        else:
+            sidecar_content = _extract_text(raw, file_type, filename)
+            initial_status = EmbeddingStatus.completed
 
         # Persist to disk
         upload_dir = _evidence_upload_dir() / _student_storage_key(student_id)
@@ -265,24 +333,22 @@ class EvidenceService:
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
         file_path.write_bytes(raw)
-        if _should_store_text_sidecar(file_type):
+        if _should_store_text_sidecar(file_type) and sidecar_content is not None:
             text_path = _text_path_for(file_path)
             text_path.parent.mkdir(parents=True, exist_ok=True)
-            text_path.write_text(content, encoding="utf-8")
+            text_path.write_text(sidecar_content, encoding="utf-8")
 
         # Store path relative to the evidence upload root so the record stays
         # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(_evidence_upload_dir()))
 
-        # The evidence is immediately usable once the raw file and extracted
-        # text sidecar have been written, so mark it completed at upload time.
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
             source_type=SourceType.upload,
-            embedding_status=EmbeddingStatus.completed,
+            embedding_status=initial_status,
         )
         db.add(evidence)
         db.commit()
@@ -412,10 +478,10 @@ class EvidenceService:
 
         if _should_store_text_sidecar(file_type) and text_path.exists():
             sidecar_text = text_path.read_text(encoding="utf-8")
-            # Retry AI extraction when the sidecar still contains fallback text.
+            # Never run vision synchronously in a read/preview request.
+            # Return whatever sidecar exists so the UI stays responsive.
             if file_type == FileType.image and _is_image_placeholder_text(sidecar_text):
-                refreshed = EvidenceService._extract_and_store_text(evidence, full_path)
-                return refreshed
+                return sidecar_text
             return sidecar_text
 
         if file_type == FileType.markdown:

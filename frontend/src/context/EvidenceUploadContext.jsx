@@ -22,7 +22,6 @@ export function EvidenceUploadProvider({ children }) {
   const completedWhileAwayRef = useRef(new Map());
   // Map<studentId, {onCompleted, onError}> — live callbacks registered by the mounted page
   const liveCallbacksRef = useRef(new Map());
-  const imageStatusTimeoutsRef = useRef(new Map());
 
   /** Called by the mounted page to register live callbacks. Returns a cleanup fn. */
   const registerCallbacks = (studentId, callbacks) => {
@@ -59,12 +58,7 @@ export function EvidenceUploadProvider({ children }) {
       return next;
     });
 
-  /**
-   * Start uploading a single file for a student.
-   * Callbacks fire whether or not the component that triggered this is still mounted.
-   */
   const startUpload = (studentId, file) => {
-    const isImage = /\.(png|jpe?g)$/i.test(file.name);
     const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     _addItem(studentId, {
@@ -76,15 +70,6 @@ export function EvidenceUploadProvider({ children }) {
       __localProcessing: true,
       __statusLabel: 'Uploading',
     });
-
-    if (isImage) {
-      const tid = window.setTimeout(() => {
-        _updateItem(studentId, localId, {
-          __statusLabel: 'Processing image with AI',
-        });
-      }, 1800);
-      imageStatusTimeoutsRef.current.set(localId, tid);
-    }
 
     uploadStudentEvidence(studentId, file)
       .then((data) => {
@@ -103,13 +88,6 @@ export function EvidenceUploadProvider({ children }) {
         _removeItem(studentId, localId);
         const live = liveCallbacksRef.current.get(studentId);
         live?.onError?.(err);
-      })
-      .finally(() => {
-        const tid = imageStatusTimeoutsRef.current.get(localId);
-        if (tid) {
-          window.clearTimeout(tid);
-          imageStatusTimeoutsRef.current.delete(localId);
-        }
       });
   };
 
