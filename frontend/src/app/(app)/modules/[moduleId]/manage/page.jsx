@@ -14,6 +14,10 @@ import {
   updateModuleStudent,
   updateProjectGroup,
 } from '@/lib/api/modulesApi';
+import {
+  ModuleDeleteConfirmDialog,
+  useDeleteConfirm,
+} from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
@@ -56,6 +60,38 @@ export default function ModuleManagePage() {
   const [editGroupId, setEditGroupId] = useState('');
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+
+  const {
+    pendingItem: groupDeleteTarget,
+    requestDelete: requestGroupDelete,
+    cancelDelete: cancelGroupDelete,
+    confirmDelete: confirmGroupDelete,
+  } = useDeleteConfirm({
+    onDelete: async (group) => {
+      setGroupError('');
+      setGroupSaving(true);
+      try {
+        await deleteProjectGroup(moduleId, group.id);
+      } finally {
+        setGroupSaving(false);
+      }
+    },
+    onDeleted: (group) => {
+      setGroups((prev) => prev.filter((g) => g.id !== group.id));
+      setStudents((prev) =>
+        prev.map((student) =>
+          student.project_id === group.id
+            ? { ...student, project_id: '' }
+            : student
+        )
+      );
+      if (newStudentGroupId === group.id) setNewStudentGroupId('');
+      if (editGroupId === group.id) setEditGroupId('');
+    },
+    onError: (err) => {
+      setGroupError(err.message);
+    },
+  });
 
   const filteredStudents = students.filter((student) => {
     const query = studentSearch.trim().toLowerCase();
@@ -139,34 +175,8 @@ export default function ModuleManagePage() {
     }
   };
 
-  const handleDeleteGroup = async (group) => {
-    if (
-      !confirm(
-        `Delete ${group.name}? Students in this group will be moved to the default group.`
-      )
-    ) {
-      return;
-    }
-
-    setGroupError('');
-    setGroupSaving(true);
-    try {
-      await deleteProjectGroup(moduleId, group.id);
-      setGroups((prev) => prev.filter((g) => g.id !== group.id));
-      setStudents((prev) =>
-        prev.map((student) =>
-          student.project_id === group.id
-            ? { ...student, project_id: '' }
-            : student
-        )
-      );
-      if (newStudentGroupId === group.id) setNewStudentGroupId('');
-      if (editGroupId === group.id) setEditGroupId('');
-    } catch (err) {
-      setGroupError(err.message);
-    } finally {
-      setGroupSaving(false);
-    }
+  const handleDeleteGroup = (group) => {
+    requestGroupDelete(group);
   };
 
   const handleAddStudent = async (e) => {
@@ -622,6 +632,28 @@ export default function ModuleManagePage() {
           )}
         </div>
       </div>
+
+      <ModuleDeleteConfirmDialog
+        open={Boolean(groupDeleteTarget)}
+        title="Delete Group"
+        label={groupDeleteTarget?.name}
+        message={
+          <>
+            Delete{' '}
+            <span className="font-semibold text-foreground">
+              {groupDeleteTarget?.name}
+            </span>
+            ? Students in this group will be moved to the default group.
+          </>
+        }
+        warningItems={[
+          'Students in this group will be moved to the default group.',
+        ]}
+        confirmLabel="Delete group"
+        loading={groupSaving}
+        onConfirm={confirmGroupDelete}
+        onCancel={cancelGroupDelete}
+      />
     </div>
   );
 }
