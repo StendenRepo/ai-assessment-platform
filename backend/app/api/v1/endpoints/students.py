@@ -1,13 +1,14 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
+from app.models.enums import EmbeddingStatus
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.schemas.evidence import EvidenceOut
-from app.services.evidence_service import EvidenceService
+from app.services.evidence_service import EvidenceService, run_vision_background
 
 router = APIRouter()
 
@@ -43,11 +44,15 @@ def get_student(
 )
 def upload_evidence(
     student_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     _: Teacher = Depends(get_current_teacher),
 ):
-    return EvidenceService.upload_file(student_id, file, db)
+    evidence = EvidenceService.upload_file(student_id, file, db)
+    if evidence.embedding_status == EmbeddingStatus.processing:
+        background_tasks.add_task(run_vision_background, str(evidence.id))
+    return evidence
 
 
 @router.get(

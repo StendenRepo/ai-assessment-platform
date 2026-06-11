@@ -352,6 +352,7 @@ def delete_module(
     from app.services.module_service import RUBRIC_UPLOAD_DIR
 
     EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+    EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
@@ -386,8 +387,11 @@ def delete_module(
         for ev in evidence_records:
             try:
                 file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+                text_path = EVIDENCE_TEXT_DIR / f"{ev.file_path}.txt"
                 if file_path.exists():
                     file_path.unlink()
+                if text_path.exists():
+                    text_path.unlink()
             except OSError:
                 pass
         db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).delete(
