@@ -1026,8 +1026,8 @@ def export_grades_excel(
     header_font = Font(bold=True, color="FFFFFF", size=11)
     center = Alignment(horizontal="center", vertical="center")
 
-    headers = ["#", "Student Name", "Student Number", "Group", "Assessment Status", "Grade"]
-    col_widths = [5, 30, 18, 25, 22, 12]
+    headers = ["Student Number", "Grade", "Student Name"]
+    col_widths = [18, 12, 30]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1046,12 +1046,9 @@ def export_grades_excel(
         group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
 
         row_data = [
-            row_idx - 1,
-            student.name,
             student.student_number or "—",
-            group_name,
-            ast_status.replace("-", " ").title(),
             grade,
+            student.name,
         ]
 
         row_fill = PatternFill(
@@ -1064,7 +1061,7 @@ def export_grades_excel(
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = Alignment(
-                horizontal="center" if col_idx in (1, 3, 5, 6) else "left",
+                horizontal="center" if col_idx in (1, 2) else "left",
                 vertical="center",
             )
 
