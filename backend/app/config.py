@@ -44,7 +44,7 @@ class Settings:
     OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
     # Vision model for image evidence description (must support images via Ollama API)
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
-    VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "60"))
+    VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")

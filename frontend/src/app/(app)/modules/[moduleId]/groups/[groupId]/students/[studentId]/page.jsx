@@ -269,8 +269,11 @@ function EvidenceUpload({ studentId }) {
           if (prev.some((e) => e.id === data.id)) return prev;
           return [data, ...prev];
         });
-        setUploadSuccessMessage(`Upload complete: ${data.file_name}`);
-        window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+        // Only show the success toast once the AI has finished processing
+        if (data.embedding_status === 'completed') {
+          setUploadSuccessMessage(`Upload complete: ${data.file_name}`);
+          window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+        }
       },
       onError: (err) => {
         setError(err.message);
@@ -302,6 +305,57 @@ function EvidenceUpload({ studentId }) {
     };
     load();
   }, [studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll the server while any evidence item is still being processed by the
+  // background vision task (embedding_status === 'processing').
+  useEffect(() => {
+    if (!hasStudentId) return;
+    const hasProcessing = allEvidence.some(
+      (e) => e.embedding_status === 'processing'
+    );
+    if (!hasProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await listStudentEvidence(studentId);
+        if (!Array.isArray(fresh)) return;
+        setAllEvidence((prev) => {
+          let changed = false;
+          const next = prev.map((ev) => {
+            const updated = fresh.find((f) => f.id === ev.id);
+            if (updated && updated.embedding_status !== ev.embedding_status) {
+              changed = true;
+              // Show success toast when an image finishes AI processing
+              if (updated.embedding_status === 'completed') {
+                setUploadSuccessMessage(
+                  `Upload complete: ${updated.file_name}`
+                );
+                window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+              }
+              return updated;
+            }
+            return ev;
+          });
+          return changed ? next : prev;
+        });
+      } catch {
+        // Silently ignore polling errors — the user can still interact
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [allEvidence, studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show the success toast once a processing item transitions to completed
+  useEffect(() => {
+    const justCompleted = allEvidence.filter(
+      (e) => e.embedding_status === 'completed' && e.__justCompleted
+    );
+    justCompleted.forEach((e) => {
+      setUploadSuccessMessage(`Upload complete: ${e.file_name}`);
+      window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+    });
+  }, [allEvidence]);
 
   // Guard: only render the upload UI when a student identifier is available
   if (!hasStudentId) {
@@ -435,7 +489,11 @@ function EvidenceUpload({ studentId }) {
                     <EvidenceListItem
                       key={ev.id}
                       evidence={ev}
-                      canPreview={!ev.__localProcessing && canPreview(ev)}
+                      canPreview={
+                        !ev.__localProcessing &&
+                        ev.embedding_status !== 'processing' &&
+                        canPreview(ev)
+                      }
                       onPreview={handlePreview}
                       onDownload={handleDownload}
                       onDelete={handleDelete}

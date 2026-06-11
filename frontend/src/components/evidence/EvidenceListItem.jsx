@@ -5,6 +5,7 @@ import {
   Eye,
   FileText,
   Image as ImageIcon,
+  Loader2,
   Trash2,
 } from 'lucide-react';
 
@@ -26,21 +27,28 @@ export default function EvidenceListItem({
   onDelete,
 }) {
   const isLocalProcessing = Boolean(evidence.__localProcessing);
+  // Server-side background AI processing (image uploaded, vision not yet done)
+  const isServerProcessing =
+    !isLocalProcessing && evidence.embedding_status === 'processing';
+
   const statusLabel =
     evidence.__statusLabel ||
     (evidence.embedding_status === 'completed'
       ? 'Completed'
       : evidence.embedding_status === 'failed'
         ? 'Failed'
-        : 'Processing');
+        : isServerProcessing
+          ? 'Processing image with AI'
+          : 'Processing');
 
-  const statusBadgeClass = isLocalProcessing
-    ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20'
-    : evidence.embedding_status === 'completed'
-      ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
-      : evidence.embedding_status === 'failed'
-        ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
-        : 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20';
+  const statusBadgeClass =
+    isLocalProcessing || isServerProcessing
+      ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20'
+      : evidence.embedding_status === 'completed'
+        ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
+        : evidence.embedding_status === 'failed'
+          ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
+          : 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20';
 
   return (
     <div className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5">
@@ -56,13 +64,16 @@ export default function EvidenceListItem({
           {' · '}
           <EvidenceStatusIndicator status={evidence.embedding_status} />{' '}
           <span
-            className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusBadgeClass}`}
+            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${statusBadgeClass}`}
           >
+            {isServerProcessing && (
+              <Loader2 size={9} className="animate-spin shrink-0" />
+            )}
             {statusLabel}
           </span>
         </p>
       </div>
-      {canPreview && !isLocalProcessing && (
+      {canPreview && !isLocalProcessing && !isServerProcessing && (
         <button
           onClick={() => onPreview(evidence)}
           title="Preview evidence"
