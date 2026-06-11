@@ -5,6 +5,9 @@ export const APP_PATHS = {
   modules: '/modules',
   moduleNew: '/modules/new',
   moduleManage: (moduleId) => `/modules/${moduleId}/manage`,
+  moduleOverlaps: (moduleId) => `/modules/${moduleId}/overlaps`,
+  moduleOverlapDetail: (moduleId, signalId) =>
+    `/modules/${moduleId}/overlaps/${signalId}`,
   reports: '/reports',
   settings: '/settings',
 };
@@ -22,6 +25,11 @@ export const API_PATHS = {
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleOverlapAnalyze: (moduleId) => `/modules/${moduleId}/overlap/analyze`,
+  moduleOverlapSignals: (moduleId) => `/modules/${moduleId}/overlap/signals`,
+  moduleOverlapSignal: (moduleId, signalId) =>
+    `/modules/${moduleId}/overlap/signals/${signalId}`,
+  moduleOverlapWarning: (moduleId) => `/modules/${moduleId}/overlap/warning`,
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`

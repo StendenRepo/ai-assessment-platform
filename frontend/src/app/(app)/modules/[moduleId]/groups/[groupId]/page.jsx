@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowRight, CheckCircle2, Circle, Clock, Users } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Circle, Clock, ScanSearch, Users } from 'lucide-react';
+import Link from 'next/link';
+import { APP_PATHS } from '@/lib/routes';
 import {
   getProject,
   listProjectGroups,
   listProjectStudents,
 } from '@/lib/api/modulesApi';
-import { APP_PATHS } from '@/lib/routes';
-
 const assessmentStatusConfig = {
   completed: {
     label: 'Completed',
@@ -85,9 +85,18 @@ export default function GroupDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
+        </div>
+        <Link
+          href={`${APP_PATHS.moduleOverlaps(moduleId)}?group_id=${groupId}`}
+          className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary shrink-0"
+        >
+          <ScanSearch size={14} />
+          Group overlaps
+        </Link>
       </div>
 
       <div className="rounded-lg bg-card border border-border">

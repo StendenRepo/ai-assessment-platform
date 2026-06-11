@@ -2,7 +2,7 @@ import io
 import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -35,7 +35,7 @@ from app.schemas.project import (
     StudentOut,
 )
 from app.services.module_service import ModuleService
-from app.services.overlap_service import OverlapService
+from app.services.overlap_service import OverlapService, parse_signal_detail
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -190,6 +190,11 @@ def _build_student_project_map(db: Session, project_ids: list) -> dict:
 
 
 def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+    detail = parse_signal_detail(signal.snippet)
+    confidence = round(float(signal.confidence or 0.0), 2)
+    status = detail.get("status")
+    if not status:
+        status = "confirmed" if confidence >= 0.55 else "possible"
     return OverlapSignalOut(
         id=str(signal.id),
         student_a_id=str(signal.student_a_id),
@@ -201,9 +206,17 @@ def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> Overlap
         evidence_b_id=str(signal.evidence_b_id),
         evidence_b_name=evidence_names.get(signal.evidence_b_id, "Unknown evidence"),
         overlap_type=signal.overlap_type.value if signal.overlap_type else "textual",
-        confidence=round(float(signal.confidence or 0.0), 2),
-        snippet=signal.snippet,
+        confidence=confidence,
+        snippet=signal.snippet if not detail else detail.get("passage_a") or signal.snippet,
         detected_at=signal.detected_at,
+        status=status,
+        scope=detail.get("scope"),
+        passage_a=detail.get("passage_a"),
+        passage_b=detail.get("passage_b"),
+        group_a_id=detail.get("group_a_id"),
+        group_b_id=detail.get("group_b_id"),
+        group_a_name=detail.get("group_a_name"),
+        group_b_name=detail.get("group_b_name"),
     )
 
 
@@ -924,13 +937,37 @@ async def import_module_students(
 @router.get("/{module_id}/overlap/signals", response_model=List[OverlapSignalOut])
 def list_module_overlap_signals(
     module_id: str,
+    status: Optional[str] = Query(None, description="confirmed or possible"),
+    scope: Optional[str] = Query(None, description="within_group or cross_group"),
+    group_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-    signals = OverlapService.get_module_signals(db, str(module.id))
+    signals = OverlapService.get_module_signals(
+        db,
+        str(module.id),
+        status=status,
+        scope=scope,
+        group_id=group_id,
+    )
     student_names, evidence_names = _module_signal_context(db, module)
     return [_signal_to_out(signal, student_names, evidence_names) for signal in signals]
+
+
+@router.get("/{module_id}/overlap/signals/{signal_id}", response_model=OverlapSignalOut)
+def get_module_overlap_signal(
+    module_id: str,
+    signal_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signal = OverlapService.get_signal(db, str(module.id), signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="Overlap signal not found")
+    student_names, evidence_names = _module_signal_context(db, module)
+    return _signal_to_out(signal, student_names, evidence_names)
 
 
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)

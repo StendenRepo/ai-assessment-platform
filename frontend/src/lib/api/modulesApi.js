@@ -111,6 +111,27 @@ export const deleteModule = (moduleId) =>
  * @param {string} moduleId
  * @param {string} moduleName  - used to build the filename client-side
  */
+export const analyzeModuleOverlap = (moduleId) =>
+  request(API_PATHS.moduleOverlapAnalyze(moduleId), { method: 'POST' });
+
+export const listModuleOverlapSignals = (moduleId, params = {}) => {
+  const sp = new URLSearchParams();
+  if (params.status) sp.set('status', params.status);
+  if (params.scope) sp.set('scope', params.scope);
+  if (params.group_id) sp.set('group_id', params.group_id);
+  const qs = sp.toString();
+  const path = qs
+    ? `${API_PATHS.moduleOverlapSignals(moduleId)}?${qs}`
+    : API_PATHS.moduleOverlapSignals(moduleId);
+  return request(path);
+};
+
+export const getModuleOverlapSignal = (moduleId, signalId) =>
+  request(API_PATHS.moduleOverlapSignal(moduleId, signalId));
+
+export const getModuleOverlapWarning = (moduleId) =>
+  request(API_PATHS.moduleOverlapWarning(moduleId));
+
 export async function exportGradesExcel(moduleId, moduleName = '') {
   const res = await fetch(
     `${API_URL}/api/v1${API_PATHS.moduleGradesExport(moduleId)}`,

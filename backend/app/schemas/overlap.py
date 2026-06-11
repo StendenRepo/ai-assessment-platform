@@ -18,6 +18,14 @@ class OverlapSignalOut(BaseModel):
     confidence: float
     snippet: Optional[str] = None
     detected_at: datetime
+    status: Optional[str] = None
+    scope: Optional[str] = None
+    passage_a: Optional[str] = None
+    passage_b: Optional[str] = None
+    group_a_id: Optional[str] = None
+    group_b_id: Optional[str] = None
+    group_a_name: Optional[str] = None
+    group_b_name: Optional[str] = None
 
 
 class OverlapWarningOut(BaseModel):

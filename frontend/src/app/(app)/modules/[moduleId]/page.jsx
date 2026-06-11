@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   FolderPlus,
+  ScanSearch,
   Search,
   RefreshCw,
   Trash2,
@@ -405,6 +406,14 @@ export default function ModulePage() {
             >
               <Download size={14} />
               {exporting ? 'Exporting…' : 'Export Grades'}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push(APP_PATHS.moduleOverlaps(moduleId))}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+            >
+              <ScanSearch size={14} />
+              Review overlaps
             </button>
             <button
               type="button"
