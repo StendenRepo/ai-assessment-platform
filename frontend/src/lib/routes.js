@@ -44,6 +44,18 @@ export const API_PATHS = {
     `/assessments/${assessmentId}/recordings`,
   assessmentRecording: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}`,
+  assessmentDraft: (assessmentId) => `/assessments/${assessmentId}/draft`,
+  assessmentDraftGenerate: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/generate`,
+  assessmentDraftOverrides: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/overrides`,
+  assessmentDraftRevert: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/revert`,
+  assessmentChat: (assessmentId) => `/assessments/${assessmentId}/chat`,
+  assessmentFinalize: (assessmentId) => `/assessments/${assessmentId}/finalize`,
+  assessmentFinal: (assessmentId) => `/assessments/${assessmentId}/final`,
+  assessmentAuditTrail: (assessmentId) =>
+    `/assessments/${assessmentId}/audit-trail`,
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,

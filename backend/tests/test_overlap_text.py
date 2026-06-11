@@ -3,7 +3,11 @@ import uuid
 from app.models.enums import FileType, SourceType
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
 from app.services.overlap_service import OverlapService
-from app.services.overlap_text_detector import detect_within_group, EvidenceChunk
+from app.services.overlap_text_detector import (
+    detect_within_group,
+    EvidenceChunk,
+    highlight_shared,
+)
 from app.services.text_chunker import chunk_text
 
 SHARED = (
@@ -29,6 +33,15 @@ def test_tfidf_detects_similar_chunks():
     assert hits
     assert hits[0]["similarity"] >= 0.55
     assert hits[0]["status"] == "confirmed"
+
+
+def test_highlight_shared_finds_mid_document_phrase():
+    a = "Intro paragraph. Our team implemented JWT authentication with bcrypt hashing. Outro."
+    b = "Different start. Our team implemented JWT authentication with bcrypt hashing. Different end."
+    marked_a, marked_b = highlight_shared(a, b)
+    assert "[[" in marked_a
+    assert "[[" in marked_b
+    assert "JWT authentication" in marked_a or "implemented JWT" in marked_a
 
 
 def test_analyze_module_overlap_with_text_evidence(db, teacher, monkeypatch):

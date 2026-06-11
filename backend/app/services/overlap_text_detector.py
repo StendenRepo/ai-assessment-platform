@@ -25,21 +25,51 @@ class EvidenceChunk:
     group_name: str = ""
 
 
+def _longest_common_word_phrase(words_a: list[str], words_b: list[str], *, min_words: int = 4) -> str:
+    """Find the longest contiguous word sequence shared by both passages."""
+    best: list[str] = []
+    for i in range(len(words_a)):
+        for j in range(len(words_b)):
+            k = 0
+            while (
+                i + k < len(words_a)
+                and j + k < len(words_b)
+                and words_a[i + k].lower() == words_b[j + k].lower()
+            ):
+                k += 1
+            if k >= min_words and k > len(best):
+                best = words_a[i : i + k]
+    return " ".join(best)
+
+
+def _wrap_phrase(text: str, phrase: str) -> str:
+    if not phrase or phrase not in text:
+        lower_text = text.lower()
+        lower_phrase = phrase.lower()
+        idx = lower_text.find(lower_phrase)
+        if idx < 0:
+            return text
+        original = text[idx : idx + len(phrase)]
+        return text.replace(original, f"[[{original}]]", 1)
+    return text.replace(phrase, f"[[{phrase}]]", 1)
+
+
 def highlight_shared(a: str, b: str) -> tuple[str, str]:
+    """Mark the longest shared word phrase in both passages (not only prefixes)."""
     words_a = a.split()
     words_b = b.split()
-    shared = 0
-    for wa, wb in zip(words_a, words_b):
-        if wa.lower() != wb.lower():
-            break
-        shared += 1
-    if shared < 3:
-        return a, b
-    prefix = " ".join(words_a[:shared])
-    return (
-        a.replace(prefix, f"[[{prefix}]]", 1),
-        b.replace(prefix, f"[[{prefix}]]", 1),
-    )
+    phrase = _longest_common_word_phrase(words_a, words_b, min_words=4)
+    if not phrase:
+        # Fallback: shared prefix of at least three words
+        shared = 0
+        for wa, wb in zip(words_a, words_b):
+            if wa.lower() != wb.lower():
+                break
+            shared += 1
+        if shared < 3:
+            return a, b
+        phrase = " ".join(words_a[:shared])
+    return _wrap_phrase(a, phrase), _wrap_phrase(b, phrase)
 
 
 def _pair_hits(

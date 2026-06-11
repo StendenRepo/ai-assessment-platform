@@ -5,10 +5,9 @@ import uuid as uuid_mod
 from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
-import httpx
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.services import ollama_client
 from app.models.evidence import Evidence
 from app.models.enums import OverlapType
 from app.models.overlap_signal import OverlapSignal
@@ -359,11 +358,37 @@ class OverlapService:
 
     @staticmethod
     def get_signal(db: Session, module_id: str, signal_id: str) -> Optional[OverlapSignal]:
+        students = (
+            db.query(Student)
+            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .join(Project, student_projects.c.project_id == Project.id)
+            .filter(Project.module_id == module_id)
+            .all()
+        )
+        if not students:
+            return None
+        student_ids = [s.student_number for s in students]
+        return (
+            db.query(OverlapSignal)
+            .filter(
+                OverlapSignal.id == signal_id,
+                OverlapSignal.student_a_id.in_(student_ids),
+                OverlapSignal.student_b_id.in_(student_ids),
+            )
+            .first()
+        )
+
+    @staticmethod
+    def get_signals_for_student(
+        db: Session, module_id: str, student_id: str
+    ) -> List[OverlapSignal]:
+        """Return overlap signals involving a specific student, highest confidence first."""
         signals = OverlapService.get_module_signals(db, module_id)
-        for signal in signals:
-            if str(signal.id) == str(signal_id):
-                return signal
-        return None
+        return [
+            s
+            for s in signals
+            if s.student_a_id == student_id or s.student_b_id == student_id
+        ]
 
     @staticmethod
     def _filter_signals(
@@ -447,20 +472,4 @@ class OverlapService:
 
     @staticmethod
     def _generate_ollama_warning(prompt: str) -> Optional[str]:
-        for model in [settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP]:
-            if not model:
-                continue
-            try:
-                with httpx.Client(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
-                    response = client.post(
-                        f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
-                        json={"model": model, "prompt": prompt, "stream": False},
-                    )
-                    response.raise_for_status()
-                    payload = response.json()
-                    text = (payload.get("response") or "").strip()
-                    if text:
-                        return text
-            except Exception:
-                continue
-        return None
+        return ollama_client.generate(prompt, temperature=0.3)
