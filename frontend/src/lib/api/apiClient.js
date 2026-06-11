@@ -1,4 +1,5 @@
 import { authHeaders, clearSession } from '@/lib/auth';
+import { normalizeErrorDetail } from '@/lib/api/apiErrors';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -48,7 +49,8 @@ export async function apiRequest(
       if (typeof window !== 'undefined') window.location.assign('/');
     }
     const message = errorMessage?.(data, res);
-    throw new Error(message || data.detail || `Request failed (${res.status})`);
+    const normalized = normalizeErrorDetail(data.detail);
+    throw new Error(message || normalized || `Request failed (${res.status})`);
   }
   if (res.status === 204) return null;
   return res.json();
