@@ -642,6 +642,11 @@ def delete_module_group(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    from pathlib import Path
+
+    EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+    EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
+
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     group = (
         db.query(Project)
