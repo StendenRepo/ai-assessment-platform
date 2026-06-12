@@ -8,7 +8,7 @@ import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
-import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { deleteEvidence, getSupportedEvidenceTypes } from '@/lib/api/evidence';
 import {
   listProjectEvidence,
