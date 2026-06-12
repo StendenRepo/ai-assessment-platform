@@ -12,6 +12,10 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  evidenceSupportedTypes: '/evidence/supported-types',
+  evidence: (evidenceId) => `/evidence/${evidenceId}`,
+  evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
+  evidenceFile: (evidenceId) => `/evidence/${evidenceId}/file`,
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
@@ -21,6 +25,7 @@ export const API_PATHS = {
   moduleStudents: (moduleId) => `/modules/${moduleId}/students`,
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
+  studentEvidence: (studentId) => `/students/${studentId}/evidence`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId

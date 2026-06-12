@@ -13,6 +13,12 @@ def _resolve_dir(value: str) -> str:
     return value if os.path.isabs(value) else os.path.normpath(os.path.join(BASE_DIR, value))
 
 
+def _as_bool(value: str, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     PROJECT_NAME: str = "AI Assessment Service"
     VERSION: str = "0.1.0"
@@ -29,12 +35,16 @@ class Settings:
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production-use-a-long-random-string")
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+    EVIDENCE_PATH_SALT: str = os.getenv("EVIDENCE_PATH_SALT", JWT_SECRET_KEY)
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
     OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
     OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+    # Vision model for image evidence description (must support images via Ollama API)
+    VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
+    VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")

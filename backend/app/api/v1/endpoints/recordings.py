@@ -114,7 +114,7 @@ def _transcribe_in_background(
 
 @router.post("/assessments/for-student/{student_id}", response_model=ConsentStateOut)
 def resolve_assessment_for_student(
-    student_id: UUID,
+    student_id: str,
     db: Session = Depends(get_db),
     teacher: Teacher = Depends(get_current_teacher),
 ):
