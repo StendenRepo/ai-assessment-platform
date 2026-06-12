@@ -11,9 +11,8 @@ import {
   Shield,
   Bot,
   Upload,
-  FileText,
+  CheckCircle2,
   XCircle,
-  Trash2,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -22,10 +21,20 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
+import EvidenceListItem from '@/components/evidence/EvidenceListItem';
+import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
+import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
+import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
+import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
+import {
+  deleteEvidence,
+  getSupportedEvidenceTypes,
+  listStudentEvidence,
+} from '@/lib/api/evidence';
 
-const API_BASE_STUDENT =
-  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { listProjectStudents } from '@/lib/api/modulesApi';
@@ -186,31 +195,75 @@ function AIInsightsPanel({ studentId }) {
   );
 }
 
-// ─── Markdown Evidence Upload ─────────────────────────────────────────────────
+// ─── Evidence Upload ──────────────────────────────────────────────────────────
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
-
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_EVIDENCE_EXTENSIONS = [
+  '.md',
+  '.docx',
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+];
 
 function EvidenceUpload({ studentId }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  // All evidence for this student (existing + newly uploaded this session)
+  const [uploadSuccessMessage, setUploadSuccessMessage] = useState('');
+  // Confirmed evidence from the server (existing + newly completed uploads)
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
   // Allowed extensions fetched from the backend — starts with a safe default
-  const [allowedExtensions, setAllowedExtensions] = useState(['.md']);
+  const [allowedExtensions, setAllowedExtensions] = useState(
+    DEFAULT_EVIDENCE_EXTENSIONS
+  );
+  const {
+    startUpload,
+    registerCallbacks,
+    getStudentLocalItems,
+    consumeCompletedItems,
+  } = useEvidenceUpload();
+  const {
+    previewEvidence,
+    previewUrl,
+    previewContent,
+    previewLoading,
+    activePreviewKind,
+    basePreviewKind,
+    showImageExtractedText,
+    canPreview,
+    openPreview,
+    closePreview,
+    toggleImageExtractedText,
+    downloadEvidence,
+  } = useEvidencePreview();
 
-  const isValidUUID = UUID_REGEX.test(studentId);
+  const hasStudentId = Boolean(String(studentId || '').trim());
+
+  const { pendingItem, requestDelete, cancelDelete, confirmDelete } =
+    useDeleteConfirm({
+      onDelete: (item) => deleteEvidence(item.id),
+      onDeleted: (deletedEvidence) => {
+        setAllEvidence((prev) =>
+          prev.filter((ev) => ev.id !== deletedEvidence.id)
+        );
+      },
+      onError: (err) => {
+        setError(err.message);
+      },
+    });
+
+  // In-flight items from the persistent context (survive navigation)
+  const localItems = hasStudentId ? getStudentLocalItems(studentId) : [];
+  const uploading = localItems.length > 0;
+  // Show the latest in-flight filename in the upload panel
+  const uploadingFileName = localItems[0]?.file_name ?? '';
 
   // Fetch supported types from the API on mount (only when we have a real UUID)
   useEffect(() => {
-    if (!isValidUUID) return;
-    fetch(`${API_BASE}/api/v1/evidence/supported-types`)
-      .then((r) => r.json())
+    if (!hasStudentId) return;
+    getSupportedEvidenceTypes()
       .then((data) => {
         if (Array.isArray(data.supported_extensions)) {
           setAllowedExtensions(data.supported_extensions);
@@ -219,20 +272,46 @@ function EvidenceUpload({ studentId }) {
       .catch(() => {
         // Keep the default if the request fails
       });
-  }, [isValidUUID]);
+  }, [hasStudentId]);
 
-  // Fetch existing evidence for this student on mount
+  // Register live callbacks with the context so completed uploads update this
+  // component's state even when initiated from a previous mount of this page.
   useEffect(() => {
-    if (!isValidUUID) return;
+    if (!hasStudentId) return;
+    return registerCallbacks(studentId, {
+      onCompleted: (data) => {
+        setAllEvidence((prev) => {
+          if (prev.some((e) => e.id === data.id)) return prev;
+          return [data, ...prev];
+        });
+        // Only show the success toast once the AI has finished processing
+        if (data.embedding_status === 'completed') {
+          setUploadSuccessMessage(`Upload complete: ${data.file_name}`);
+          window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+        }
+      },
+      onError: (err) => {
+        setError(err.message);
+      },
+    });
+  }, [studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch existing evidence for this student on mount; also merge any items
+  // that completed while we were navigated away.
+  useEffect(() => {
+    if (!hasStudentId) return;
     const load = async () => {
       setEvidenceLoading(true);
       try {
-        const r = await fetch(
-          `${API_BASE}/api/v1/students/${studentId}/evidence`,
-          { headers: authHeaders() }
-        );
-        const data = r.ok ? await r.json() : [];
-        setAllEvidence(Array.isArray(data) ? data : []);
+        const data = await listStudentEvidence(studentId).catch(() => []);
+        const fetched = Array.isArray(data) ? data : [];
+        // Prepend items that finished uploading while this page was unmounted
+        const stashed = consumeCompletedItems(studentId);
+        const stashedIds = new Set(stashed.map((e) => e.id));
+        setAllEvidence([
+          ...stashed,
+          ...fetched.filter((e) => !stashedIds.has(e.id)),
+        ]);
       } catch {
         setAllEvidence([]);
       } finally {
@@ -240,10 +319,61 @@ function EvidenceUpload({ studentId }) {
       }
     };
     load();
-  }, [studentId, isValidUUID]);
+  }, [studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Guard: only render the upload UI when studentId is a real UUID
-  if (!isValidUUID) {
+  // Poll the server while any evidence item is still being processed by the
+  // background vision task (embedding_status === 'processing').
+  useEffect(() => {
+    if (!hasStudentId) return;
+    const hasProcessing = allEvidence.some(
+      (e) => e.embedding_status === 'processing'
+    );
+    if (!hasProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const fresh = await listStudentEvidence(studentId);
+        if (!Array.isArray(fresh)) return;
+        setAllEvidence((prev) => {
+          let changed = false;
+          const next = prev.map((ev) => {
+            const updated = fresh.find((f) => f.id === ev.id);
+            if (updated && updated.embedding_status !== ev.embedding_status) {
+              changed = true;
+              // Show success toast when an image finishes AI processing
+              if (updated.embedding_status === 'completed') {
+                setUploadSuccessMessage(
+                  `Upload complete: ${updated.file_name}`
+                );
+                window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+              }
+              return updated;
+            }
+            return ev;
+          });
+          return changed ? next : prev;
+        });
+      } catch {
+        // Silently ignore polling errors — the user can still interact
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [allEvidence, studentId, hasStudentId]);
+
+  // Show the success toast once a processing item transitions to completed
+  useEffect(() => {
+    const justCompleted = allEvidence.filter(
+      (e) => e.embedding_status === 'completed' && e.__justCompleted
+    );
+    justCompleted.forEach((e) => {
+      setUploadSuccessMessage(`Upload complete: ${e.file_name}`);
+      window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+    });
+  }, [allEvidence]);
+
+  // Guard: only render the upload UI when a student identifier is available
+  if (!hasStudentId) {
     return (
       <div className="rounded-lg border border-dashed border-border px-5 py-4 text-xs text-muted-foreground">
         Evidence upload is available once this student is linked to a real
@@ -257,7 +387,7 @@ function EvidenceUpload({ studentId }) {
     return allowedExtensions.includes(ext);
   };
 
-  const handleFile = async (file) => {
+  const handleSingleFile = (file) => {
     setError(null);
     if (!isAllowed(file.name)) {
       setError(
@@ -266,171 +396,154 @@ function EvidenceUpload({ studentId }) {
       return;
     }
 
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await fetch(
-        `${API_BASE}/api/v1/students/${studentId}/evidence`,
-        {
-          method: 'POST',
-          headers: authHeaders(),
-          body: formData,
-        }
-      );
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? `Upload failed (${res.status})`);
-      }
-
-      const data = await res.json();
-      setAllEvidence((prev) => [data, ...prev]);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setUploading(false);
-    }
+    startUpload(studentId, file);
   };
 
   const onInputChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    const files = Array.from(e.target.files || []);
+    files.forEach((file) => {
+      void handleSingleFile(file);
+    });
     e.target.value = '';
   };
 
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    files.forEach((file) => {
+      void handleSingleFile(file);
+    });
   };
 
-  const handleDelete = async (evidenceId) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/evidence/${evidenceId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail ?? `Delete failed (${res.status})`);
-      }
-      setAllEvidence((prev) => prev.filter((ev) => ev.id !== evidenceId));
-    } catch (err) {
-      setError(err.message);
+  const handleDelete = (evidenceId) => {
+    const evidence = allEvidence.find((ev) => ev.id === evidenceId);
+    if (evidence) {
+      requestDelete(evidence);
     }
   };
 
   // Build the <input accept> string from the dynamic list
   const acceptAttr = allowedExtensions.join(',');
 
+  const handlePreview = async (evidence) => {
+    setError(null);
+    try {
+      await openPreview(evidence);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDownload = async (evidence) => {
+    setError(null);
+    try {
+      await downloadEvidence(evidence);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border bg-secondary/30">
-        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center">
-          <Upload size={13} className="text-primary" />
+    <div className="space-y-4">
+      <EvidenceUploadPanel
+        title="Upload Evidence"
+        acceptedLabel={allowedExtensions.join(', ')}
+        uploading={uploading}
+        uploadingCount={localItems.length}
+        uploadingFileName={uploadingFileName}
+        dragOver={dragOver}
+        fileInputRef={fileInputRef}
+        accept={acceptAttr}
+        onInputChange={onInputChange}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onOpenFilePicker={() => fileInputRef.current?.click()}
+      />
+
+      {uploadSuccessMessage && (
+        <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+          <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+          <p className="text-xs text-emerald-400">{uploadSuccessMessage}</p>
         </div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            Upload Evidence
-          </p>
-          <p className="text-[11px] text-muted-foreground">
-            Accepted:{' '}
-            <code className="font-mono">{allowedExtensions.join(', ')}</code>
-          </p>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
+          <XCircle size={13} className="text-red-400 shrink-0" />
+          <p className="text-xs text-red-400">{error}</p>
+        </div>
+      )}
+
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="p-5 space-y-2">
+          {/* localItems are in-flight (context survives navigation); allEvidence is fetched */}
+          {(() => {
+            const displayedEvidence = [...localItems, ...allEvidence];
+            return (
+              <>
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                  Evidence ({displayedEvidence.length})
+                </p>
+                {evidenceLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : displayedEvidence.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    No evidence uploaded yet.
+                  </p>
+                ) : (
+                  displayedEvidence.map((ev) => (
+                    <EvidenceListItem
+                      key={ev.id}
+                      evidence={ev}
+                      canPreview={
+                        !ev.__localProcessing &&
+                        ev.embedding_status !== 'processing' &&
+                        canPreview(ev)
+                      }
+                      onPreview={handlePreview}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                    />
+                  ))
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 
-      <div className="p-5 space-y-4">
-        {/* Drop zone */}
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
-            dragOver
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/50 hover:bg-secondary/50'
-          }`}
-        >
-          <Upload
-            size={22}
-            className={dragOver ? 'text-primary' : 'text-muted-foreground'}
-          />
-          <p className="text-sm font-medium text-foreground">
-            {uploading ? 'Uploading…' : 'Drop a file here or click to browse'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Accepted: {allowedExtensions.join(', ')}
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={acceptAttr}
-            className="hidden"
-            onChange={onInputChange}
-          />
-        </div>
+      <EvidencePreviewDialog
+        evidence={previewEvidence}
+        previewKind={activePreviewKind}
+        basePreviewKind={basePreviewKind}
+        previewUrl={previewUrl}
+        previewContent={previewContent}
+        loading={previewLoading}
+        showImageExtractedText={showImageExtractedText}
+        onToggleImageExtractedText={async () => {
+          setError(null);
+          try {
+            await toggleImageExtractedText();
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+        onClose={closePreview}
+      />
 
-        {/* Error */}
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
-            <XCircle size={13} className="text-red-400 shrink-0" />
-            <p className="text-xs text-red-400">{error}</p>
-          </div>
-        )}
-
-        {/* All evidence list */}
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-            Evidence ({allEvidence.length})
-          </p>
-          {evidenceLoading ? (
-            <div className="flex justify-center py-4">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : allEvidence.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">
-              No evidence uploaded yet.
-            </p>
-          ) : (
-            allEvidence.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-center gap-3 rounded-md bg-card border border-border px-3 py-2.5"
-              >
-                <FileText size={14} className="text-primary shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-foreground font-mono truncate">
-                    {ev.file_name}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {new Date(ev.uploaded_at).toLocaleString('nl-NL')}
-                    {' · '}
-                    <span className="capitalize">{ev.file_type}</span>
-                    {' · '}
-                    <span className="capitalize">{ev.embedding_status}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDelete(ev.id)}
-                  title="Delete evidence"
-                  className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      <DeleteConfirmDialog
+        open={Boolean(pendingItem)}
+        label={pendingItem?.file_name}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </div>
   );
 }

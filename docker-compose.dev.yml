@@ -76,6 +76,14 @@ services:
         volumes:
             - ollama_data:/root/.ollama
         command: serve
+        deploy:
+            resources:
+                limits:
+                    cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+                    memory: ${OLLAMA_MEMORY_LIMIT:-4G}
+                reservations:
+                    cpus: '${OLLAMA_CPU_RESERVATION:-1.0}'
+                    memory: ${OLLAMA_MEMORY_RESERVATION:-1G}
         restart: unless-stopped
     ollama-init:
         image: ollama/ollama:latest
@@ -87,6 +95,7 @@ services:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
             OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
             OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            VISION_MODEL: ${VISION_MODEL:-llava:7b}
         depends_on:
             ollama:
                 condition: service_started
@@ -101,6 +110,10 @@ services:
                         if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
                             echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
                             ollama pull ${OLLAMA_MODEL_BACKUP};
+                        fi;
+                        if [ -n "${VISION_MODEL}" ]; then
+                            echo 'Pulling vision model: ${VISION_MODEL}';
+                            ollama pull ${VISION_MODEL};
                         fi;
                         echo 'Models ready';
             "

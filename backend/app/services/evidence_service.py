@@ -1,16 +1,25 @@
+import base64
+import hashlib
+import hmac
 import io
+import logging
+import mimetypes
 import uuid as _uuid
 from pathlib import Path
 
 from docx import Document as DocxDocument
-from pypdf import PdfReader
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.enums import EmbeddingStatus, FileType, SourceType
 from app.models.evidence import Evidence
 from app.models.student import Student
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
@@ -24,7 +33,48 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
         )
 
 
-EVIDENCE_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "evidence"
+def _evidence_upload_dir() -> Path:
+    return Path(settings.UPLOAD_DIR) / "evidence"
+
+
+def _evidence_text_dir() -> Path:
+    return Path(settings.UPLOAD_DIR) / "evidence_text"
+
+
+def _full_path_for(relative_path: str) -> Path:
+    return _evidence_upload_dir() / relative_path
+
+
+def _text_path_for(file_path: Path) -> Path:
+    evidence_root = _evidence_upload_dir()
+    try:
+        relative_path = file_path.relative_to(evidence_root)
+    except ValueError:
+        relative_path = Path(file_path.name)
+    return _evidence_text_dir() / relative_path.parent / f"{relative_path.name}.txt"
+
+
+def _should_store_text_sidecar(file_type: FileType) -> bool:
+    return file_type == FileType.image
+
+
+def _image_placeholder_text(filename: str) -> str:
+    return f"[Image evidence uploaded: {filename}]"
+
+
+def _is_image_placeholder_text(text: str) -> bool:
+    value = (text or "").strip()
+    return value.startswith("[Image evidence uploaded:") and value.endswith("]")
+
+
+def _student_storage_key(student_id: str) -> str:
+    # Deterministic pseudonymization to avoid exposing raw student numbers in paths.
+    digest = hmac.new(
+        settings.EVIDENCE_PATH_SALT.encode("utf-8"),
+        str(student_id).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"s_{digest[:24]}"
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -35,6 +85,9 @@ SUPPORTED_EXTENSIONS: dict[str, FileType] = {
     ".md": FileType.markdown,
     ".docx": FileType.docx,
     ".pdf": FileType.pdf,
+    ".png": FileType.image,
+    ".jpg": FileType.image,
+    ".jpeg": FileType.image,
 }
 
 
@@ -85,6 +138,9 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
                 detail=f"Could not parse '{filename}' as a valid PDF",
             )
 
+    if file_type == FileType.image:
+        return _extract_image_text(raw, filename)
+
     # Fallback for any future types not yet handled
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -92,7 +148,149 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
     )
 
 
+def _extract_image_text(raw: bytes, filename: str) -> str:
+    """Validate an image and describe it using the Ollama vision model."""
+    _validate_image(raw, filename)
+
+    text = _extract_image_text_with_vision(raw, filename)
+    return text.strip() or _image_placeholder_text(filename)
+
+
+def _validate_image(raw: bytes, filename: str) -> None:
+    """Ensure uploaded bytes are a valid image payload."""
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+        image.close()
+    except (UnidentifiedImageError, OSError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not parse '{filename}' as a valid image",
+        )
+
+def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
+    """Describe an image using the configured Ollama vision model.
+
+    Returns empty string if the model is unavailable or fails so the caller
+    can fall back to the default placeholder text.
+    """
+    model = settings.VISION_MODEL
+    if not model:
+        return ""
+
+    try:
+        import httpx
+
+        b64 = base64.b64encode(raw).decode("ascii")
+        prompt = (
+            "You are an assistant that extracts and describes the content of images "
+            "submitted as student evidence. "
+            "Describe what you see in detail: any visible text, diagrams, screenshots, "
+            "code, or other content. Be thorough but concise. "
+            "If the image contains text, transcribe it exactly."
+        )
+        with httpx.Client(timeout=settings.VISION_TIMEOUT_SECONDS) as client:
+            response = client.post(
+                f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "images": [b64],
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+            text = (response.json().get("response") or "").strip()
+            return text
+    except Exception as exc:
+        logger.warning(
+            "Vision extraction failed for '%s' using model '%s': %s",
+            filename,
+            model,
+            exc,
+        )
+        return ""
+
+
+
+def run_vision_background(evidence_id: str) -> None:
+    """FastAPI background task: run vision AI on an image evidence record.
+
+    Creates its own DB session so it executes outside the original request
+    context.  On success the sidecar is replaced with the AI description and
+    ``embedding_status`` is set to ``completed``.  On any failure the status
+    is set to ``failed`` so the frontend can surface the error.
+    """
+    from app.database import SessionLocal  # imported here to avoid circular import at module level
+
+    db = SessionLocal()
+    try:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            return
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            evidence.embedding_status = EmbeddingStatus.failed
+            db.add(evidence)
+            db.commit()
+            return
+
+        raw = full_path.read_bytes()
+        text = _extract_image_text_with_vision(raw, evidence.file_name)
+        content = text.strip() or _image_placeholder_text(evidence.file_name)
+
+        text_path = _text_path_for(full_path)
+        text_path.parent.mkdir(parents=True, exist_ok=True)
+        text_path.write_text(content, encoding="utf-8")
+
+        # Only mark completed when AI produced real text. Placeholder means the
+        # vision call failed/unavailable and should be surfaced as failed.
+        if _is_image_placeholder_text(content):
+            evidence.embedding_status = EmbeddingStatus.failed
+            logger.warning(
+                "Vision returned no content for '%s'; keeping placeholder and marking failed",
+                evidence.file_name,
+            )
+        else:
+            evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        db.commit()
+    except Exception:
+        logger.exception("Background vision task failed for evidence %s", evidence_id)
+        try:
+            ev = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+            if ev:
+                ev.embedding_status = EmbeddingStatus.failed
+                db.add(ev)
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 class EvidenceService:
+    @staticmethod
+    def _mark_completed_if_ready(evidence: Evidence, db: Session) -> bool:
+        if evidence.embedding_status != EmbeddingStatus.pending:
+            return False
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            return False
+
+        text_path = _text_path_for(full_path)
+        if not text_path.exists():
+            try:
+                EvidenceService._extract_and_store_text(evidence, full_path)
+            except HTTPException:
+                return False
+
+        evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        return True
+
     # ------------------------------------------------------------------
     # Upload a file as evidence for a student
     # ------------------------------------------------------------------
@@ -113,33 +311,44 @@ class EvidenceService:
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
 
-        # Read raw bytes and extract plain-text content per file type
+        # Read raw bytes
         raw = file.file.read()
-        content = _extract_text(raw, file_type, filename)
+
+        # For images: validate bytes immediately (catches corrupt uploads early)
+        # but defer the slow vision AI call to a background task so the HTTP
+        # response is returned right away with status=processing.
+        # For all other file types extract text synchronously as before.
+        if file_type == FileType.image:
+            _validate_image(raw, filename)
+            initial_status = EmbeddingStatus.processing
+            sidecar_content: str | None = _image_placeholder_text(filename)
+        else:
+            sidecar_content = _extract_text(raw, file_type, filename)
+            initial_status = EmbeddingStatus.completed
 
         # Persist to disk
-        upload_dir = EVIDENCE_UPLOAD_DIR / str(student_id)
+        upload_dir = _evidence_upload_dir() / _student_storage_key(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
-        file_path.write_text(content, encoding="utf-8")
+        file_path.write_bytes(raw)
+        if _should_store_text_sidecar(file_type) and sidecar_content is not None:
+            text_path = _text_path_for(file_path)
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+            text_path.write_text(sidecar_content, encoding="utf-8")
 
-        # Store path relative to EVIDENCE_UPLOAD_DIR so the record stays
+        # Store path relative to the evidence upload root so the record stays
         # portable when the base upload directory changes.
-        relative_path = str(file_path.relative_to(EVIDENCE_UPLOAD_DIR))
+        relative_path = str(file_path.relative_to(_evidence_upload_dir()))
 
-        # Create DB record. The file is stored and its text extracted, but no
-        # embedding step has run yet, so the status stays "pending" until the
-        # AI pipeline processes it. (Was incorrectly "completed", which claimed
-        # embedding had finished when nothing had embedded the file.)
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
             source_type=SourceType.upload,
-            embedding_status=EmbeddingStatus.pending,
+            embedding_status=initial_status,
         )
         db.add(evidence)
         db.commit()
@@ -157,12 +366,18 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Student not found",
             )
-        return (
+        evidence_list = (
             db.query(Evidence)
             .filter(Evidence.student_id == student_id)
             .order_by(Evidence.uploaded_at.desc())
             .all()
         )
+        changed = False
+        for evidence in evidence_list:
+            changed = EvidenceService._mark_completed_if_ready(evidence, db) or changed
+        if changed:
+            db.commit()
+        return evidence_list
 
     # ------------------------------------------------------------------
     # Delete an evidence record (DB + file on disk)
@@ -176,12 +391,15 @@ class EvidenceService:
                 detail="Evidence not found",
             )
         # Reconstruct full path from the stored relative path
-        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
 
-        # Remove file from disk (ignore if already gone)
+        # Remove evidence artifacts from disk (ignore if already gone)
         try:
             if full_path.exists():
                 full_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
         except OSError:
             pass  # Log in production; don't block the DB delete
 
@@ -199,11 +417,88 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
+        full_path = _full_path_for(evidence.file_path)
         if not full_path.exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence file not found on disk",
             )
-        content = full_path.read_text(encoding="utf-8")
+        content = EvidenceService._read_or_rebuild_text_content(evidence)
+        if EvidenceService._mark_completed_if_ready(evidence, db):
+            db.commit()
         return evidence, content
+
+    @staticmethod
+    def reprocess_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file not found on disk",
+            )
+
+        content = EvidenceService._extract_and_store_text(evidence, full_path)
+        evidence.embedding_status = EmbeddingStatus.completed
+        db.add(evidence)
+        db.commit()
+        return evidence, content
+
+    @staticmethod
+    def get_raw_file(evidence_id: str, db: Session) -> tuple[Evidence, Path, str]:
+        evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
+        if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+
+        full_path = _full_path_for(evidence.file_path)
+        if not full_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence file not found on disk",
+            )
+
+        media_type, _ = mimetypes.guess_type(evidence.file_name)
+        if EvidenceService._mark_completed_if_ready(evidence, db):
+            db.commit()
+        return evidence, full_path, media_type or "application/octet-stream"
+
+    @staticmethod
+    def _read_or_rebuild_text_content(evidence: Evidence) -> str:
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
+        file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
+
+        if _should_store_text_sidecar(file_type) and text_path.exists():
+            sidecar_text = text_path.read_text(encoding="utf-8")
+            # Never run vision synchronously in a read/preview request.
+            # Return whatever sidecar exists so the UI stays responsive.
+            if file_type == FileType.image and _is_image_placeholder_text(sidecar_text):
+                return sidecar_text
+            return sidecar_text
+
+        if file_type == FileType.markdown:
+            try:
+                return full_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                return EvidenceService._extract_and_store_text(evidence, full_path)
+
+        return EvidenceService._extract_and_store_text(evidence, full_path)
+
+    @staticmethod
+    def _extract_and_store_text(evidence: Evidence, full_path: Path) -> str:
+        file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
+        raw = full_path.read_bytes()
+        content = _extract_text(raw, file_type, evidence.file_name)
+        if _should_store_text_sidecar(file_type):
+            text_path = _text_path_for(full_path)
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+            text_path.write_text(content, encoding="utf-8")
+        return content
