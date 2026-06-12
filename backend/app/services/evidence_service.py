@@ -5,6 +5,7 @@ import io
 import logging
 import mimetypes
 import uuid as _uuid
+from datetime import datetime
 from pathlib import Path
 
 from docx import Document as DocxDocument
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.enums import EmbeddingStatus, FileType, SourceType
 from app.models.evidence import Evidence
+from app.models.project import Project
 from app.models.student import Student
 
 
@@ -75,6 +77,15 @@ def _student_storage_key(student_id: str) -> str:
         hashlib.sha256,
     ).hexdigest()
     return f"s_{digest[:24]}"
+
+
+def _project_storage_key(project_id: str) -> str:
+    digest = hmac.new(
+        settings.EVIDENCE_PATH_SALT.encode("utf-8"),
+        str(project_id).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"p_{digest[:24]}"
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -272,6 +283,23 @@ def run_vision_background(evidence_id: str) -> None:
 
 class EvidenceService:
     @staticmethod
+    def _delete_evidence_artifacts(evidence: Evidence) -> None:
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
+        try:
+            if full_path.exists():
+                full_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _delete_evidence_rows(evidence_items: list[Evidence], db: Session) -> None:
+        for evidence in evidence_items:
+            db.delete(evidence)
+
+    @staticmethod
     def _mark_completed_if_ready(evidence: Evidence, db: Session) -> bool:
         if evidence.embedding_status != EmbeddingStatus.pending:
             return False
@@ -300,24 +328,59 @@ class EvidenceService:
         file: UploadFile,
         db: Session,
     ) -> Evidence:
-        student = db.get(Student, student_id)
-        if not student:
+        return EvidenceService._upload_file(
+            student_id=student_id,
+            project_id=None,
+            file=file,
+            db=db,
+        )
+
+    @staticmethod
+    def upload_file_for_project(
+        project_id: str,
+        file: UploadFile,
+        db: Session,
+    ) -> Evidence:
+        return EvidenceService._upload_file(
+            student_id=None,
+            project_id=project_id,
+            file=file,
+            db=db,
+        )
+
+    @staticmethod
+    def _upload_file(
+        *,
+        student_id: str | None,
+        project_id: str | None,
+        file: UploadFile,
+        db: Session,
+    ) -> Evidence:
+        if bool(student_id) == bool(project_id):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Student not found",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Provide exactly one evidence scope",
             )
 
-        # Resolve & validate file type
+        if student_id:
+            student = db.get(Student, student_id)
+            if not student:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Student not found",
+                )
+        else:
+            project = db.get(Project, project_id)
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Project not found",
+                )
+
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
-
-        # Read raw bytes
         raw = file.file.read()
 
-        # For images: validate bytes immediately (catches corrupt uploads early)
-        # but defer the slow vision AI call to a background task so the HTTP
-        # response is returned right away with status=processing.
-        # For all other file types extract text synchronously as before.
         if file_type == FileType.image:
             _validate_image(raw, filename)
             initial_status = EmbeddingStatus.processing
@@ -326,8 +389,12 @@ class EvidenceService:
             sidecar_content = _extract_text(raw, file_type, filename)
             initial_status = EmbeddingStatus.completed
 
-        # Persist to disk
-        upload_dir = _evidence_upload_dir() / _student_storage_key(student_id)
+        storage_key = (
+            _student_storage_key(student_id)
+            if student_id
+            else _project_storage_key(project_id)
+        )
+        upload_dir = _evidence_upload_dir() / storage_key
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
@@ -338,12 +405,10 @@ class EvidenceService:
             text_path.parent.mkdir(parents=True, exist_ok=True)
             text_path.write_text(sidecar_content, encoding="utf-8")
 
-        # Store path relative to the evidence upload root so the record stays
-        # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(_evidence_upload_dir()))
-
         evidence = Evidence(
             student_id=student_id,
+            project_id=project_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
@@ -366,9 +431,35 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Student not found",
             )
+        project_ids = [project.id for project in student.projects]
+        evidence_list = db.query(Evidence).filter(Evidence.student_id == student_id).all()
+        if project_ids:
+            evidence_list.extend(
+                db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).all()
+            )
+        evidence_list = sorted(
+            {e.id: e for e in evidence_list}.values(),
+            key=lambda evidence: evidence.uploaded_at or datetime.min,
+            reverse=True,
+        )
+        changed = False
+        for evidence in evidence_list:
+            changed = EvidenceService._mark_completed_if_ready(evidence, db) or changed
+        if changed:
+            db.commit()
+        return evidence_list
+
+    @staticmethod
+    def list_for_project(project_id: str, db: Session) -> list[Evidence]:
+        project = db.get(Project, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
         evidence_list = (
             db.query(Evidence)
-            .filter(Evidence.student_id == student_id)
+            .filter(Evidence.project_id == project_id)
             .order_by(Evidence.uploaded_at.desc())
             .all()
         )
@@ -378,6 +469,22 @@ class EvidenceService:
         if changed:
             db.commit()
         return evidence_list
+
+    @staticmethod
+    def delete_for_student(student_id: str, db: Session) -> None:
+        evidence_items = db.query(Evidence).filter(Evidence.student_id == student_id).all()
+        EvidenceService._delete_evidence_rows(evidence_items, db)
+        db.commit()
+        for evidence in evidence_items:
+            EvidenceService._delete_evidence_artifacts(evidence)
+
+    @staticmethod
+    def delete_for_project(project_id: str, db: Session) -> None:
+        evidence_items = db.query(Evidence).filter(Evidence.project_id == project_id).all()
+        EvidenceService._delete_evidence_rows(evidence_items, db)
+        db.commit()
+        for evidence in evidence_items:
+            EvidenceService._delete_evidence_artifacts(evidence)
 
     # ------------------------------------------------------------------
     # Delete an evidence record (DB + file on disk)
@@ -390,19 +497,7 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        # Reconstruct full path from the stored relative path
-        full_path = _full_path_for(evidence.file_path)
-        text_path = _text_path_for(full_path)
-
-        # Remove evidence artifacts from disk (ignore if already gone)
-        try:
-            if full_path.exists():
-                full_path.unlink()
-            if text_path.exists():
-                text_path.unlink()
-        except OSError:
-            pass  # Log in production; don't block the DB delete
-
+        EvidenceService._delete_evidence_artifacts(evidence)
         db.delete(evidence)
         db.commit()
 

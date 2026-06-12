@@ -21,11 +21,11 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
-import EvidenceListItem from '@/components/evidence/EvidenceListItem';
+import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
-import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
@@ -479,45 +479,47 @@ function EvidenceUpload({ studentId }) {
         </div>
       )}
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="p-5 space-y-2">
-          {/* localItems are in-flight (context survives navigation); allEvidence is fetched */}
-          {(() => {
-            const displayedEvidence = [...localItems, ...allEvidence];
-            return (
-              <>
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                  Evidence ({displayedEvidence.length})
-                </p>
-                {evidenceLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : displayedEvidence.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">
-                    No evidence uploaded yet.
-                  </p>
-                ) : (
-                  displayedEvidence.map((ev) => (
-                    <EvidenceListItem
-                      key={ev.id}
-                      evidence={ev}
-                      canPreview={
-                        !ev.__localProcessing &&
-                        ev.embedding_status !== 'processing' &&
-                        canPreview(ev)
-                      }
-                      onPreview={handlePreview}
-                      onDownload={handleDownload}
-                      onDelete={handleDelete}
-                    />
-                  ))
-                )}
-              </>
-            );
-          })()}
-        </div>
-      </div>
+      {(() => {
+        const displayedEvidence = [...localItems, ...allEvidence];
+        const studentEvidence = displayedEvidence.filter(
+          (ev) => !ev.project_id
+        );
+        const groupEvidence = displayedEvidence.filter((ev) =>
+          Boolean(ev.project_id)
+        );
+
+        return (
+          <EvidenceListSections
+            evidenceLoading={evidenceLoading}
+            allCount={displayedEvidence.length}
+            sections={[
+              {
+                key: 'student-evidence',
+                title: 'Student evidence',
+                items: studentEvidence,
+                emptyText: 'No student-specific evidence yet.',
+                dividerTop: false,
+              },
+              {
+                key: 'group-evidence',
+                title: 'Group shared evidence',
+                items: groupEvidence,
+                emptyText: 'No group shared evidence attached.',
+                dividerTop: true,
+              },
+            ]}
+            getItemCanPreview={(evidence) =>
+              !evidence.__localProcessing &&
+              evidence.embedding_status !== 'processing' &&
+              canPreview(evidence)
+            }
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+            onDelete={handleDelete}
+            emptyText="No evidence uploaded yet."
+          />
+        );
+      })()}
 
       <EvidencePreviewDialog
         evidence={previewEvidence}
