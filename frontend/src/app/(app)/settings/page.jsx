@@ -212,8 +212,8 @@ export default function SettingsPage() {
                       on: true,
                     },
                     {
-                      label: 'AI evidence processing complete',
-                      sub: 'When AI finishes processing uploaded evidence',
+                      label: 'AI evidence processing updates',
+                      sub: 'When AI processing succeeds or fails for uploaded evidence',
                       on: aiProcessingEnabled,
                       controlled: true,
                     },
@@ -244,7 +244,7 @@ export default function SettingsPage() {
                         defaultChecked={item.on}
                         checked={item.controlled ? item.on : undefined}
                         onChange={
-                          item.label === 'AI evidence processing complete'
+                          item.label === 'AI evidence processing updates'
                             ? setAiProcessingNotificationsEnabled
                             : undefined
                         }

@@ -282,6 +282,63 @@ def _create_ai_processing_complete_notification(
     )
 
 
+def _create_ai_processing_failed_notification(
+    db: Session,
+    *,
+    evidence: Evidence,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
+    teacher_uuid = None
+    if teacher_id:
+        try:
+            teacher_uuid = _uuid.UUID(str(teacher_id))
+        except (ValueError, TypeError, AttributeError):
+            teacher_uuid = None
+
+    if teacher_uuid is None and evidence.project and evidence.project.module:
+        teacher_uuid = evidence.project.module.teacher_id
+
+    if teacher_uuid is None and evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module:
+            teacher_uuid = first_project.module.teacher_id
+
+    if teacher_uuid is None:
+        return
+
+    if subject_label:
+        subject = subject_label
+    elif evidence.student and evidence.student.name:
+        subject = f"student {evidence.student.name}"
+    elif evidence.project and evidence.project.name:
+        subject = f"project {evidence.project.name}"
+    else:
+        subject = "your upload"
+
+    target_path = None
+    if evidence.project and evidence.project.module_id:
+        target_path = (
+            f"/modules/{evidence.project.module_id}/groups/{evidence.project.id}"
+        )
+    elif evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module_id:
+            target_path = (
+                f"/modules/{first_project.module_id}/groups/{first_project.id}"
+                f"/students/{evidence.student.student_number}"
+            )
+
+    notification_service.create_notification(
+        db,
+        teacher_id=teacher_uuid,
+        type=NotificationType.ai_processing_failed,
+        message=f"AI failed to process '{evidence.file_name}' for {subject}.",
+        target_path=target_path,
+        commit=False,
+    )
+
+
 def run_vision_background(
     evidence_id: str,
     teacher_id: str | None = None,
@@ -307,6 +364,12 @@ def run_vision_background(
         full_path = _full_path_for(evidence.file_path)
         if not full_path.exists():
             evidence.embedding_status = EmbeddingStatus.failed
+            _create_ai_processing_failed_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
             db.add(evidence)
             db.commit()
             return
@@ -327,6 +390,12 @@ def run_vision_background(
                 "Vision returned no content for '%s'; keeping placeholder and marking failed",
                 evidence.file_name,
             )
+            _create_ai_processing_failed_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
         else:
             evidence.embedding_status = EmbeddingStatus.completed
             _create_ai_processing_complete_notification(
@@ -343,6 +412,12 @@ def run_vision_background(
             ev = db.query(Evidence).filter(Evidence.id == evidence_id).first()
             if ev:
                 ev.embedding_status = EmbeddingStatus.failed
+                _create_ai_processing_failed_notification(
+                    db,
+                    evidence=ev,
+                    teacher_id=teacher_id,
+                    subject_label=subject_label,
+                )
                 db.add(ev)
                 db.commit()
         except Exception:

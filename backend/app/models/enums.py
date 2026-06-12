@@ -74,3 +74,4 @@ class TranscriptionStatus(str, enum.Enum):
 class NotificationType(str, enum.Enum):
     deletion_reminder = "deletion_reminder"
     ai_processing_complete = "ai_processing_complete"
+    ai_processing_failed = "ai_processing_failed"
