@@ -1,14 +1,16 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.module import Module
+from app.models.enums import EmbeddingStatus
 from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
+from app.schemas.evidence import EvidenceOut
 from app.schemas.project import (
     ImportRowError,
     ProjectOut,
@@ -16,6 +18,7 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
+from app.services.evidence_service import EvidenceService, run_vision_background
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -48,6 +51,8 @@ def _project_to_out(p: Project, student_count: int) -> ProjectOut:
 
 def _owned_projects_query(db: Session, teacher: Teacher):
     """Projects belonging to the given teacher (project -> module -> teacher)."""
+    if teacher.is_admin:
+        return db.query(Project)
     return (
         db.query(Project)
         .join(Module, Project.module_id == Module.id)
@@ -91,6 +96,40 @@ def get_project(
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
     return _project_to_out(project, _student_count_for_project(db, project.id))
+
+
+@router.post(
+    "/{project_id}/evidence",
+    response_model=EvidenceOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload shared evidence for a project",
+)
+def upload_project_evidence(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
+    evidence = EvidenceService.upload_file_for_project(str(project.id), file, db)
+    if evidence.embedding_status == EmbeddingStatus.processing:
+        background_tasks.add_task(run_vision_background, str(evidence.id))
+    return evidence
+
+
+@router.get(
+    "/{project_id}/evidence",
+    response_model=List[EvidenceOut],
+    summary="List shared evidence for a project",
+)
+def list_project_evidence(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    project = _get_owned_project_or_404(db, project_id, current_teacher)
+    return EvidenceService.list_for_project(str(project.id), db)
 
 
 # ---------------------------------------------------------------------------
