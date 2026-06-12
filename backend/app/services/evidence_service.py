@@ -15,10 +15,11 @@ from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.enums import EmbeddingStatus, FileType, SourceType
+from app.models.enums import EmbeddingStatus, FileType, NotificationType, SourceType
 from app.models.evidence import Evidence
 from app.models.project import Project
 from app.models.student import Student
+from app.services import notification_service
 
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,68 @@ def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
 
 
 
-def run_vision_background(evidence_id: str) -> None:
+def _create_ai_processing_complete_notification(
+    db: Session,
+    *,
+    evidence: Evidence,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
+    teacher_uuid = None
+    if teacher_id:
+        try:
+            teacher_uuid = _uuid.UUID(str(teacher_id))
+        except (ValueError, TypeError, AttributeError):
+            teacher_uuid = None
+
+    if teacher_uuid is None and evidence.project and evidence.project.module:
+        teacher_uuid = evidence.project.module.teacher_id
+
+    if teacher_uuid is None and evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module:
+            teacher_uuid = first_project.module.teacher_id
+
+    if teacher_uuid is None:
+        return
+
+    if subject_label:
+        subject = subject_label
+    elif evidence.student and evidence.student.name:
+        subject = f"student {evidence.student.name}"
+    elif evidence.project and evidence.project.name:
+        subject = f"project {evidence.project.name}"
+    else:
+        subject = "your upload"
+
+    target_path = None
+    if evidence.project and evidence.project.module_id:
+        target_path = (
+            f"/modules/{evidence.project.module_id}/groups/{evidence.project.id}"
+        )
+    elif evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module_id:
+            target_path = (
+                f"/modules/{first_project.module_id}/groups/{first_project.id}"
+                f"/students/{evidence.student.student_number}"
+            )
+
+    notification_service.create_notification(
+        db,
+        teacher_id=teacher_uuid,
+        type=NotificationType.ai_processing_complete,
+        message=f"AI finished processing '{evidence.file_name}' for {subject}.",
+        target_path=target_path,
+        commit=False,
+    )
+
+
+def run_vision_background(
+    evidence_id: str,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
     """FastAPI background task: run vision AI on an image evidence record.
 
     Creates its own DB session so it executes outside the original request
@@ -238,6 +300,8 @@ def run_vision_background(evidence_id: str) -> None:
     try:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            return
+        if evidence.embedding_status == EmbeddingStatus.completed:
             return
 
         full_path = _full_path_for(evidence.file_path)
@@ -265,6 +329,12 @@ def run_vision_background(evidence_id: str) -> None:
             )
         else:
             evidence.embedding_status = EmbeddingStatus.completed
+            _create_ai_processing_complete_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
         db.add(evidence)
         db.commit()
     except Exception:
