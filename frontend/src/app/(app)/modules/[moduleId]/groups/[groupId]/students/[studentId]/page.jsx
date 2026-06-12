@@ -25,7 +25,7 @@ import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
-import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
