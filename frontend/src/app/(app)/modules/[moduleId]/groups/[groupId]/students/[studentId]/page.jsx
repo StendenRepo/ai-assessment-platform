@@ -24,6 +24,7 @@ import RecordingPanel from '@/components/recording/RecordingPanel';
 import EvidenceListItem from '@/components/evidence/EvidenceListItem';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
+import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
@@ -660,6 +661,11 @@ export default function StudentAssessmentPage() {
             <div className="p-6">
               {currentTab === 0 && (
                 <div className="space-y-6">
+                  <EvidenceMatchingPanel
+                    studentId={studentId}
+                    moduleId={moduleId}
+                  />
+
                   <div className="space-y-3">
                     <div className="mb-4">
                       <h3 className="text-sm font-semibold text-foreground">

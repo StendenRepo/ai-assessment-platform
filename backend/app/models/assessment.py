@@ -13,6 +13,7 @@ class Assessment(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id = Column(String, ForeignKey("students.student_number"), nullable=False)
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
+    module_id = Column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True)
     status = Column(Enum(AssessmentStatus), default=AssessmentStatus.draft)
     draft_form_json = Column(JSONB, nullable=True)
     final_form_json = Column(JSONB, nullable=True)
@@ -31,6 +32,7 @@ class Assessment(Base):
 
     # Relationships
     student = relationship("Student", back_populates="assessments")
+    module = relationship("Module")
     teacher = relationship(
         "Teacher", back_populates="assessments", foreign_keys=[teacher_id]
     )
