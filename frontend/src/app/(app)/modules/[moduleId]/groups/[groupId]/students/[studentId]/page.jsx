@@ -13,6 +13,7 @@ import {
   Upload,
   CheckCircle2,
   XCircle,
+  Mail,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -37,7 +38,8 @@ import {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-import { listProjectStudents } from '@/lib/api/modulesApi';
+import { listProjectStudents, getProject } from '@/lib/api/modulesApi';
+import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -574,6 +576,14 @@ export default function StudentAssessmentPage() {
   const [scores, setScores] = useState({});
   const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
+  const [moduleName, setModuleName] = useState('');
+  const [emailDraftOpen, setEmailDraftOpen] = useState(false);
+
+  useEffect(() => {
+    getProject(moduleId)
+      .then((m) => setModuleName(m?.name || ''))
+      .catch(() => {});
+  }, [moduleId]);
 
   useEffect(() => {
     listProjectStudents(moduleId)
@@ -617,6 +627,14 @@ export default function StudentAssessmentPage() {
 
   return (
     <div className="space-y-6">
+      {emailDraftOpen && (
+        <EmailDraftModal
+          student={student}
+          moduleName={moduleName}
+          onClose={() => setEmailDraftOpen(false)}
+        />
+      )}
+
       <div className="rounded-lg bg-card border border-border p-6">
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary shrink-0">
@@ -633,12 +651,22 @@ export default function StudentAssessmentPage() {
               {student.student_number}
             </p>
           </div>
-          <div className="text-center border-l border-border pl-6 shrink-0">
-            <div className="text-xs text-muted-foreground mb-1">
-              Current Score
-            </div>
-            <div className="text-3xl font-bold text-foreground font-mono">
-              {overallScore}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setEmailDraftOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+            >
+              <Mail size={14} />
+              Email Draft
+            </button>
+            <div className="text-center border-l border-border pl-6 shrink-0">
+              <div className="text-xs text-muted-foreground mb-1">
+                Current Score
+              </div>
+              <div className="text-3xl font-bold text-foreground font-mono">
+                {overallScore}
+              </div>
             </div>
           </div>
         </div>
