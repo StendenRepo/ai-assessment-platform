@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bell } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationContext';
 
@@ -32,9 +33,18 @@ function buildMeta(notification) {
 }
 
 export default function NotificationBell() {
+  const router = useRouter();
   const { items, unreadCount, markAsRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
+
+  async function handleNotificationClick(notification) {
+    await markAsRead(notification.id);
+    if (notification?.target_path) {
+      router.push(notification.target_path);
+      setOpen(false);
+    }
+  }
 
   useEffect(() => {
     function onClick(event) {
@@ -90,7 +100,7 @@ export default function NotificationBell() {
                 return (
                   <button
                     key={notification.id}
-                    onClick={() => markAsRead(notification.id)}
+                    onClick={() => handleNotificationClick(notification)}
                     className={`w-full text-left px-4 py-3 border-b border-border last:border-0 hover:bg-secondary/50 transition-colors ${
                       isRead ? 'opacity-60' : ''
                     }`}

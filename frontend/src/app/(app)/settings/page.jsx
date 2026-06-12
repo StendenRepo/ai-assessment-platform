@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useNotifications } from '@/context/NotificationContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -27,11 +28,23 @@ const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 const selectClass = `${inputClass} cursor-pointer`;
 
-function Toggle({ defaultChecked, disabled }) {
-  const [on, setOn] = useState(defaultChecked ?? false);
+function Toggle({ defaultChecked, checked, onChange, disabled }) {
+  const controlled = typeof checked === 'boolean';
+  const [internalOn, setInternalOn] = useState(defaultChecked ?? false);
+  const on = controlled ? checked : internalOn;
+
+  const handleToggle = () => {
+    if (disabled) return;
+    const next = !on;
+    if (!controlled) {
+      setInternalOn(next);
+    }
+    onChange?.(next);
+  };
+
   return (
     <button
-      onClick={() => !disabled && setOn((v) => !v)}
+      onClick={handleToggle}
       disabled={disabled}
       className={`relative w-10 h-5.5 rounded-full transition-colors ${on ? 'bg-primary' : 'bg-border'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
@@ -54,6 +67,8 @@ function SectionCard({ title, children }) {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
+  const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
+    useNotifications();
   const [integrationTestState, setIntegrationTestState] = useState({});
 
   const connectedServices = [
@@ -197,9 +212,10 @@ export default function SettingsPage() {
                       on: true,
                     },
                     {
-                      label: 'Completed AI analyses',
-                      sub: 'When the AI finishes analyzing evidence',
-                      on: true,
+                      label: 'AI evidence processing complete',
+                      sub: 'When AI finishes processing uploaded evidence',
+                      on: aiProcessingEnabled,
+                      controlled: true,
                     },
                     {
                       label: 'Approaching deadlines',
@@ -224,7 +240,15 @@ export default function SettingsPage() {
                           {item.sub}
                         </div>
                       </div>
-                      <Toggle defaultChecked={item.on} />
+                      <Toggle
+                        defaultChecked={item.on}
+                        checked={item.controlled ? item.on : undefined}
+                        onChange={
+                          item.label === 'AI evidence processing complete'
+                            ? setAiProcessingNotificationsEnabled
+                            : undefined
+                        }
+                      />
                     </div>
                   ))}
                 </div>

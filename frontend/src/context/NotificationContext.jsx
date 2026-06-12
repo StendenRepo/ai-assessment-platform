@@ -14,9 +14,32 @@ import {
 } from '@/lib/api/notifications';
 
 const NotificationContext = createContext(null);
+const AI_NOTIFICATIONS_KEY = 'settings.notifications.aiProcessingComplete';
 
 export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
   const [items, setItems] = useState([]);
+  const [aiProcessingEnabled, setAiProcessingEnabled] = useState(true);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(AI_NOTIFICATIONS_KEY);
+      if (stored != null) {
+        setAiProcessingEnabled(stored === 'true');
+      }
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
+
+  const setAiProcessingNotificationsEnabled = useCallback((enabled) => {
+    const next = Boolean(enabled);
+    setAiProcessingEnabled(next);
+    try {
+      localStorage.setItem(AI_NOTIFICATIONS_KEY, String(next));
+    } catch {
+      // Ignore storage access issues.
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -48,14 +71,39 @@ export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
     return () => clearInterval(id);
   }, [pollIntervalMs, refresh]);
 
+  const visibleItems = useMemo(
+    () =>
+      items.filter((n) => {
+        if (n?.type === 'ai_processing_complete' && !aiProcessingEnabled) {
+          return false;
+        }
+        return true;
+      }),
+    [items, aiProcessingEnabled]
+  );
+
   const unreadCount = useMemo(
-    () => items.filter((n) => !n.read_at).length,
-    [items]
+    () => visibleItems.filter((n) => !n.read_at).length,
+    [visibleItems]
   );
 
   const value = useMemo(
-    () => ({ items, unreadCount, refresh, markAsRead }),
-    [items, unreadCount, refresh, markAsRead]
+    () => ({
+      items: visibleItems,
+      unreadCount,
+      refresh,
+      markAsRead,
+      aiProcessingEnabled,
+      setAiProcessingNotificationsEnabled,
+    }),
+    [
+      visibleItems,
+      unreadCount,
+      refresh,
+      markAsRead,
+      aiProcessingEnabled,
+      setAiProcessingNotificationsEnabled,
+    ]
   );
 
   return (
