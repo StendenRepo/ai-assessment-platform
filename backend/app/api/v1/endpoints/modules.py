@@ -998,7 +998,6 @@ def export_grades_excel(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
 
     projects = db.query(Project).filter(Project.module_id == module.id).all()
-    project_name_by_id = {p.id: p.name for p in projects}
     project_ids = [p.id for p in projects]
 
     students = (
@@ -1008,9 +1007,6 @@ def export_grades_excel(
         .order_by(Student.name)
         .all()
     ) if project_ids else []
-
-    # Build student -> project mapping for the group column
-    student_project_map = _build_student_project_map(db, project_ids)
 
     latest_assessment: dict = {}
     if students:
