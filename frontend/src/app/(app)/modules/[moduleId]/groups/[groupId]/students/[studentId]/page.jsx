@@ -25,9 +25,11 @@ import RecordingPanel from '@/components/recording/RecordingPanel';
 import EvidenceListItem from '@/components/evidence/EvidenceListItem';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
+import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
+import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import {
   deleteEvidence,
   getSupportedEvidenceTypes,
@@ -241,6 +243,19 @@ function EvidenceUpload({ studentId }) {
 
   const hasStudentId = Boolean(String(studentId || '').trim());
 
+  const { pendingItem, requestDelete, cancelDelete, confirmDelete } =
+    useDeleteConfirm({
+      onDelete: (item) => deleteEvidence(item.id),
+      onDeleted: (deletedEvidence) => {
+        setAllEvidence((prev) =>
+          prev.filter((ev) => ev.id !== deletedEvidence.id)
+        );
+      },
+      onError: (err) => {
+        setError(err.message);
+      },
+    });
+
   // In-flight items from the persistent context (survive navigation)
   const localItems = hasStudentId ? getStudentLocalItems(studentId) : [];
   const uploading = localItems.length > 0;
@@ -346,7 +361,7 @@ function EvidenceUpload({ studentId }) {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [allEvidence, studentId, hasStudentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allEvidence, studentId, hasStudentId]);
 
   // Show the success toast once a processing item transitions to completed
   useEffect(() => {
@@ -403,12 +418,10 @@ function EvidenceUpload({ studentId }) {
     });
   };
 
-  const handleDelete = async (evidenceId) => {
-    try {
-      await deleteEvidence(evidenceId);
-      setAllEvidence((prev) => prev.filter((ev) => ev.id !== evidenceId));
-    } catch (err) {
-      setError(err.message);
+  const handleDelete = (evidenceId) => {
+    const evidence = allEvidence.find((ev) => ev.id === evidenceId);
+    if (evidence) {
+      requestDelete(evidence);
     }
   };
 
@@ -525,6 +538,13 @@ function EvidenceUpload({ studentId }) {
           }
         }}
         onClose={closePreview}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(pendingItem)}
+        label={pendingItem?.file_name}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
       />
     </div>
   );

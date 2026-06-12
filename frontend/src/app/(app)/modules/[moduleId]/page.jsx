@@ -15,7 +15,9 @@ import {
   Users,
   Upload,
 } from 'lucide-react';
+import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import EvidenceStatusIndicator from '@/components/evidence/EvidenceStatusIndicator';
+import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import {
   getProject,
   listProjectGroups,
@@ -89,6 +91,52 @@ export default function ModulePage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+
+  const {
+    pendingItem: rubricDeleteTarget,
+    requestDelete: requestRubricDelete,
+    cancelDelete: cancelRubricDelete,
+    confirmDelete: confirmRubricDelete,
+  } = useDeleteConfirm({
+    onDelete: async () => {
+      setRubricError('');
+      setDeletingRubric(true);
+      try {
+        await deleteRubric(moduleId);
+      } finally {
+        setDeletingRubric(false);
+      }
+    },
+    onDeleted: () => {
+      setProject((prev) => ({ ...prev, rubric_file: null }));
+    },
+    onError: (err) => {
+      setRubricError(err.message);
+    },
+  });
+
+  const {
+    pendingItem: moduleBookDeleteTarget,
+    requestDelete: requestModuleBookDelete,
+    cancelDelete: cancelModuleBookDelete,
+    confirmDelete: confirmModuleBookDelete,
+  } = useDeleteConfirm({
+    onDelete: async () => {
+      setModuleBookError('');
+      setDeletingModuleBook(true);
+      try {
+        await deleteModuleBook(moduleId);
+      } finally {
+        setDeletingModuleBook(false);
+      }
+    },
+    onDeleted: () => {
+      setProject((prev) => ({ ...prev, module_book_file: null }));
+    },
+    onError: (err) => {
+      setModuleBookError(err.message);
+    },
+  });
 
   const groupProgress = useMemo(() => {
     return students.reduce((summary, student) => {
@@ -275,18 +323,10 @@ export default function ModulePage() {
     setRubricDragActive(e.type === 'dragenter' || e.type === 'dragover');
   };
 
-  const handleRubricDelete = async () => {
-    if (!confirm('Remove the rubric from this module?')) return;
-    setRubricError('');
-    setDeletingRubric(true);
-    try {
-      await deleteRubric(moduleId);
-      setProject((prev) => ({ ...prev, rubric_file: null }));
-    } catch (err) {
-      setRubricError(err.message);
-    } finally {
-      setDeletingRubric(false);
-    }
+  const handleRubricDelete = () => {
+    requestRubricDelete({
+      label: project?.rubric_file?.file_name || 'rubric',
+    });
   };
 
   const handleModuleBookFile = async (file) => {
@@ -326,18 +366,10 @@ export default function ModulePage() {
     }
   };
 
-  const handleModuleBookDelete = async () => {
-    if (!confirm('Remove the module book from this module?')) return;
-    setModuleBookError('');
-    setDeletingModuleBook(true);
-    try {
-      await deleteModuleBook(moduleId);
-      setProject((prev) => ({ ...prev, module_book_file: null }));
-    } catch (err) {
-      setModuleBookError(err.message);
-    } finally {
-      setDeletingModuleBook(false);
-    }
+  const handleModuleBookDelete = () => {
+    requestModuleBookDelete({
+      label: project?.module_book_file?.file_name || 'module book',
+    });
   };
 
   if (loading) {
@@ -974,6 +1006,44 @@ export default function ModulePage() {
           )}
         </div>
       </div>
+
+      <DeleteConfirmDialog
+        open={Boolean(rubricDeleteTarget)}
+        title="Remove Rubric"
+        label={rubricDeleteTarget?.label}
+        message={
+          <>
+            Remove the rubric{' '}
+            <span className="font-semibold text-foreground">
+              {rubricDeleteTarget?.label}
+            </span>{' '}
+            from this module?
+          </>
+        }
+        loading={deletingRubric}
+        confirmLabel="Remove"
+        onConfirm={confirmRubricDelete}
+        onCancel={cancelRubricDelete}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(moduleBookDeleteTarget)}
+        title="Remove Module Book"
+        label={moduleBookDeleteTarget?.label}
+        message={
+          <>
+            Remove the module book{' '}
+            <span className="font-semibold text-foreground">
+              {moduleBookDeleteTarget?.label}
+            </span>{' '}
+            from this module?
+          </>
+        }
+        loading={deletingModuleBook}
+        confirmLabel="Remove"
+        onConfirm={confirmModuleBookDelete}
+        onCancel={cancelModuleBookDelete}
+      />
     </div>
   );
 }
