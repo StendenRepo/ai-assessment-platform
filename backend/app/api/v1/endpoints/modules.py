@@ -381,23 +381,36 @@ def delete_module(
         ).first()
     ]
 
-    # Delete evidence files on disk and DB records for orphaned students
+    # Delete evidence files on disk and DB records for orphaned students and shared project evidence.
+    evidence_records = (
+        db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).all()
+        if orphaned_ids
+        else []
+    )
+    shared_evidence_records = (
+        db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).all()
+        if project_ids
+        else []
+    )
+    for ev in evidence_records + shared_evidence_records:
+        try:
+            file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+            text_path = EVIDENCE_TEXT_DIR / f"{ev.file_path}.txt"
+            if file_path.exists():
+                file_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
+        except OSError:
+            pass
     if orphaned_ids:
-        evidence_records = db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).all()
-        for ev in evidence_records:
-            try:
-                file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
-                text_path = EVIDENCE_TEXT_DIR / f"{ev.file_path}.txt"
-                if file_path.exists():
-                    file_path.unlink()
-                if text_path.exists():
-                    text_path.unlink()
-            except OSError:
-                pass
         db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).delete(
             synchronize_session=False
         )
         db.query(Student).filter(Student.student_number.in_(orphaned_ids)).delete(
+            synchronize_session=False
+        )
+    if project_ids:
+        db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).delete(
             synchronize_session=False
         )
 
@@ -526,7 +539,7 @@ def list_module_groups(
     for project_id in student_project_map.values():
         student_count_by_project[project_id] = student_count_by_project.get(project_id, 0) + 1
 
-    # Count evidence files per project via student membership
+    # Count evidence files per project via student membership and shared project evidence.
     student_ids_by_project: dict = {}
     for sid, pid in student_project_map.items():
         student_ids_by_project.setdefault(pid, []).append(sid)
@@ -540,6 +553,11 @@ def list_module_groups(
             pid = student_project_map.get(sid)
             if pid is not None:
                 file_counts[pid] = file_counts.get(pid, 0) + cnt
+
+    for pid, cnt in db.query(Evidence.project_id, func.count(Evidence.id)).filter(
+        Evidence.project_id.in_(project_ids)
+    ).group_by(Evidence.project_id).all():
+        file_counts[pid] = file_counts.get(pid, 0) + cnt
 
     return [
         _group_to_out(
@@ -586,7 +604,6 @@ def update_module_group(
     )
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-
     if payload.name is None and payload.group_name is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
 
@@ -641,6 +658,22 @@ def delete_module_group(
         )
 
     default_group = _get_or_create_default_group(db, module)
+
+    project_evidence_records = db.query(Evidence).filter(Evidence.project_id == group.id).all()
+    for ev in project_evidence_records:
+        try:
+            file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+            text_path = EVIDENCE_TEXT_DIR / f"{ev.file_path}.txt"
+            if file_path.exists():
+                file_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
+        except OSError:
+            pass
+    if project_evidence_records:
+        db.query(Evidence).filter(Evidence.project_id == group.id).delete(
+            synchronize_session=False
+        )
 
     # Move all students from deleted group to default group
     student_ids_in_group = [
@@ -810,6 +843,7 @@ def move_student_to_group(
                     Student.student_number == payload.student_number,
                     Student.student_number != student.student_number,
                 )
+
                 .first()
             )
             if existing:

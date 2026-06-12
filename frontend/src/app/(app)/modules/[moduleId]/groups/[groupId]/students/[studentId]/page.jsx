@@ -484,6 +484,12 @@ function EvidenceUpload({ studentId }) {
           {/* localItems are in-flight (context survives navigation); allEvidence is fetched */}
           {(() => {
             const displayedEvidence = [...localItems, ...allEvidence];
+            const studentEvidence = displayedEvidence.filter(
+              (ev) => !ev.project_id
+            );
+            const groupEvidence = displayedEvidence.filter((ev) =>
+              Boolean(ev.project_id)
+            );
             return (
               <>
                 <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
@@ -498,20 +504,59 @@ function EvidenceUpload({ studentId }) {
                     No evidence uploaded yet.
                   </p>
                 ) : (
-                  displayedEvidence.map((ev) => (
-                    <EvidenceListItem
-                      key={ev.id}
-                      evidence={ev}
-                      canPreview={
-                        !ev.__localProcessing &&
-                        ev.embedding_status !== 'processing' &&
-                        canPreview(ev)
-                      }
-                      onPreview={handlePreview}
-                      onDownload={handleDownload}
-                      onDelete={handleDelete}
-                    />
-                  ))
+                  <>
+                    <div className="pt-1 space-y-2">
+                      <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                        Student evidence ({studentEvidence.length})
+                      </p>
+                      {studentEvidence.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-1">
+                          No student-specific evidence yet.
+                        </p>
+                      ) : (
+                        studentEvidence.map((ev) => (
+                          <EvidenceListItem
+                            key={ev.id}
+                            evidence={ev}
+                            canPreview={
+                              !ev.__localProcessing &&
+                              ev.embedding_status !== 'processing' &&
+                              canPreview(ev)
+                            }
+                            onPreview={handlePreview}
+                            onDownload={handleDownload}
+                            onDelete={handleDelete}
+                          />
+                        ))
+                      )}
+                    </div>
+
+                    <div className="pt-3 mt-2 border-t border-border space-y-2">
+                      <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">
+                        Group shared evidence ({groupEvidence.length})
+                      </p>
+                      {groupEvidence.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-1">
+                          No group shared evidence attached.
+                        </p>
+                      ) : (
+                        groupEvidence.map((ev) => (
+                          <EvidenceListItem
+                            key={ev.id}
+                            evidence={ev}
+                            canPreview={
+                              !ev.__localProcessing &&
+                              ev.embedding_status !== 'processing' &&
+                              canPreview(ev)
+                            }
+                            onPreview={handlePreview}
+                            onDownload={handleDownload}
+                            onDelete={handleDelete}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </>
                 )}
               </>
             );
