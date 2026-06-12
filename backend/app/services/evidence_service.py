@@ -341,19 +341,12 @@ class EvidenceService:
         file: UploadFile,
         db: Session,
     ) -> Evidence:
-        existing = db.query(Evidence).filter(Evidence.project_id == project_id).all()
-        new_evidence = EvidenceService._upload_file(
+        return EvidenceService._upload_file(
             student_id=None,
             project_id=project_id,
             file=file,
             db=db,
         )
-        if existing:
-            EvidenceService._delete_evidence_rows(existing, db)
-            db.commit()
-            for evidence in existing:
-                EvidenceService._delete_evidence_artifacts(evidence)
-        return new_evidence
 
     @staticmethod
     def _upload_file(

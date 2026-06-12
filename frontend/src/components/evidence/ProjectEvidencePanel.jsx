@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
-import EvidenceListItem from '@/components/evidence/EvidenceListItem';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
+import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
@@ -33,6 +33,8 @@ export default function ProjectEvidencePanel({
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [uploadingFileName, setUploadingFileName] = useState('');
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState('');
   const [error, setError] = useState('');
   const [allowedExtensions, setAllowedExtensions] = useState(
@@ -145,34 +147,76 @@ export default function ProjectEvidencePanel({
     return allowedExtensions.includes(ext);
   };
 
-  const handleSingleFile = async (file) => {
+  const mergeEvidence = (existing, uploadedItems) => {
+    const byId = new Map();
+    [...uploadedItems, ...existing].forEach((item) => {
+      byId.set(item.id, item);
+    });
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at)
+    );
+  };
+
+  const handleFiles = async (files) => {
     setError('');
-    if (!isAllowed(file.name)) {
+    const selected = Array.from(files || []);
+    if (!selected.length) {
+      return;
+    }
+
+    const validFiles = selected.filter((file) => isAllowed(file.name));
+    const invalidFiles = selected.filter((file) => !isAllowed(file.name));
+
+    if (invalidFiles.length > 0) {
+      const invalidNames = invalidFiles.map((file) => file.name).join(', ');
       setError(
-        `Unsupported file type. Allowed: ${allowedExtensions.join(', ')}`
+        `Unsupported file type: ${invalidNames}. Allowed: ${allowedExtensions.join(', ')}`
       );
+    }
+
+    if (!validFiles.length) {
       return;
     }
 
     setUploading(true);
+    setUploadingCount(validFiles.length);
     try {
-      const uploaded = await uploadProjectEvidence(projectId, file);
-      setAllEvidence([uploaded]);
-      if (uploaded.embedding_status === 'completed') {
-        setUploadSuccessMessage(`Upload complete: ${uploaded.file_name}`);
+      const uploadedItems = [];
+      for (const file of validFiles) {
+        setUploadingFileName(file.name);
+        const uploaded = await uploadProjectEvidence(projectId, file);
+        uploadedItems.push(uploaded);
+      }
+
+      setAllEvidence((prev) => mergeEvidence(prev, uploadedItems));
+
+      const completedItems = uploadedItems.filter(
+        (item) => item.embedding_status === 'completed'
+      );
+      if (completedItems.length === 1) {
+        setUploadSuccessMessage(
+          `Upload complete: ${completedItems[0].file_name}`
+        );
+        window.setTimeout(() => setUploadSuccessMessage(''), 4000);
+      } else if (completedItems.length > 1) {
+        setUploadSuccessMessage(
+          `Upload complete: ${completedItems.length} files`
+        );
         window.setTimeout(() => setUploadSuccessMessage(''), 4000);
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setUploading(false);
+      setUploadingCount(0);
+      setUploadingFileName('');
     }
   };
 
   const onInputChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      void handleSingleFile(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length) {
+      void handleFiles(files);
     }
     e.target.value = '';
   };
@@ -180,9 +224,9 @@ export default function ProjectEvidencePanel({
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      void handleSingleFile(file);
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) {
+      void handleFiles(files);
     }
   };
 
@@ -221,8 +265,8 @@ export default function ProjectEvidencePanel({
         title={title}
         acceptedLabel={allowedExtensions.join(', ')}
         uploading={uploading}
-        uploadingCount={uploading ? 1 : 0}
-        uploadingFileName={uploading ? 'Uploading shared evidence…' : ''}
+        uploadingCount={uploadingCount}
+        uploadingFileName={uploadingFileName}
         dragOver={dragOver}
         fileInputRef={fileInputRef}
         accept={allowedExtensions.join(',')}
@@ -250,33 +294,25 @@ export default function ProjectEvidencePanel({
         </div>
       )}
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="p-5 space-y-2">
-          <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-            Evidence ({allEvidence.length})
-          </p>
-          {evidenceLoading ? (
-            <div className="flex justify-center py-4">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : allEvidence.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">
-              No shared evidence uploaded yet.
-            </p>
-          ) : (
-            allEvidence.map((evidence) => (
-              <EvidenceListItem
-                key={evidence.id}
-                evidence={evidence}
-                canPreview={!evidence.__localProcessing && canPreview(evidence)}
-                onPreview={handlePreview}
-                onDownload={handleDownload}
-                onDelete={handleDelete}
-              />
-            ))
-          )}
-        </div>
-      </div>
+      <EvidenceListSections
+        evidenceLoading={evidenceLoading}
+        allCount={allEvidence.length}
+        sections={[
+          {
+            key: 'shared-project-evidence',
+            items: allEvidence,
+            emptyText: 'No shared evidence uploaded yet.',
+            dividerTop: false,
+          },
+        ]}
+        getItemCanPreview={(evidence) =>
+          !evidence.__localProcessing && canPreview(evidence)
+        }
+        onPreview={handlePreview}
+        onDownload={handleDownload}
+        onDelete={handleDelete}
+        emptyText="No shared evidence uploaded yet."
+      />
 
       <EvidencePreviewDialog
         evidence={previewEvidence}
