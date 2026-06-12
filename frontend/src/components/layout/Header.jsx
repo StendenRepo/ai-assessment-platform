@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { GraduationCap, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { APP_PATHS } from '@/lib/routes';
-import NotificationBell from '@/components/recording/NotificationBell';
+import NotificationBell from '@/components/notifications/NotificationBell';
 
 /**
  * exact: true  — active only on the precise path

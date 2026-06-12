@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, Text, Enum, ForeignKey
+from sqlalchemy import Column, DateTime, Text, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -22,6 +22,7 @@ class Notification(Base):
     )
     type = Column(Enum(NotificationType), nullable=False)
     message = Column(Text, nullable=False)
+    target_path = Column(String, nullable=True)
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     read_at = Column(DateTime, nullable=True)

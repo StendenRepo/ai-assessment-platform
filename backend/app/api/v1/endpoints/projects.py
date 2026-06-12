@@ -114,7 +114,12 @@ def upload_project_evidence(
     project = _get_owned_project_or_404(db, project_id, current_teacher)
     evidence = EvidenceService.upload_file_for_project(str(project.id), file, db)
     if evidence.embedding_status == EmbeddingStatus.processing:
-        background_tasks.add_task(run_vision_background, str(evidence.id))
+        background_tasks.add_task(
+            run_vision_background,
+            str(evidence.id),
+            str(current_teacher.id),
+            f"project {project.name}",
+        )
     return evidence
 
 

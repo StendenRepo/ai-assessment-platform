@@ -47,11 +47,18 @@ def upload_evidence(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    student = db.get(Student, student_id)
+    subject_label = f"student {student.name}" if student and student.name else "this student"
     evidence = EvidenceService.upload_file(student_id, file, db)
     if evidence.embedding_status == EmbeddingStatus.processing:
-        background_tasks.add_task(run_vision_background, str(evidence.id))
+        background_tasks.add_task(
+            run_vision_background,
+            str(evidence.id),
+            str(current_teacher.id),
+            subject_label,
+        )
     return evidence
 
 
