@@ -27,6 +27,7 @@ export default function EvidenceListItem({
   onDelete,
 }) {
   const isLocalProcessing = Boolean(evidence.__localProcessing);
+  const scopeLabel = evidence.project_id ? 'Project-level' : 'Individual';
   // Server-side background AI processing (image uploaded, vision not yet done)
   const isServerProcessing =
     !isLocalProcessing && evidence.embedding_status === 'processing';
@@ -59,6 +60,10 @@ export default function EvidenceListItem({
         </p>
         <p className="text-[10px] text-muted-foreground">
           {new Date(evidence.uploaded_at).toLocaleString('nl-NL')}
+          {' · '}
+          <span className="uppercase font-semibold tracking-wide">
+            {scopeLabel}
+          </span>
           {' · '}
           <span className="capitalize">{evidence.file_type}</span>
           {' · '}
