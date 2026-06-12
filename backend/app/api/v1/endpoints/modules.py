@@ -1044,10 +1044,7 @@ def export_grades_excel(
 
     for row_idx, student in enumerate(students, start=2):
         assessment = latest_assessment.get(student.student_number)
-        ast_status = _assessment_status(assessment)
         grade = _assessment_grade(assessment) or "—"
-        group_pid = student_project_map.get(student.student_number)
-        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
 
         row_data = [
             student.student_number or "—",
