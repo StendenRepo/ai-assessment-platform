@@ -13,7 +13,6 @@ import {
   Upload,
   CheckCircle2,
   XCircle,
-  Download,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -38,7 +37,7 @@ import {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-import { listProjectStudents, exportStudentDossier } from '@/lib/api/modulesApi';
+import { listProjectStudents } from '@/lib/api/modulesApi';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -573,30 +572,6 @@ export default function StudentAssessmentPage() {
   const [scores, setScores] = useState({});
   const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
-  const [exportingDossier, setExportingDossier] = useState(false);
-  const [exportError, setExportError] = useState('');
-
-  const handleExportDossier = async () => {
-    setExportingDossier(true);
-    setExportError('');
-    try {
-      const { blob, filename } = await exportStudentDossier(
-        studentId,
-        student?.name ?? ''
-      );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setExportError(err.message || 'Export failed');
-    } finally {
-      setExportingDossier(false);
-    }
-  };
-
   useEffect(() => {
     listProjectStudents(moduleId)
       .then((students) => {
@@ -655,36 +630,12 @@ export default function StudentAssessmentPage() {
               {student.student_number}
             </p>
           </div>
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="text-center border-l border-border pl-6">
-              <div className="text-xs text-muted-foreground mb-1">
-                Current Score
-              </div>
-              <div className="text-3xl font-bold text-foreground font-mono">
-                {overallScore}
-              </div>
+          <div className="text-center border-l border-border pl-6 shrink-0">
+            <div className="text-xs text-muted-foreground mb-1">
+              Current Score
             </div>
-            <div className="border-l border-border pl-4 flex flex-col items-center gap-1">
-              <button
-                onClick={handleExportDossier}
-                disabled={exportingDossier}
-                className="flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Export dossier as ZIP"
-              >
-                {exportingDossier ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Download size={14} />
-                )}
-                <span className="text-xs">
-                  {exportingDossier ? 'Exporting…' : 'Export ZIP'}
-                </span>
-              </button>
-              {exportError && (
-                <p className="text-[11px] text-red-400 max-w-[120px] text-center leading-tight">
-                  {exportError}
-                </p>
-              )}
+            <div className="text-3xl font-bold text-foreground font-mono">
+              {overallScore}
             </div>
           </div>
         </div>

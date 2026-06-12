@@ -88,7 +88,7 @@ def export_student_dossier(
 ):
     """Return a ZIP archive containing:
     - All evidence files uploaded for the student (in an ``evidence/`` folder).
-    - A ``dossier.json`` metadata file with student info and assessment summary.
+    - A ``dossier.txt`` summary file with student info and assessment details.
 
     All entries are stored with read-only permissions (0o444).
     The export runs entirely on-premise — no external services are called.
@@ -115,10 +115,9 @@ def export_student_dossier(
         .first()
     )
 
-    # Build metadata dict
-    assessment_meta = None
+    # Resolve grade from latest assessment
+    grade: str | None = None
     if latest_assessment:
-        grade = None
         for payload in (latest_assessment.final_form_json, latest_assessment.draft_form_json):
             data = payload
             if isinstance(payload, str):
@@ -131,45 +130,62 @@ def export_student_dossier(
                 if raw is not None:
                     grade = str(raw).strip() or None
                     break
-        assessment_meta = {
-            "id": str(latest_assessment.id),
-            "status": latest_assessment.status.value if latest_assessment.status else None,
-            "grade": grade,
-            "created_at": latest_assessment.created_at.isoformat() if latest_assessment.created_at else None,
-            "completed_at": latest_assessment.completed_at.isoformat() if latest_assessment.completed_at else None,
-        }
 
-    evidence_meta = []
-    for ev in evidence_records:
-        evidence_meta.append({
-            "id": str(ev.id),
-            "file_name": ev.file_name,
-            "file_type": ev.file_type.value if ev.file_type else None,
-            "uploaded_at": ev.uploaded_at.isoformat() if ev.uploaded_at else None,
-            "embedding_status": ev.embedding_status.value if ev.embedding_status else None,
-        })
+    # Build human-readable plain-text summary
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    lines: list[str] = [
+        "=" * 60,
+        "STUDENT DOSSIER",
+        "=" * 60,
+        f"Exported at : {now_str}",
+        "",
+        "STUDENT",
+        "-" * 30,
+        f"Name           : {student.name}",
+        f"Student number : {student.student_number}",
+        f"Status         : {student.status.value if student.status else 'active'}",
+        "",
+        "ASSESSMENT",
+        "-" * 30,
+    ]
+    if latest_assessment:
+        ast_status = latest_assessment.status.value if latest_assessment.status else "—"
+        created = latest_assessment.created_at.strftime("%Y-%m-%d") if latest_assessment.created_at else "—"
+        completed = latest_assessment.completed_at.strftime("%Y-%m-%d") if latest_assessment.completed_at else "—"
+        lines += [
+            f"Status         : {ast_status}",
+            f"Grade          : {grade or '—'}",
+            f"Created        : {created}",
+            f"Completed      : {completed}",
+        ]
+    else:
+        lines.append("No assessment found.")
 
-    metadata = {
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "student": {
-            "student_number": student.student_number,
-            "name": student.name,
-            "status": student.status.value if student.status else "active",
-        },
-        "assessment": assessment_meta,
-        "evidence": evidence_meta,
-    }
+    lines += [
+        "",
+        "EVIDENCE FILES",
+        "-" * 30,
+    ]
+    if evidence_records:
+        for i, ev in enumerate(evidence_records, start=1):
+            uploaded = ev.uploaded_at.strftime("%Y-%m-%d") if ev.uploaded_at else "—"
+            file_type = ev.file_type.value if ev.file_type else "—"
+            lines.append(f"{i:>2}. {ev.file_name}  [{file_type}]  uploaded {uploaded}")
+    else:
+        lines.append("No evidence files uploaded.")
+
+    lines += ["", "=" * 60]
+    summary_text = "\n".join(lines) + "\n"
 
     # Build ZIP in memory
     buf = io.BytesIO()
     upload_dir = _evidence_upload_dir()
 
-    # ZIP_DEFLATED gives good compression; ZIP_STORED is also fine for already-compressed files
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # Write metadata
-        meta_info = zipfile.ZipInfo("dossier.json")
+        # Write human-readable summary
+        meta_info = zipfile.ZipInfo("dossier.txt")
         meta_info.external_attr = 0o444 << 16  # read-only
-        zf.writestr(meta_info, json.dumps(metadata, indent=2, ensure_ascii=False))
+        zf.writestr(meta_info, summary_text.encode("utf-8"))
 
         # Write each evidence file
         for ev in evidence_records:
