@@ -999,6 +999,7 @@ def export_grades_excel(
 
     projects = db.query(Project).filter(Project.module_id == module.id).all()
     project_ids = [p.id for p in projects]
+    project_name_by_id = {p.id: p.name for p in projects}
 
     students = (
         db.query(Student)
@@ -1007,6 +1008,8 @@ def export_grades_excel(
         .order_by(Student.name)
         .all()
     ) if project_ids else []
+
+    student_project_map = _build_student_project_map(db, project_ids)
 
     latest_assessment: dict = {}
     if students:
@@ -1026,8 +1029,9 @@ def export_grades_excel(
     header_font = Font(bold=True, color="FFFFFF", size=11)
     center = Alignment(horizontal="center", vertical="center")
 
-    headers = ["Student Number", "Student Name", "Grade"]
-    col_widths = [18, 30, 12]
+    # Columns: Student Number | Student Name | Module | Group | Grade
+    headers = ["Student Number", "Student Name", "Module", "Group", "Grade"]
+    col_widths = [18, 30, 28, 24, 12]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
         cell = ws.cell(row=1, column=col_idx, value=header)
@@ -1041,10 +1045,14 @@ def export_grades_excel(
     for row_idx, student in enumerate(students, start=2):
         assessment = latest_assessment.get(student.student_number)
         grade = _assessment_grade(assessment) or "—"
+        group_pid = student_project_map.get(student.student_number)
+        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
 
         row_data = [
             student.student_number or "—",
             student.name,
+            module.name,
+            group_name,
             grade,
         ]
 
@@ -1054,11 +1062,12 @@ def export_grades_excel(
             fill_type="solid",
         )
 
+        # Centered: Student Number (1), Grade (5) — left-aligned: Name (2), Module (3), Group (4)
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = Alignment(
-                horizontal="center" if col_idx in (1, 3) else "left",
+                horizontal="center" if col_idx in (1, 5) else "left",
                 vertical="center",
             )
 
