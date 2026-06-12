@@ -45,6 +45,18 @@ export const deleteProjectGroup = (moduleId, groupId) =>
     method: 'DELETE',
   });
 
+export const listProjectEvidence = (projectId) =>
+  request(API_PATHS.projectEvidence(projectId));
+
+export const uploadProjectEvidence = (projectId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request(API_PATHS.projectEvidence(projectId), {
+    method: 'POST',
+    body: formData,
+  });
+};
+
 export const listProjectStudents = (projectId) =>
   request(API_PATHS.moduleStudents(projectId));
 
@@ -128,7 +140,9 @@ export async function exportGradesExcel(moduleId, moduleName = '') {
   const safeName = moduleName
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .replace(/^_+|_+$/g, ''); // trim leading/trailing underscores
-  const filename = safeName ? `${safeName}_${today}.xlsx` : `export_${today}.xlsx`;
+  const filename = safeName
+    ? `${safeName}_${today}.xlsx`
+    : `export_${today}.xlsx`;
 
   return { blob, filename };
 }
