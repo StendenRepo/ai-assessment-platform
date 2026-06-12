@@ -24,6 +24,13 @@ function buildMeta(notification) {
     };
   }
 
+  if (type === 'ai_processing_failed') {
+    return {
+      label: 'AI processing',
+      detail: 'Processing failed - review needed',
+    };
+  }
+
   return {
     label: 'System',
     detail: notification?.due_date

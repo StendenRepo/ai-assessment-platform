@@ -74,7 +74,11 @@ export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
   const visibleItems = useMemo(
     () =>
       items.filter((n) => {
-        if (n?.type === 'ai_processing_complete' && !aiProcessingEnabled) {
+        if (
+          (n?.type === 'ai_processing_complete' ||
+            n?.type === 'ai_processing_failed') &&
+          !aiProcessingEnabled
+        ) {
           return false;
         }
         return true;
