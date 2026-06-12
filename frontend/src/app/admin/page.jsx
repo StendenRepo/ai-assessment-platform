@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, Settings, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import Header from '@/components/layout/Header';
 import { adminFetch } from '@/lib/api/adminFetch';
 import { APP_PATHS } from '@/lib/routes';
@@ -45,47 +46,53 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header navItems={[]} subtitle="Admin Panel" logoHref={APP_PATHS.admin} />
+    <NotificationProvider>
+      <div className="min-h-screen bg-background">
+        <Header
+          navItems={[]}
+          subtitle="Admin Panel"
+          logoHref={APP_PATHS.admin}
+        />
 
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage teachers and departments
-          </p>
-        </div>
+        <main className="max-w-7xl mx-auto px-8 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage teachers and departments
+            </p>
+          </div>
 
-        <div className="flex border-b border-border mb-6">
-          <TabBtn
-            active={tab === 'teachers'}
-            onClick={() => setTab('teachers')}
-            icon={<Users size={14} />}
-            label="Teachers"
-          />
-          <TabBtn
-            active={tab === 'departments'}
-            onClick={() => setTab('departments')}
-            icon={<Building2 size={14} />}
-            label="Departments"
-          />
-          <div className="flex-1" />
-          <TabBtn
-            active={tab === 'settings'}
-            onClick={() => setTab('settings')}
-            icon={<Settings size={14} />}
-            label="Settings"
-          />
-        </div>
+          <div className="flex border-b border-border mb-6">
+            <TabBtn
+              active={tab === 'teachers'}
+              onClick={() => setTab('teachers')}
+              icon={<Users size={14} />}
+              label="Teachers"
+            />
+            <TabBtn
+              active={tab === 'departments'}
+              onClick={() => setTab('departments')}
+              icon={<Building2 size={14} />}
+              label="Departments"
+            />
+            <div className="flex-1" />
+            <TabBtn
+              active={tab === 'settings'}
+              onClick={() => setTab('settings')}
+              icon={<Settings size={14} />}
+              label="Settings"
+            />
+          </div>
 
-        {tab === 'teachers' && (
-          <TeachersTab departments={departments} currentUserId={user.id} />
-        )}
-        {tab === 'departments' && (
-          <DepartmentsTab onDataChange={setDepartments} />
-        )}
-        {tab === 'settings' && <SettingsTab />}
-      </main>
-    </div>
+          {tab === 'teachers' && (
+            <TeachersTab departments={departments} currentUserId={user.id} />
+          )}
+          {tab === 'departments' && (
+            <DepartmentsTab onDataChange={setDepartments} />
+          )}
+          {tab === 'settings' && <SettingsTab />}
+        </main>
+      </div>
+    </NotificationProvider>
   );
 }
