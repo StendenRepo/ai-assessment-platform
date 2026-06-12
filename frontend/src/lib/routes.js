@@ -26,6 +26,7 @@ export const API_PATHS = {
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
   studentEvidence: (studentId) => `/students/${studentId}/evidence`,
+  studentDossierExport: (studentId) => `/students/${studentId}/export/dossier`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
