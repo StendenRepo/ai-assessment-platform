@@ -288,6 +288,116 @@ def list_modules(
     return result
 
 
+@router.get(
+    "/template/students",
+    summary="Download student import template",
+    response_class=StreamingResponse,
+)
+def download_student_template(
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Return a .xlsx template file for bulk importing students.
+    
+    The template includes two columns (Name and Student Number) with example rows.
+    Teachers can fill this template with their student data and upload it via the import endpoint.
+    """
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Students"
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    # Columns: Name | Student Number
+    headers = ["Name", "Student Number"]
+    col_widths = [30, 18]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 22
+
+    # Add example rows
+    example_rows = [
+        ["Alice Smith", "1001"],
+        ["Bob Johnson", "1002"],
+        ["Charlie Brown", "1003"],
+    ]
+
+    for row_idx, row_data in enumerate(example_rows, start=2):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    # Add a few more empty rows for user input
+    for row_idx in range(5, 25):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        for col_idx in range(1, 3):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="template.downloaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "template_type": "student_import",
+        },
+        ip_address=None,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"student_import_template_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
 def create_module(
     payload: ModuleCreate,

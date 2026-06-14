@@ -11,9 +11,12 @@ import {
   Sun,
   Moon,
   Loader2,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { downloadStudentTemplate } from '@/lib/api/modulesApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -22,6 +25,7 @@ const tabs = [
   { key: 'ai', label: 'AI Configuration', icon: Brain },
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
+  { key: 'data', label: 'Data Management', icon: FileSpreadsheet },
 ];
 
 const inputClass =
@@ -70,6 +74,8 @@ export default function SettingsPage() {
   const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
     useNotifications();
   const [integrationTestState, setIntegrationTestState] = useState({});
+  const [templateDownloading, setTemplateDownloading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
 
   const connectedServices = [
     {
@@ -124,6 +130,26 @@ export default function SettingsPage() {
           message: err?.message || 'Connection test failed',
         },
       }));
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    setTemplateDownloading(true);
+    setTemplateError('');
+    try {
+      const { blob, filename } = await downloadStudentTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setTemplateError(err.message || 'Failed to download template');
+    } finally {
+      setTemplateDownloading(false);
     }
   };
 
@@ -527,6 +553,43 @@ export default function SettingsPage() {
                 <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
                   + Generate New API Key
                 </button>
+              </SectionCard>
+            </>
+          )}
+
+          {activeTab === 'data' && (
+            <>
+              <SectionCard title="Student Import Template">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Download a standardized template for bulk importing students and groups.
+                  The template includes columns for Name and Student Number with example data.
+                </p>
+                <button
+                  onClick={handleDownloadTemplate}
+                  disabled={templateDownloading}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {templateDownloading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Downloading…
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download Template (Excel)
+                    </>
+                  )}
+                </button>
+                {templateError && (
+                  <p className="mt-3 text-xs text-red-400">{templateError}</p>
+                )}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Instructions:</strong> Download the template, fill in student names and numbers,
+                    then upload the file in the Module Management page to add multiple students at once.
+                  </p>
+                </div>
               </SectionCard>
             </>
           )}
