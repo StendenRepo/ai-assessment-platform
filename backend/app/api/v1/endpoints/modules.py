@@ -420,10 +420,6 @@ def download_rubric_template(
     # Define styles
     header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    criteria_fill = PatternFill(start_color="64748B", end_color="64748B", fill_type="solid")
-    criteria_font = Font(bold=True, color="FFFFFF", size=10)
-    level_fill = PatternFill(start_color="CBD5E1", end_color="CBD5E1", fill_type="solid")
-    level_font = Font(bold=True, color="000000", size=9)
     
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
