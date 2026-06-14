@@ -1,4 +1,5 @@
 from typing import List
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -7,7 +8,9 @@ from app.api.deps import get_current_admin, get_db
 from app.core.security import hash_password
 from app.models.department import Department
 from app.models.teacher import Teacher
+from app.services import audit_service
 from app.schemas.admin import (
+    AuditEventOut,
     DepartmentCreate,
     DepartmentOut,
     DepartmentUpdate,
@@ -230,3 +233,70 @@ def delete_teacher(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The seed admin account cannot be deleted")
     db.delete(teacher)
     db.commit()
+
+
+@router.get("/audit-events", response_model=List[AuditEventOut])
+def list_audit_events(
+    limit: int = 100,
+    offset: int = 0,
+    teacher_id: str | None = None,
+    assessment_id: str | None = None,
+    action: str | None = None,
+    db: Session = Depends(get_db),
+    _: Teacher = Depends(get_current_admin),
+):
+    teacher_uuid = None
+    if teacher_id:
+        try:
+            teacher_uuid = UUID(teacher_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="teacher_id must be a valid UUID",
+            )
+
+    assessment_uuid = None
+    if assessment_id:
+        try:
+            assessment_uuid = UUID(assessment_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="assessment_id must be a valid UUID",
+            )
+
+    events = audit_service.list_events(
+        db,
+        limit=limit,
+        offset=offset,
+        teacher_id=teacher_uuid,
+        assessment_id=assessment_uuid,
+        action_contains=action,
+    )
+
+    teacher_ids = sorted({event.teacher_id for event in events if event.teacher_id is not None})
+    teacher_name_by_id = {}
+    if teacher_ids:
+        teacher_rows = (
+            db.query(Teacher.id, Teacher.name)
+            .filter(Teacher.id.in_(teacher_ids))
+            .all()
+        )
+        teacher_name_by_id = {row.id: row.name for row in teacher_rows}
+
+    return [
+        AuditEventOut(
+            id=event.id,
+            timestamp=event.timestamp,
+            action=event.action,
+            source=event.source,
+            teacher_id=str(event.teacher_id) if event.teacher_id else None,
+            teacher_name=(event.details_json or {}).get("teacher_name")
+            or teacher_name_by_id.get(event.teacher_id)
+            or ("Deleted teacher" if event.teacher_id else None),
+            assessment_id=str(event.assessment_id) if event.assessment_id else None,
+            ip_address=str(event.ip_address) if event.ip_address else None,
+            details_json=event.details_json,
+        )
+        for event in events
+    ]
