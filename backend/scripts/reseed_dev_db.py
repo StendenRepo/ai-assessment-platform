@@ -95,7 +95,7 @@ def build_seed_database(seed_path: str) -> None:
         Teacher(
             id=uid("teacher-alice"),
             name="Alice Johnson",
-            email="teacher@test.com",
+            email="alice.johnson@university.edu",
             password_hash=hash_password("password123"),
             is_admin=False,
             is_seed=False,
