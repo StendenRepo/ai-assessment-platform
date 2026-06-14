@@ -82,9 +82,20 @@ def build_seed_database(seed_path: str) -> None:
 
     teachers = [
         Teacher(
+            id=uid("teacher-admin"),
+            name="Admin",
+            email="admin@test.com",
+            password_hash=hash_password("password123"),
+            is_admin=True,
+            is_seed=False,
+            department_id=uid("dept-cs"),
+            created_at=now - timedelta(days=300),
+            last_login=now - timedelta(hours=1),
+        ),
+        Teacher(
             id=uid("teacher-alice"),
             name="Alice Johnson",
-            email="alice.johnson@university.edu",
+            email="teacher@test.com",
             password_hash=hash_password("password123"),
             is_admin=False,
             is_seed=False,
