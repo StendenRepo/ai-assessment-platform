@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
-import { downloadStudentTemplate } from '@/lib/api/modulesApi';
+import { downloadStudentTemplate, downloadRubricTemplate } from '@/lib/api/modulesApi';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -76,6 +76,8 @@ export default function SettingsPage() {
   const [integrationTestState, setIntegrationTestState] = useState({});
   const [templateDownloading, setTemplateDownloading] = useState(false);
   const [templateError, setTemplateError] = useState('');
+  const [rubricDownloading, setRubricDownloading] = useState(false);
+  const [rubricError, setRubricError] = useState('');
 
   const connectedServices = [
     {
@@ -151,6 +153,26 @@ export default function SettingsPage() {
     } finally {
       setTemplateDownloading(false);
     }
+  };
+
+  const handleDownloadRubricTemplate = async () => {
+   setRubricDownloading(true);
+   setRubricError('');
+   try {
+     const { blob, filename } = await downloadRubricTemplate();
+     const url = URL.createObjectURL(blob);
+     const a = document.createElement('a');
+     a.href = url;
+     a.download = filename;
+     document.body.appendChild(a);
+     a.click();
+     document.body.removeChild(a);
+     URL.revokeObjectURL(url);
+   } catch (err) {
+     setRubricError(err.message || 'Failed to download template');
+   } finally {
+     setRubricDownloading(false);
+   }
   };
 
   return (
@@ -588,6 +610,39 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">
                     <strong>Instructions:</strong> Download the template, fill in student names and numbers,
                     then upload the file in the Module Management page to add multiple students at once.
+                  </p>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Rubric Scoring Template">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Download a standardized rubric template for creating scoring criteria and proficiency levels.
+                  The template includes example criteria and can be customized for any assessment.
+                </p>
+                <button
+                  onClick={handleDownloadRubricTemplate}
+                  disabled={rubricDownloading}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {rubricDownloading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Downloading…
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download Rubric Template (Excel)
+                    </>
+                  )}
+                </button>
+                {rubricError && (
+                  <p className="mt-3 text-xs text-red-400">{rubricError}</p>
+                )}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Features:</strong> Includes predefined proficiency levels (Excellent, Good, Fair, Poor),
+                    point values for each level, and space for detailed descriptors of student performance.
                   </p>
                 </div>
               </SectionCard>

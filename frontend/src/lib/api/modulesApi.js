@@ -167,3 +167,24 @@ export async function downloadStudentTemplate() {
 
   return { blob, filename };
 }
+
+/**
+ * Download the rubric scoring template Excel file.
+ * Returns a Blob that can be used to trigger a browser download.
+ */
+export async function downloadRubricTemplate() {
+  const res = await fetch(
+    `${API_URL}/api/v1${API_PATHS.moduleRubricTemplate}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Template download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const filename = `rubric_template_${today}.xlsx`;
+
+  return { blob, filename };
+}
