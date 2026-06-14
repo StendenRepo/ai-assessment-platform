@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
+from app.services import audit_service
 from app.services.evidence_service import EvidenceService, run_vision_background
 from app.services.student_import import ImportParseError, parse_student_file
 
@@ -106,6 +107,7 @@ def get_project(
 )
 def upload_project_evidence(
     project_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -113,6 +115,24 @@ def upload_project_evidence(
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
     evidence = EvidenceService.upload_file_for_project(str(project.id), file, db)
+    audit_service.log_action(
+        db,
+        action="evidence.uploaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "evidence_id": str(evidence.id),
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "file_name": evidence.file_name,
+            "file_type": evidence.file_type.value if evidence.file_type else None,
+            "source_type": evidence.source_type.value if evidence.source_type else None,
+            "embedding_status": (
+                evidence.embedding_status.value if evidence.embedding_status else None
+            ),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
     if evidence.embedding_status == EmbeddingStatus.processing:
         background_tasks.add_task(
             run_vision_background,

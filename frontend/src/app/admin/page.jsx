@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Settings, Users } from 'lucide-react';
+import { Building2, ClipboardList, Settings, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import Header from '@/components/layout/Header';
@@ -12,6 +12,7 @@ import { TabBtn } from './_ui';
 import { TeachersTab } from './_TeachersTab';
 import { DepartmentsTab } from './_DepartmentsTab';
 import { SettingsTab } from './_SettingsTab';
+import { AuditTab } from './_AuditTab';
 
 export default function AdminPage() {
   const { user, ready } = useAuth();
@@ -58,7 +59,7 @@ export default function AdminPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Manage teachers and departments
+              Manage teachers, departments, and audit logs
             </p>
           </div>
 
@@ -75,6 +76,12 @@ export default function AdminPage() {
               icon={<Building2 size={14} />}
               label="Departments"
             />
+            <TabBtn
+              active={tab === 'audit'}
+              onClick={() => setTab('audit')}
+              icon={<ClipboardList size={14} />}
+              label="Audit Logs"
+            />
             <div className="flex-1" />
             <TabBtn
               active={tab === 'settings'}
@@ -90,6 +97,7 @@ export default function AdminPage() {
           {tab === 'departments' && (
             <DepartmentsTab onDataChange={setDepartments} />
           )}
+          {tab === 'audit' && <AuditTab />}
           {tab === 'settings' && <SettingsTab />}
         </main>
       </div>
