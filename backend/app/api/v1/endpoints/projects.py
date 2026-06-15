@@ -229,6 +229,20 @@ def add_project_student(
         existing.projects.append(project)
         db.commit()
         db.refresh(existing)
+        audit_service.log_action(
+            db,
+            action="student.created",
+            teacher_id=current_teacher.id,
+            teacher_name=current_teacher.name,
+            details={
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "student_id": existing.student_number,
+                "student_name": existing.name,
+                "github_repo_url": existing.github_repo_url,
+                "github_branch": existing.github_branch,
+            },
+        )
         return _student_to_out(existing, project_id=str(project.id))
 
     student = Student(
@@ -245,6 +259,20 @@ def add_project_student(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
+    audit_service.log_action(
+        db,
+        action="student.created",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "student_id": student.student_number,
+            "student_name": student.name,
+            "github_repo_url": student.github_repo_url,
+            "github_branch": student.github_branch,
+        },
+    )
     return _student_to_out(student, project_id=str(project.id))
 
 
@@ -322,6 +350,20 @@ async def import_project_students(
 
     for student in to_add:
         db.refresh(student)
+
+    audit_service.log_action(
+        db,
+        action="students.imported",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "imported_count": len(to_add),
+            "error_count": len(errors),
+            "total_rows": len(rows),
+        },
+    )
 
     return StudentImportResult(
         imported_count=len(to_add),

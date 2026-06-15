@@ -784,6 +784,8 @@ def create_module_group(
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
             "project_name": project.name,
+            "github_repo_url": project.github_repo_url,
+            "github_branch": project.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups",
@@ -817,6 +819,8 @@ def update_module_group(
 
     old_name = group.name
     old_group_name = group.group_name
+    old_github_repo_url = group.github_repo_url
+    old_github_branch = group.github_branch
 
     if payload.name is not None:
         group.name = payload.name
@@ -850,6 +854,8 @@ def update_module_group(
             for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
                 student.github_branch = payload.github_branch
 
+    repo_removed = old_github_repo_url is not None and group.github_repo_url is None
+    repo_added = old_github_repo_url is None and group.github_repo_url is not None
     audit_service.log_action(
         db,
         action="group.updated",
@@ -862,7 +868,13 @@ def update_module_group(
             "new_name": group.name,
             "old_group_name": old_group_name,
             "new_group_name": group.group_name,
-            "group_repo_url": group.github_repo_url,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": group.github_repo_url,
+            "repo_removed": repo_removed,
+            "repo_added": repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": group.github_branch,
+            "branch_changed": old_github_branch != group.github_branch and not repo_removed and not repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -984,6 +996,8 @@ def delete_module_group(
             "module_name": module.name,
             "group_id": str(group.id),
             "group_name": group_name,
+            "github_repo_url": group.github_repo_url,
+            "github_branch": group.github_branch,
             "operation": "delete",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups/{group_id}",
@@ -1097,6 +1111,8 @@ def add_module_student(
             "student_name": student.name,
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
+            "github_repo_url": student.github_repo_url,
+            "github_branch": student.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Students",
             "route": "/api/v1/modules/{module_id}/students",
@@ -1142,6 +1158,8 @@ def move_student_to_group(
 
     original_name = student.name
     original_number = student.student_number
+    old_github_repo_url = student.github_repo_url
+    old_github_branch = student.github_branch
     current_group_row = db.execute(
         student_projects.select().where(
             student_projects.c.student_id == student.student_number,
@@ -1223,6 +1241,8 @@ def move_student_to_group(
         if old_project_id
         else None
     )
+    student_repo_removed = old_github_repo_url is not None and student.github_repo_url is None
+    student_repo_added = old_github_repo_url is None and student.github_repo_url is not None
     audit_service.log_action(
         db,
         action="student.updated",
@@ -1240,7 +1260,13 @@ def move_student_to_group(
             "old_project_id": old_project_id,
             "new_project_id": new_project_id,
             "new_status": student.status.value if student.status else None,
-            "github_repo_url": student.github_repo_url,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": student.github_repo_url,
+            "repo_removed": student_repo_removed,
+            "repo_added": student_repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": student.github_branch,
+            "branch_changed": old_github_branch != student.github_branch and not student_repo_removed and not student_repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
