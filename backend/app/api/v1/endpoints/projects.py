@@ -32,6 +32,8 @@ def _student_to_out(s: Student, project_id: str = None) -> StudentOut:
         id=s.student_number,
         name=s.name,
         student_number=s.student_number,
+        github_repo_url=s.github_repo_url,
+        github_branch=s.github_branch,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         project_id=project_id,
@@ -43,6 +45,8 @@ def _project_to_out(p: Project, student_count: int) -> ProjectOut:
         id=str(p.id),
         name=p.name,
         group_name=p.group_name,
+        github_repo_url=p.github_repo_url,
+        github_branch=p.github_branch,
         module_id=str(p.module_id),
         status=p.status.value if p.status else "active",
         created_at=p.created_at,
@@ -191,6 +195,16 @@ def add_project_student(
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
 
+    if (
+        payload.github_repo_url
+        and project.github_repo_url
+        and payload.github_repo_url != project.github_repo_url
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This group already has a GitHub repository. Use the group repository instead.",
+        )
+
     # Check if this student is already linked to this project
     existing = db.query(Student).filter(Student.student_number == payload.student_number).first()
     if existing:
@@ -204,6 +218,14 @@ def add_project_student(
         )
         if already_in_project:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        if payload.github_repo_url:
+            existing.github_repo_url = payload.github_repo_url
+        elif project.github_repo_url:
+            existing.github_repo_url = project.github_repo_url
+        if payload.github_branch:
+            existing.github_branch = payload.github_branch
+        elif project.github_branch:
+            existing.github_branch = project.github_branch
         existing.projects.append(project)
         db.commit()
         db.refresh(existing)
@@ -212,6 +234,8 @@ def add_project_student(
     student = Student(
         name=payload.name,
         student_number=payload.student_number,
+        github_repo_url=payload.github_repo_url or project.github_repo_url,
+        github_branch=payload.github_branch or project.github_branch,
     )
     student.projects.append(project)
     db.add(student)
@@ -282,6 +306,8 @@ async def import_project_students(
         if student is None:
             student = Student(name=name, student_number=number)
             db.add(student)
+        if project.github_repo_url:
+            student.github_repo_url = project.github_repo_url
         student.projects.append(project)
         to_add.append(student)
 

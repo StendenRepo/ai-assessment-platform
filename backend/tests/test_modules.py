@@ -616,3 +616,78 @@ class TestModuleDocumentTextExtraction:
             assert record.extracted_text is None
         finally:
             self._cleanup(db, module)
+
+
+class TestModuleGithubRepos:
+    def test_can_set_and_remove_student_repo(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Student")
+
+        created = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Repo User", "student_number": "3001001"},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        student_id = created.json()["id"]
+
+        set_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": "github.com/octocat/hello-world"},
+            headers=headers,
+        )
+        assert set_repo.status_code == 200, set_repo.text
+        assert set_repo.json()["github_repo_url"] == "https://github.com/octocat/hello-world"
+
+        clear_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": None},
+            headers=headers,
+        )
+        assert clear_repo.status_code == 200, clear_repo.text
+        assert clear_repo.json()["github_repo_url"] is None
+
+    def test_group_repo_syncs_all_students(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Group")
+
+        group_res = client.post(
+            f"{MODULES_URL}/{module['id']}/groups",
+            json={"name": "Group Repo"},
+            headers=headers,
+        )
+        assert group_res.status_code == 201, group_res.text
+        group_id = group_res.json()["id"]
+
+        first = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "One", "student_number": "3002001", "project_id": group_id},
+            headers=headers,
+        )
+        assert first.status_code == 201, first.text
+
+        second = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Two", "student_number": "3002002", "project_id": group_id},
+            headers=headers,
+        )
+        assert second.status_code == 201, second.text
+
+        set_group_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/groups/{group_id}",
+            json={"github_repo_url": "https://github.com/example/team-project"},
+            headers=headers,
+        )
+        assert set_group_repo.status_code == 200, set_group_repo.text
+        assert (
+            set_group_repo.json()["github_repo_url"]
+            == "https://github.com/example/team-project"
+        )
+
+        students = client.get(f"{MODULES_URL}/{module['id']}/students", headers=headers)
+        assert students.status_code == 200, students.text
+        repo_urls = {
+            s["student_number"]: s["github_repo_url"] for s in students.json() if s["project_id"] == group_id
+        }
+        assert repo_urls["3002001"] == "https://github.com/example/team-project"
+        assert repo_urls["3002002"] == "https://github.com/example/team-project"
