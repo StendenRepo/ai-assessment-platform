@@ -44,6 +44,9 @@ def _evidence_upload_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence"
 
 
+EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+
+
 def _evidence_text_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence_text"
 
