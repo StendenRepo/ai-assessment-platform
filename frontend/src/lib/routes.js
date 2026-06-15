@@ -52,6 +52,10 @@ export const API_PATHS = {
   assessmentDraftRevert: (assessmentId) =>
     `/assessments/${assessmentId}/draft/revert`,
   assessmentChat: (assessmentId) => `/assessments/${assessmentId}/chat`,
+  assessmentChatRefine: (assessmentId) => `/assessments/${assessmentId}/chat/refine`,
+  assessmentChatApply: (assessmentId) => `/assessments/${assessmentId}/chat/apply`,
+  assessmentChatReject: (assessmentId) => `/assessments/${assessmentId}/chat/reject`,
+  assessmentChatUndo: (assessmentId) => `/assessments/${assessmentId}/chat/undo`,
   assessmentFinalize: (assessmentId) => `/assessments/${assessmentId}/finalize`,
   assessmentFinal: (assessmentId) => `/assessments/${assessmentId}/final`,
   assessmentAuditTrail: (assessmentId) =>

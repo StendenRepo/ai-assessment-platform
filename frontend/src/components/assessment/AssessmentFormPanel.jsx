@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -10,8 +10,11 @@ import {
   History,
   Loader2,
   Lock,
+  MessageSquare,
+  PenLine,
   RotateCcw,
   Sparkles,
+  X,
 } from 'lucide-react';
 import {
   finalizeAssessment,
@@ -35,6 +38,10 @@ export default function AssessmentFormPanel({
   readOnly = false,
   onDraftChange,
   onFinalized,
+  externalDraft = null,
+  refreshToken = 0,
+  highlightedCriteria = [],
+  onDiscussCriterion,
 }) {
   const [draft, setDraft] = useState(null);
   const [finalized, setFinalized] = useState(null);
@@ -48,6 +55,9 @@ export default function AssessmentFormPanel({
   const [localSummary, setLocalSummary] = useState('');
   const [localGrade, setLocalGrade] = useState('');
   const [teacherNotes, setTeacherNotes] = useState('');
+  const [editingKeys, setEditingKeys] = useState(() => new Set());
+  const [flashKeys, setFlashKeys] = useState([]);
+  const criterionRefs = useRef({});
 
   const syncLocalFromDraft = useCallback((data) => {
     const edits = {};
@@ -92,6 +102,25 @@ export default function AssessmentFormPanel({
     loadDraft();
   }, [loadDraft]);
 
+  useEffect(() => {
+    if (!externalDraft) return;
+    setDraft(externalDraft);
+    syncLocalFromDraft(externalDraft);
+    onDraftChange?.(externalDraft);
+  }, [externalDraft, refreshToken, syncLocalFromDraft, onDraftChange]);
+
+  useEffect(() => {
+    if (!highlightedCriteria?.length) return;
+    setFlashKeys(highlightedCriteria);
+    const first = highlightedCriteria[0];
+    const el = criterionRefs.current[first];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const timer = setTimeout(() => setFlashKeys([]), 3000);
+    return () => clearTimeout(timer);
+  }, [highlightedCriteria, refreshToken]);
+
   async function handleGenerate() {
     setGenerating(true);
     setError(null);
@@ -100,6 +129,7 @@ export default function AssessmentFormPanel({
       setDraft(res.draft);
       onDraftChange?.(res.draft);
       syncLocalFromDraft(res.draft);
+      setEditingKeys(new Set());
     } catch (e) {
       setError(e.message || 'Generation failed');
     } finally {
@@ -122,7 +152,10 @@ export default function AssessmentFormPanel({
       .filter(Boolean);
   }
 
-  async function saveOverrides(keys, { includeSummaryGrade = false } = {}) {
+  async function saveOverrides(
+    keys,
+    { includeSummaryGrade = false, exitEditMode = false } = {}
+  ) {
     const overrides = buildChangedOverrides(keys);
     const payload = { overrides };
     if (includeSummaryGrade) {
@@ -133,7 +166,16 @@ export default function AssessmentFormPanel({
         payload.overall_grade = localGrade;
       }
     }
-    if (!overrides.length && !payload.summary && !payload.overall_grade) return;
+    if (!overrides.length && !payload.summary && !payload.overall_grade) {
+      if (exitEditMode) {
+        setEditingKeys((prev) => {
+          const next = new Set(prev);
+          keys.forEach((k) => next.delete(k));
+          return next;
+        });
+      }
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -142,11 +184,48 @@ export default function AssessmentFormPanel({
       setDraft(updated);
       onDraftChange?.(updated);
       syncLocalFromDraft(updated);
+      if (exitEditMode) {
+        setEditingKeys((prev) => {
+          const next = new Set(prev);
+          keys.forEach((k) => next.delete(k));
+          return next;
+        });
+      }
     } catch (e) {
       setError(e.message || 'Save failed');
     } finally {
       setSaving(false);
     }
+  }
+
+  function startEditing(key) {
+    const c = draft?.criteria?.find((x) => x.key === key);
+    const eff = c?.effective || {};
+    setLocalEdits((prev) => ({
+      ...prev,
+      [key]: {
+        score: eff.score ?? '',
+        comment: eff.comment ?? '',
+      },
+    }));
+    setEditingKeys((prev) => new Set(prev).add(key));
+  }
+
+  function cancelEditing(key) {
+    const c = draft?.criteria?.find((x) => x.key === key);
+    const eff = c?.effective || {};
+    setLocalEdits((prev) => ({
+      ...prev,
+      [key]: {
+        score: eff.score ?? '',
+        comment: eff.comment ?? '',
+      },
+    }));
+    setEditingKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
   }
 
   async function handleRevert(key) {
@@ -163,6 +242,11 @@ export default function AssessmentFormPanel({
           comment: c?.effective?.comment ?? '',
         },
       }));
+      setEditingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     } catch (e) {
       setError(e.message || 'Revert failed');
     } finally {
@@ -283,7 +367,7 @@ export default function AssessmentFormPanel({
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             {hasSuggestions
-              ? 'Edit any field to overrule the AI — both values are recorded.'
+              ? 'Review AI suggestions below. Click Override on any criterion to change it.'
               : 'Generate AI suggestions from uploaded evidence first.'}
           </p>
         </div>
@@ -315,14 +399,25 @@ export default function AssessmentFormPanel({
         const def = criterion.definition;
         const edit = localEdits[key] || { score: '', comment: '' };
         const showAi = expandedAi === key;
+        const isEditing = editingKeys.has(key);
+        const hasContent =
+          criterion.effective?.score != null || criterion.effective?.comment;
+        const displayScore = criterion.effective?.score;
+        const displayComment = criterion.effective?.comment;
 
         return (
           <div
             key={key}
+            ref={(el) => {
+              criterionRefs.current[key] = el;
+            }}
+            id={`criterion-${key}`}
             className={`rounded-lg border p-5 transition-colors ${
-              criterion.is_overridden
-                ? 'border-amber-500/30 bg-amber-500/[0.03]'
-                : 'border-border'
+              flashKeys.includes(key)
+                ? 'border-primary ring-2 ring-primary/40'
+                : criterion.is_overridden
+                  ? 'border-amber-500/30 bg-amber-500/[0.03]'
+                  : 'border-border'
             }`}
           >
             <div className="flex items-start justify-between mb-4 gap-3">
@@ -376,61 +471,135 @@ export default function AssessmentFormPanel({
               </div>
             )}
 
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                  Score (max {def.max_score})
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max={def.max_score}
-                  step="0.5"
-                  disabled={locked}
-                  value={edit.score}
-                  onChange={(e) =>
-                    setLocalEdits((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], score: e.target.value },
-                    }))
-                  }
-                  className={inputClass}
-                />
+            {isEditing && !locked ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.03] p-4 space-y-4">
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                      Score (max {def.max_score})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={def.max_score}
+                      step="0.5"
+                      value={edit.score}
+                      onChange={(e) =>
+                        setLocalEdits((prev) => ({
+                          ...prev,
+                          [key]: { ...prev[key], score: e.target.value },
+                        }))
+                      }
+                      className={inputClass}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                      Your explanation
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={edit.comment}
+                      onChange={(e) =>
+                        setLocalEdits((prev) => ({
+                          ...prev,
+                          [key]: { ...prev[key], comment: e.target.value },
+                        }))
+                      }
+                      placeholder="Provide your reasoning…"
+                      className={`${inputClass} resize-none font-sans`}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      saveOverrides([key], { exitEditMode: true })
+                    }
+                    disabled={saving}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={12} />
+                    )}
+                    Save override
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => cancelEditing(key)}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <X size={12} />
+                    Cancel
+                  </button>
+                </div>
               </div>
-              <div className="col-span-3">
-                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                  Explanation (effective in form)
-                </label>
-                <textarea
-                  rows={2}
-                  disabled={locked}
-                  value={edit.comment}
-                  onChange={(e) =>
-                    setLocalEdits((prev) => ({
-                      ...prev,
-                      [key]: { ...prev[key], comment: e.target.value },
-                    }))
-                  }
-                  placeholder={
-                    criterion.ai?.comment
-                      ? 'Edit to overrule AI suggestion…'
-                      : 'Provide your reasoning…'
-                  }
-                  className={`${inputClass} resize-none font-sans`}
-                />
+            ) : hasContent || locked ? (
+              <div className="flex gap-5 items-start">
+                <div className="shrink-0 text-center">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                    Score
+                  </p>
+                  <p className="text-2xl font-mono font-bold text-foreground leading-none">
+                    {displayScore ?? '—'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    / {def.max_score}
+                  </p>
+                </div>
+                <div className="flex-1 min-w-0 border-l border-border pl-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Explanation
+                  </p>
+                  {displayComment ? (
+                    <div className="text-sm text-foreground leading-relaxed">
+                      <HighlightedComment text={displayComment} />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">—</p>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic py-2">
+                No suggestion yet — generate AI suggestions to populate this
+                criterion.
+              </p>
+            )}
 
-            {!locked && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                <button
-                  type="button"
-                  onClick={() => saveOverrides([key])}
-                  disabled={saving}
-                  className="text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                >
-                  Save override
-                </button>
+            {!locked && !isEditing && (
+              <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-border/50">
+                {onDiscussCriterion && (hasContent || criterion.ai) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onDiscussCriterion({
+                        key,
+                        name: def.name,
+                        score: displayScore,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <MessageSquare size={12} />
+                    Discuss with AI
+                  </button>
+                )}
+                {(hasContent || criterion.ai) && (
+                  <button
+                    type="button"
+                    onClick={() => startEditing(key)}
+                    className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <PenLine size={12} />
+                    Override
+                  </button>
+                )}
                 {criterion.is_overridden && (
                   <button
                     type="button"
@@ -460,7 +629,7 @@ export default function AssessmentFormPanel({
               </div>
             )}
 
-            {(showAi || locked) && criterion.ai && (
+            {(showAi || locked) && criterion.ai && !isEditing && (
               <div className="mt-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400">
                   Original AI suggestion (preserved)

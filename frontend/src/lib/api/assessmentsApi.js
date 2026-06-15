@@ -29,10 +29,39 @@ export function getAssessmentChat(assessmentId) {
   return apiFetch(API_PATHS.assessmentChat(assessmentId));
 }
 
-export function postAssessmentChat(assessmentId, message) {
+export function postAssessmentChat(assessmentId, message, { criterionKey } = {}) {
   return apiFetch(API_PATHS.assessmentChat(assessmentId), {
     method: 'POST',
-    json: { message },
+    json: {
+      message,
+      ...(criterionKey ? { criterion_key: criterionKey } : {}),
+    },
+  });
+}
+
+export function postAssessmentChatRefine(assessmentId) {
+  return apiFetch(API_PATHS.assessmentChatRefine(assessmentId), {
+    method: 'POST',
+  });
+}
+
+export function postAssessmentChatApply(assessmentId, proposalId) {
+  return apiFetch(API_PATHS.assessmentChatApply(assessmentId), {
+    method: 'POST',
+    json: { proposal_id: proposalId },
+  });
+}
+
+export function postAssessmentChatReject(assessmentId, proposalId) {
+  return apiFetch(API_PATHS.assessmentChatReject(assessmentId), {
+    method: 'POST',
+    json: { proposal_id: proposalId },
+  });
+}
+
+export function postAssessmentChatUndo(assessmentId) {
+  return apiFetch(API_PATHS.assessmentChatUndo(assessmentId), {
+    method: 'POST',
   });
 }
 

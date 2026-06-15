@@ -94,16 +94,52 @@ class ChatMessageOut(BaseModel):
     role: str
     content: str
     timestamp: datetime
+    metadata: Optional[dict[str, Any]] = None
 
 
 class ChatPostIn(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
+    criterion_key: Optional[str] = None
 
 
-class ChatResponseOut(BaseModel):
+class ChatChangeOut(BaseModel):
+    criterion_key: str
+    criterion_name: str
+    before_score: Optional[float] = None
+    after_score: Optional[float] = None
+    before_comment: Optional[str] = None
+    after_comment: Optional[str] = None
+
+
+class ChatDiscussOut(BaseModel):
     messages: list[ChatMessageOut]
-    draft: DraftFormOut
     assistant_reply: str
+
+
+class ChatProposalOut(BaseModel):
+    proposal_id: str
+    message_id: str
+    reply: str
+    proposed_changes: list[ChatChangeOut] = Field(default_factory=list)
+    summary_proposed: Optional[str] = None
+    updates_requested: int = 0
+    messages: list[ChatMessageOut] = Field(default_factory=list)
+
+
+class ChatApplyIn(BaseModel):
+    proposal_id: str
+
+
+class ChatApplyOut(BaseModel):
+    draft: DraftFormOut
+    changes_applied: list[ChatChangeOut] = Field(default_factory=list)
+    messages: list[ChatMessageOut] = Field(default_factory=list)
+
+
+class ChatUndoOut(BaseModel):
+    draft: DraftFormOut
+    changes_restored: list[ChatChangeOut] = Field(default_factory=list)
+    messages: list[ChatMessageOut] = Field(default_factory=list)
 
 
 class FinalizeIn(BaseModel):

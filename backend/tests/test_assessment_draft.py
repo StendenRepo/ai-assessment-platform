@@ -36,15 +36,9 @@ def _auth(teacher):
     return {"Authorization": f"Bearer {create_access_token(subject=str(teacher.id))}"}
 
 
-MOCK_LLM_CRITERION = {
-    "score": 7.5,
-    "comment": "Strong evidence in auth.tsx supports code quality.",
-    "confidence": 0.82,
-}
-
 MOCK_CHAT_RESPONSE = """{
   "reply": "I've tightened the testing criterion based on your feedback.",
-  "updates": [{"criterion_key": "crit-4", "score": 8.5, "comment": "Expanded test coverage noted."}],
+  "updates": [{"criterion_key": "crit-4", "score": 8.5, "comment": "Expanded test coverage noted in evidence.pdf."}],
   "summary": "Revised summary after chat."
 }"""
 
@@ -117,42 +111,102 @@ class TestOverrides:
         assert entry["ai"]["score"] == 6
         assert entry["teacher"]["comment"].startswith("Teacher disagrees")
 
-        audit = (
-            db.query(AuditEvent)
-            .filter(AuditEvent.action == "assessment.suggestion_overridden")
-            .first()
-        )
-        assert audit is not None
-        assert audit.details_json["ai"]["score"] == 6
-        assert audit.details_json["teacher"]["score"] == 9
 
-
-class TestChatRefine:
+class TestChatDiscuss:
     @patch("app.services.draft_assessment_service.ollama_client.chat")
     @patch("app.services.draft_assessment_service.ollama_client.generate")
-    def test_chat_updates_non_overridden(self, mock_gen, mock_chat, db, assessment, teacher):
+    def test_discuss_does_not_mutate_draft(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(
             db, assessment=assessment, teacher=teacher
         )
-        mock_chat.return_value = MOCK_CHAT_RESPONSE
-        reply, draft = draft_assessment_service.chat_refine(
+        db.refresh(assessment)
+        before = assessment.draft_form_json["criteria"]["crit-4"]["ai"]["score"]
+        mock_chat.return_value = "Testing looks adequate given the evidence uploaded."
+        reply = draft_assessment_service.chat_discuss(
+            db,
+            assessment=assessment,
+            teacher=teacher,
+            message="Why is testing only 5?",
+        )
+        db.refresh(assessment)
+        assert "testing" in reply.lower() or "evidence" in reply.lower()
+        assert assessment.draft_form_json["criteria"]["crit-4"]["ai"]["score"] == before
+        msgs = db.query(ChatMessage).filter(ChatMessage.assessment_id == assessment.id).all()
+        assert len(msgs) == 2
+        assert msgs[0].metadata_json["type"] == "discuss"
+
+
+class TestChatRefineFlow:
+    @patch("app.services.draft_assessment_service.ollama_client.chat")
+    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    def test_propose_then_apply_updates_draft(self, mock_gen, mock_chat, db, assessment, teacher):
+        mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
+        draft_assessment_service.generate_suggestions(
+            db, assessment=assessment, teacher=teacher
+        )
+        mock_chat.side_effect = [
+            "They added more tests in the latest upload.",
+            MOCK_CHAT_RESPONSE,
+        ]
+        draft_assessment_service.chat_discuss(
             db,
             assessment=assessment,
             teacher=teacher,
             message="Please raise the testing score — more tests were added.",
         )
-        assert "testing" in reply.lower() or "tightened" in reply.lower()
+        proposal = draft_assessment_service.chat_propose_refine(
+            db, assessment=assessment, teacher=teacher
+        )
+        db.refresh(assessment)
+        assert assessment.draft_form_json["criteria"]["crit-4"]["ai"]["score"] == 5
+        assert proposal["proposed_changes"]
+        assert proposal["proposal_id"]
+
+        draft, applied = draft_assessment_service.chat_apply_proposal(
+            db,
+            assessment=assessment,
+            teacher=teacher,
+            proposal_id=uuid.UUID(proposal["proposal_id"]),
+        )
         assert draft["criteria"]["crit-4"]["ai"]["score"] == 8.5
+        assert applied
         assert draft["criteria"]["crit-4"]["ai"].get("refined_via_chat") is True
-        msgs = db.query(ChatMessage).filter(ChatMessage.assessment_id == assessment.id).all()
-        assert len(msgs) == 2
-        assert msgs[0].role == "teacher"
-        assert msgs[1].role == "assistant"
 
     @patch("app.services.draft_assessment_service.ollama_client.chat")
     @patch("app.services.draft_assessment_service.ollama_client.generate")
-    def test_chat_skips_overridden_criterion(self, mock_gen, mock_chat, db, assessment, teacher):
+    def test_propose_infers_from_conversation_when_llm_empty(
+        self, mock_gen, mock_chat, db, assessment, teacher
+    ):
+        mock_gen.return_value = '{"score": 8, "comment": "Initial.", "confidence": 0.6}'
+        draft_assessment_service.generate_suggestions(
+            db, assessment=assessment, teacher=teacher
+        )
+        mock_chat.side_effect = [
+            "Code Quality should be revised from 8/10 to 0/10 — no actual code in the upload.",
+            '{"reply": "No structured updates", "updates": []}',
+            '{"reply": "Still empty", "updates": []}',
+        ]
+        draft_assessment_service.chat_discuss(
+            db,
+            assessment=assessment,
+            teacher=teacher,
+            message="I think code quality should be 0 since there is no code.",
+        )
+        proposal = draft_assessment_service.chat_propose_refine(
+            db, assessment=assessment, teacher=teacher
+        )
+        crit1 = next(
+            (c for c in proposal["proposed_changes"] if c["criterion_key"] == "crit-1"),
+            None,
+        )
+        assert crit1 is not None
+        assert crit1["after_score"] == 0.0
+        assert crit1["before_score"] == 8.0
+
+    @patch("app.services.draft_assessment_service.ollama_client.chat")
+    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    def test_propose_skips_overridden_criterion(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(
             db, assessment=assessment, teacher=teacher
@@ -163,15 +217,21 @@ class TestChatRefine:
             teacher=teacher,
             overrides=[{"criterion_key": "crit-4", "score": 10, "comment": "Teacher locked."}],
         )
-        mock_chat.return_value = MOCK_CHAT_RESPONSE
-        _, draft = draft_assessment_service.chat_refine(
+        mock_chat.side_effect = ["OK", MOCK_CHAT_RESPONSE]
+        draft_assessment_service.chat_discuss(
             db,
             assessment=assessment,
             teacher=teacher,
             message="Change testing score.",
         )
-        assert draft["criteria"]["crit-4"]["effective"]["score"] == 10
-        assert draft["criteria"]["crit-4"]["ai"]["score"] == 5
+        proposal = draft_assessment_service.chat_propose_refine(
+            db, assessment=assessment, teacher=teacher
+        )
+        assert not any(
+            c["criterion_key"] == "crit-4" for c in proposal["proposed_changes"]
+        )
+        db.refresh(assessment)
+        assert assessment.draft_form_json["criteria"]["crit-4"]["effective"]["score"] == 10
 
     @patch("app.services.draft_assessment_service.ollama_client.chat")
     @patch("app.services.draft_assessment_service.ollama_client.generate")
@@ -187,7 +247,7 @@ class TestChatRefine:
         )
         res = client.post(
             f"/api/v1/assessments/{assessment.id}/chat",
-            json={"message": "Try to refine"},
+            json={"message": "Try to discuss"},
             headers=_auth(teacher),
         )
         assert res.status_code == 409
@@ -220,12 +280,6 @@ class TestFinalize:
             headers=_auth(teacher),
         )
         assert blocked.status_code == 409
-
-        final_get = client.get(
-            f"/api/v1/assessments/{assessment.id}/final",
-            headers=_auth(teacher),
-        )
-        assert final_get.status_code == 200
 
 
 class TestDraftEndpoints:

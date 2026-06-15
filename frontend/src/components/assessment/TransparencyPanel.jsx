@@ -8,7 +8,8 @@ const ACTION_LABELS = {
   'assessment.suggestion_overridden': 'Teacher overruled AI',
   'assessment.override_reverted': 'Reverted to AI',
   'assessment.suggestions_generated': 'AI suggestions generated',
-  'assessment.chat_refine': 'Chat refinement',
+  'assessment.chat_refine': 'Refinement applied',
+  'assessment.chat_undo': 'Refinement undone',
   'assessment.finalized': 'Assessment finalized',
   'assessment.created': 'Assessment created',
 };

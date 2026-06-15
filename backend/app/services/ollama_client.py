@@ -53,25 +53,29 @@ def chat(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.3,
+    format_json: bool = False,
 ) -> Optional[str]:
     """Multi-turn chat completion. Each message: {role, content}."""
     for model in (settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP):
         if not model:
             continue
         try:
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": settings.OLLAMA_NUM_PREDICT,
+                    "num_ctx": settings.OLLAMA_NUM_CTX,
+                },
+            }
+            if format_json:
+                payload["format"] = "json"
             with httpx.Client(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
                 response = client.post(
                     f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "stream": False,
-                        "options": {
-                            "temperature": temperature,
-                            "num_predict": settings.OLLAMA_NUM_PREDICT,
-                            "num_ctx": settings.OLLAMA_NUM_CTX,
-                        },
-                    },
+                    json=payload,
                 )
                 response.raise_for_status()
                 message = response.json().get("message") or {}

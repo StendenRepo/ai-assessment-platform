@@ -536,6 +536,31 @@ export default function StudentAssessmentPage() {
   const [draftSnapshot, setDraftSnapshot] = useState(null);
   const [formKey, setFormKey] = useState(0);
   const [auditRefresh, setAuditRefresh] = useState(0);
+  const [externalDraft, setExternalDraft] = useState(null);
+  const [draftRefreshToken, setDraftRefreshToken] = useState(0);
+  const [highlightedCriteria, setHighlightedCriteria] = useState([]);
+  const chatRef = useRef(null);
+
+  function handleChatDraftUpdated(draft) {
+    setDraftSnapshot(draft);
+    setExternalDraft(draft);
+    setDraftRefreshToken((k) => k + 1);
+    setAuditRefresh((k) => k + 1);
+  }
+
+  function handleChatApplied(changes) {
+    const keys = (changes || []).map((c) => c.criterion_key).filter(Boolean);
+    if (keys.length) {
+      setHighlightedCriteria(keys);
+      setDraftRefreshToken((k) => k + 1);
+    }
+    setAuditRefresh((k) => k + 1);
+  }
+
+  function handleDiscussCriterion({ key, name, score }) {
+    setCurrentTab(1);
+    chatRef.current?.focusCriterion(key, name, score);
+  }
 
   useEffect(() => {
     listProjectStudents(moduleId)
@@ -752,6 +777,10 @@ export default function StudentAssessmentPage() {
                   key={formKey}
                   assessmentId={assessmentId}
                   moduleId={moduleId}
+                  externalDraft={externalDraft}
+                  refreshToken={draftRefreshToken}
+                  highlightedCriteria={highlightedCriteria}
+                  onDiscussCriterion={handleDiscussCriterion}
                   onDraftChange={(d) => {
                     setDraftSnapshot(d);
                     setAuditRefresh((k) => k + 1);
@@ -776,13 +805,12 @@ export default function StudentAssessmentPage() {
             {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
             {assessmentId && (
               <AssessmentChatWidget
+                ref={chatRef}
                 assessmentId={assessmentId}
                 disabled={draftSnapshot?.locked}
                 canChat={draftSnapshot?.can_chat ?? false}
-                onDraftUpdated={(d) => {
-                  setDraftSnapshot(d);
-                  setAuditRefresh((k) => k + 1);
-                }}
+                onDraftUpdated={handleChatDraftUpdated}
+                onApplied={handleChatApplied}
               />
             )}
             {assessmentId && (

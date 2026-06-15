@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+import uuid
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -74,6 +76,38 @@ You ONLY analyse uploaded student evidence and rubric criteria — never invent 
 Return valid JSON only. Ground every score and comment in the evidence provided.
 When evidence is weak or missing, say so explicitly and score conservatively.
 Do not modify or rewrite student evidence text — only assess it."""
+
+_CHAT_DISCUSS_SYSTEM_PROMPT = """You are an expert university assessor advisor helping a lecturer discuss a student assessment.
+
+You have the current AI draft scores, uploaded evidence, module rubric, module book, and interview transcripts.
+
+Rules:
+- Answer questions, explain reasoning, compare evidence to rubric expectations, and debate scores conversationally.
+- Reference specific evidence file names when relevant.
+- You may suggest what could change, but do NOT output JSON or claim scores have been changed.
+- The lecturer will use a separate Refine action to commit changes to the form.
+- Never invent evidence or rewrite student work.
+- Be clear, helpful, and concise."""
+
+_CHAT_PROPOSE_SYSTEM_PROMPT = """You are an expert university assessor assistant. Based on the lecturer conversation and assessment context, propose criterion updates grounded in uploaded evidence.
+
+Rules:
+- If the conversation agreed on new scores, you MUST include them in updates[] — never return an empty updates array when scores were discussed.
+- Use criterion_key values exactly as provided in the criteria catalog (e.g. crit-1, crit-2).
+- Only propose changes for criteria that are NOT teacher-overridden (is_overridden=false).
+- Every updated comment should mention evidence when available; if evidence is thin, say so explicitly.
+- Respond with a single JSON object only (no markdown fences).
+
+Required JSON shape:
+{
+  "reply": "Brief summary of what you are proposing and why.",
+  "updates": [
+    {"criterion_key": "crit-1", "score": 0, "comment": "No code evidence in upload.pdf — score lowered per discussion."}
+  ],
+  "summary": null
+}
+
+Use null for summary if the overall summary should stay unchanged. Never copy placeholder text from these instructions."""
 
 
 class AssessmentLockedError(ValueError):
@@ -185,6 +219,350 @@ def _rubric_text(db: Session, module: Optional[Module]) -> str:
         return ""
     record = db.get(FileRecord, module.rubric_file_id)
     return (record.extracted_text or "") if record else ""
+
+
+def _module_book_text(db: Session, module: Optional[Module]) -> str:
+    if not module or not module.module_book_id:
+        return ""
+    record = db.get(FileRecord, module.module_book_id)
+    return (record.extracted_text or "") if record else ""
+
+
+def _build_current_analysis(draft: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for d in draft["criteria_defs"]:
+        key = d["key"]
+        entry = draft["criteria"].get(key, {})
+        eff = entry.get("effective") or {}
+        ai = entry.get("ai") or {}
+        rows.append(
+            {
+                "criterion": d["name"],
+                "key": key,
+                "ai_score": ai.get("score"),
+                "ai_comment": ai.get("comment"),
+                "effective_score": eff.get("score"),
+                "effective_comment": eff.get("comment"),
+                "is_overridden": entry.get("is_overridden", False),
+            }
+        )
+    return rows
+
+
+def _build_assessment_context(
+    db: Session,
+    *,
+    assessment: Assessment,
+    draft: dict[str, Any],
+    criterion_key: Optional[str] = None,
+) -> dict[str, Any]:
+    module = _get_module_for_student(db, assessment.student_id)
+    evidence_rows = (
+        db.query(Evidence)
+        .filter(Evidence.student_id == assessment.student_id)
+        .order_by(Evidence.uploaded_at.desc())
+        .all()
+    )
+    focus_keys = [criterion_key] if criterion_key else None
+    evidence_refs = _gather_evidence_for_chat(draft, evidence_rows, focus_keys=focus_keys)
+    return {
+        "module": module,
+        "evidence_rows": evidence_rows,
+        "evidence_index": {str(e.id): e.file_name for e in evidence_rows},
+        "evidence_refs": evidence_refs,
+        "rubric": _rubric_text(db, module),
+        "module_book": _module_book_text(db, module),
+        "recording_text": _recording_context(db, assessment.id),
+        "current_analysis": _build_current_analysis(draft),
+        "defs_by_key": {d["key"]: d for d in draft["criteria_defs"]},
+    }
+
+
+def _context_block(ctx: dict[str, Any], *, focus_criterion_key: Optional[str] = None) -> str:
+    focus_note = ""
+    if focus_criterion_key:
+        name = ctx["defs_by_key"].get(focus_criterion_key, {}).get("name", focus_criterion_key)
+        focus_note = f"\nFocus criterion for this message: {name} ({focus_criterion_key})\n"
+    return (
+        f"{focus_note}"
+        f"Current analysis:\n{json.dumps(ctx['current_analysis'], indent=2)}\n\n"
+        f"Rubric excerpt:\n{(ctx['rubric'] or 'No rubric uploaded.')[:2000]}\n\n"
+        f"Module book excerpt:\n{(ctx['module_book'] or 'No module book uploaded.')[:2000]}\n\n"
+        f"Recording transcripts:\n{(ctx['recording_text'] or 'No recordings.')[:2000]}\n\n"
+        f"Evidence file index:\n{json.dumps(ctx['evidence_index'], indent=2)}\n\n"
+        f"Evidence quotes (read-only):\n{json.dumps(ctx['evidence_refs'], indent=2)}"
+    )
+
+
+def _history_for_llm(messages: list[ChatMessage]) -> list[dict[str, str]]:
+    """Build LLM history from stored messages, skipping pending proposals."""
+    rows: list[dict[str, str]] = []
+    for msg in messages:
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal":
+            status = meta.get("status")
+            if status == "applied":
+                rows.append(
+                    {
+                        "role": "assistant",
+                        "content": f"[Applied refinement] {msg.content}",
+                    }
+                )
+            continue
+        role = "assistant" if msg.role == "assistant" else "user"
+        rows.append({"role": role, "content": msg.content})
+    return rows
+
+
+def _resolve_criterion_key(raw_key: str | None, defs_by_key: dict[str, dict]) -> Optional[str]:
+    if not raw_key:
+        return None
+    if raw_key in defs_by_key:
+        return raw_key
+    lower = raw_key.strip().lower()
+    for key, d in defs_by_key.items():
+        if d["name"].lower() == lower or key.lower() == lower:
+            return key
+    for key, d in defs_by_key.items():
+        if lower in d["name"].lower() or d["name"].lower() in lower:
+            return key
+    return None
+
+
+def _assert_has_suggestions(draft: dict[str, Any]) -> None:
+    if not draft["criteria"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Generate AI suggestions before using assessment chat",
+        )
+
+
+def _get_proposal_message(db: Session, assessment_id: UUID, proposal_id: UUID) -> ChatMessage:
+    msg = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.assessment_id == assessment_id,
+            ChatMessage.id == proposal_id,
+        )
+        .first()
+    )
+    if not msg or (msg.metadata_json or {}).get("type") != "proposal":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal not found")
+    return msg
+
+
+def _changes_to_out(changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "criterion_key": c["criterion_key"],
+            "criterion_name": c.get("criterion_name", c["criterion_key"]),
+            "before_score": (c.get("before") or {}).get("score"),
+            "after_score": (c.get("after") or {}).get("score"),
+            "before_comment": (c.get("before") or {}).get("comment"),
+            "after_comment": (c.get("after") or {}).get("comment"),
+        }
+        for c in changes
+    ]
+
+
+def _criteria_catalog_for_prompt(draft: dict[str, Any]) -> str:
+    lines = []
+    for d in draft["criteria_defs"]:
+        key = d["key"]
+        entry = draft["criteria"].get(key, {})
+        eff = entry.get("effective") or {}
+        lines.append(
+            f"- {key}: {d['name']} "
+            f"(effective score: {eff.get('score', '—')}/10, "
+            f"overridden: {bool(entry.get('is_overridden'))})"
+        )
+    return "\n".join(lines)
+
+
+def _infer_updates_from_conversation(
+    history: list[ChatMessage],
+    draft: dict[str, Any],
+    ctx: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Fallback: extract agreed score changes from discuss messages when JSON updates are empty."""
+    lines: list[str] = []
+    for msg in history:
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal":
+            continue
+        if msg.content:
+            lines.append(msg.content)
+    blob = "\n".join(lines)
+    if not blob.strip():
+        return []
+
+    updates: list[dict[str, Any]] = []
+    defs_by_key = ctx["defs_by_key"]
+
+    for key, d in defs_by_key.items():
+        entry = draft["criteria"].get(key, {})
+        if entry.get("is_overridden"):
+            continue
+        eff = entry.get("effective") or {}
+        current_score = eff.get("score")
+        name = d["name"]
+        name_re = re.escape(name)
+        new_score: Optional[float] = None
+
+        patterns = (
+            rf"{name_re}.{{0,240}}?(?:from|revised from)\s*(\d+(?:\.\d+)?)\s*/?\s*10?\s*(?:to|→|->)\s*(\d+(?:\.\d+)?)",
+            rf"(?:from|revised from)\s*(\d+(?:\.\d+)?)\s*/?\s*10?\s*(?:to|→|->)\s*(\d+(?:\.\d+)?).{{0,160}}?{name_re}",
+            rf"{name_re}.{{0,160}}?(?:to|at|of)\s*(\d+(?:\.\d+)?)\s*/\s*10",
+            rf"{name_re}.{{0,160}}?score(?:\s+of|\s+is|\s+would be)?\s*(\d+(?:\.\d+)?)",
+        )
+        for pat in patterns:
+            match = re.search(pat, blob, re.I | re.DOTALL)
+            if not match:
+                continue
+            groups = match.groups()
+            new_score = float(groups[1] if len(groups) == 2 else groups[0])
+            break
+
+        if new_score is None:
+            continue
+        if current_score is not None and float(new_score) == float(current_score):
+            continue
+
+        comment = eff.get("comment") or ""
+        for line in reversed(lines):
+            if name.lower() in line.lower() and len(line.strip()) > 20:
+                comment = line.strip()[:600]
+                break
+        if not comment:
+            comment = f"Score adjusted to {new_score}/10 based on the discussion with the lecturer."
+
+        updates.append({"criterion_key": key, "score": new_score, "comment": comment})
+
+    return updates
+
+
+def _build_proposed_changes(
+    draft: dict[str, Any],
+    updates: list[dict[str, Any]],
+    ctx: dict[str, Any],
+) -> tuple[list[dict[str, Any]], Optional[str]]:
+    """Translate LLM updates into before/after proposal rows without mutating draft."""
+    defs_by_key = ctx["defs_by_key"]
+    evidence_refs = ctx["evidence_refs"]
+    proposed: list[dict[str, Any]] = []
+    for upd in updates:
+        key = _resolve_criterion_key(upd.get("criterion_key"), defs_by_key)
+        if not key:
+            continue
+        entry = draft["criteria"].get(key)
+        if not entry or entry.get("is_overridden"):
+            continue
+        ai = entry.get("ai") or {}
+        eff = entry.get("effective") or {}
+        before_score = eff.get("score")
+        before_comment = eff.get("comment")
+        criterion_refs = [r for r in evidence_refs if r.get("criterion_key") == key] or evidence_refs
+        new_comment = str(upd["comment"]).strip() if upd.get("comment") else None
+        new_score = float(upd["score"]) if upd.get("score") is not None else before_score
+        if not new_comment and new_score != before_score:
+            new_comment = (
+                before_comment
+                or f"Score adjusted to {new_score}/10 based on the discussion with the lecturer."
+            )
+        if new_comment:
+            new_comment = _ground_comment_with_evidence(new_comment, criterion_refs)
+        if new_score == before_score and (not new_comment or new_comment == before_comment):
+            continue
+        proposed.append(
+            {
+                "criterion_key": key,
+                "criterion_name": defs_by_key.get(key, {}).get("name", key),
+                "before": {"score": before_score, "comment": before_comment},
+                "after": {"score": new_score, "comment": new_comment or before_comment},
+            }
+        )
+    return proposed, None
+
+
+def _apply_proposed_changes(
+    db: Session,
+    *,
+    assessment: Assessment,
+    draft: dict[str, Any],
+    proposed: list[dict[str, Any]],
+    summary_update: Optional[str],
+    ctx: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Persist proposed criterion changes into draft."""
+    now = _now()
+    evidence_rows = ctx["evidence_rows"]
+    defs_by_key = ctx["defs_by_key"]
+    applied: list[dict[str, Any]] = []
+
+    for change in proposed:
+        key = change["criterion_key"]
+        entry = draft["criteria"].get(key)
+        if not entry or entry.get("is_overridden"):
+            continue
+        ai = copy.deepcopy(entry.get("ai") or {})
+        after = change.get("after") or {}
+        if after.get("score") is not None:
+            ai["score"] = float(after["score"])
+        if after.get("comment"):
+            ai["comment"] = after["comment"]
+        ai["generated_at"] = now.isoformat()
+        ai["refined_via_chat"] = True
+        d = defs_by_key.get(key)
+        if d:
+            matches = match_criterion_to_evidence(
+                key, d["name"], d["description"], evidence_rows
+            )
+            ai["evidence_refs"] = _build_evidence_refs(matches)
+            persist_matches(db, assessment_id=assessment.id, criterion_key=key, matches=matches)
+        entry["ai"] = ai
+        entry["effective"] = _effective_value(ai, entry.get("teacher"), False)
+        applied.append(change)
+
+    if summary_update and not draft["summary"].get("teacher"):
+        draft["summary"]["ai"] = summary_update
+        draft["summary"]["effective"] = summary_update
+
+    overall = _compute_overall_score(draft["criteria"], draft["criteria_defs"])
+    if overall is not None and not draft["overall_grade"].get("teacher"):
+        grade = _score_to_grade(overall)
+        draft["overall_grade"]["ai"] = grade
+        draft["overall_grade"]["effective"] = grade
+
+    return applied
+
+
+def _reject_pending_proposals(db: Session, assessment_id: UUID) -> None:
+    pending = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.assessment_id == assessment_id)
+        .order_by(ChatMessage.timestamp.desc())
+        .all()
+    )
+    for msg in pending:
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal" and meta.get("status") == "pending":
+            meta = {**meta, "status": "superseded"}
+            msg.metadata_json = meta
+            db.add(msg)
+
+
+def _proposal_summary_text(proposed: list[dict[str, Any]], reply: str) -> str:
+    if reply and not _is_template_placeholder(reply):
+        return reply
+    if not proposed:
+        return "No criterion changes proposed based on the conversation."
+    parts = []
+    for c in proposed:
+        before = c.get("before") or {}
+        after = c.get("after") or {}
+        name = c.get("criterion_name", c["criterion_key"])
+        parts.append(f"{name}: {before.get('score')} → {after.get('score')}/10")
+    return "Proposed updates: " + "; ".join(parts) + "."
 
 
 def _recording_context(db: Session, assessment_id: UUID) -> str:
@@ -315,6 +693,72 @@ def _comment_cites_evidence(comment: str, evidence_refs: list[dict]) -> bool:
         return True
     lower = comment.lower()
     return any(ref["file_name"].lower() in lower for ref in named_refs)
+
+
+def _ground_comment_with_evidence(comment: str, evidence_refs: list[dict]) -> str:
+    """Ensure chat comments cite an uploaded file when evidence exists."""
+    if not comment or _comment_cites_evidence(comment, evidence_refs):
+        return comment
+    named_refs = [r for r in evidence_refs if r.get("file_name")]
+    if not named_refs:
+        return comment
+    return f"{comment.rstrip()} (See evidence in {named_refs[0]['file_name']}.)"
+
+
+def _is_template_placeholder(text: str) -> bool:
+    """Detect when the model echoes JSON schema placeholders instead of real text."""
+    if not text:
+        return True
+    stripped = text.strip()
+    lower = stripped.lower()
+    if lower.startswith("<") and lower.endswith(">"):
+        return True
+    known_placeholders = {
+        "<conversational reply to teacher>",
+        "<optional updated overall summary>",
+        "<paragraph>",
+        "<2-4 sentences citing specific evidence file names and quotes>",
+    }
+    return lower in known_placeholders
+
+
+def _build_chat_reply(
+    *,
+    parsed_reply: str | None,
+    applied_changes: list[dict[str, Any]],
+    updates_requested: int,
+    teacher_message: str,
+    defs_by_key: dict[str, dict],
+) -> str:
+    if parsed_reply and not _is_template_placeholder(parsed_reply):
+        return parsed_reply
+
+    if applied_changes:
+        summaries = []
+        for change in applied_changes:
+            key = change["criterion_key"]
+            name = defs_by_key.get(key, {}).get("name", key)
+            after = change.get("after") or {}
+            score = after.get("score")
+            summaries.append(f"{name} → {score}/10" if score is not None else name)
+        return (
+            "I've updated the assessment based on your feedback: "
+            + ", ".join(summaries)
+            + "."
+        )
+
+    if updates_requested:
+        return (
+            "I understood your request but could not apply the suggested criterion "
+            "changes — they need to reference uploaded evidence files. Try being "
+            "specific, e.g. “Raise Testing to 8 — see maximizing_synergies.pdf.”"
+        )
+
+    snippet = teacher_message.strip()[:120]
+    return (
+        f"I noted your feedback (“{snippet}”) but no criterion scores were changed. "
+        "Name a specific criterion and evidence file if you want me to adjust a score."
+    )
 
 
 def _build_evidence_refs(matches: list) -> list[dict]:
@@ -626,174 +1070,245 @@ def revert_criterion(
     return draft
 
 
-def chat_refine(
+def chat_discuss(
     db: Session,
     *,
     assessment: Assessment,
     teacher: Teacher,
     message: str,
-) -> tuple[str, dict[str, Any]]:
-    """G2-147: teacher chats to refine AI analysis only (not evidence)."""
+    criterion_key: Optional[str] = None,
+) -> str:
+    """Conversational discuss-only chat — never mutates the draft."""
     _assert_editable(assessment)
     draft = _load_draft(assessment)
-    if not draft["criteria"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Generate AI suggestions before using chat refinement",
-        )
+    _assert_has_suggestions(draft)
 
     teacher_msg = ChatMessage(
         assessment_id=assessment.id,
         role="teacher",
         content=message.strip(),
+        metadata_json={"type": "discuss", "criterion_key": criterion_key},
     )
     db.add(teacher_msg)
     db.flush()
 
-    history = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.assessment_id == assessment.id)
-        .order_by(ChatMessage.timestamp)
-        .all()
+    ctx = _build_assessment_context(
+        db, assessment=assessment, draft=draft, criterion_key=criterion_key
     )
+    history = list_chat_messages(db, assessment.id)
 
-    evidence_rows = (
-        db.query(Evidence)
-        .filter(Evidence.student_id == assessment.student_id)
-        .all()
-    )
-    evidence_index = {str(e.id): e.file_name for e in evidence_rows}
-    evidence_refs = _gather_evidence_for_chat(draft, evidence_rows)
-    defs_by_key = {d["key"]: d for d in draft["criteria_defs"]}
-
-    current_analysis = []
-    for d in draft["criteria_defs"]:
-        key = d["key"]
-        entry = draft["criteria"].get(key, {})
-        eff = entry.get("effective") or {}
-        ai = entry.get("ai") or {}
-        current_analysis.append(
-            {
-                "criterion": d["name"],
-                "key": key,
-                "ai_score": ai.get("score"),
-                "ai_comment": ai.get("comment"),
-                "effective_score": eff.get("score"),
-                "effective_comment": eff.get("comment"),
-                "is_overridden": entry.get("is_overridden", False),
-            }
-        )
-
-    chat_messages = [
-        {
-            "role": "system",
-            "content": (
-                _ASSESSMENT_SYSTEM_PROMPT
-                + "\nThe teacher is refining YOUR analysis only. "
-                "Never modify student evidence text. "
-                "If a criterion is teacher-overridden (is_overridden=true), "
-                "do not change its effective score/comment — only refine non-overridden criteria "
-                "or provide advisory notes."
-            ),
-        },
+    chat_messages: list[dict[str, str]] = [
+        {"role": "system", "content": _CHAT_DISCUSS_SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": (
-                f"Current AI analysis JSON:\n{json.dumps(current_analysis, indent=2)}\n\n"
-                f"Evidence file index (read-only): {json.dumps(evidence_index)}\n\n"
-                "Retrieved evidence quotes (READ ONLY — do not rewrite or invent):\n"
-                f"{json.dumps(evidence_refs, indent=2)}\n\n"
-                "Respond with JSON:\n"
-                "{\n"
-                '  "reply": "<conversational reply to teacher>",\n'
-                '  "updates": [\n'
-                '    {"criterion_key": "crit-1", "score": 8, "comment": "..."}\n'
-                "  ],\n"
-                '  "summary": "<optional updated overall summary>"\n'
-                "}\n"
-                "Only include updates for criteria the teacher asked to change and that are NOT overridden. "
-                "Every updated comment MUST cite specific evidence file names and stay consistent with the quotes above."
-            ),
+            "content": "Assessment context:\n" + _context_block(ctx, focus_criterion_key=criterion_key),
+        },
+        {
+            "role": "assistant",
+            "content": "I have reviewed the assessment context. What would you like to discuss?",
         },
     ]
-    for msg in history[-12:]:
-        role = "assistant" if msg.role == "assistant" else "user"
-        chat_messages.append({"role": role, "content": msg.content})
+    chat_messages.extend(_history_for_llm(history[:-1]))
+    chat_messages.append({"role": "user", "content": message.strip()})
 
-    raw = ollama_client.chat(chat_messages, temperature=0.25)
-    parsed = ollama_client.parse_json_response(raw or "")
-
-    if not parsed:
+    raw = ollama_client.chat(chat_messages, temperature=0.35)
+    reply = (raw or "").strip()
+    if not reply:
         reply = (
-            raw
-            or "I could not reach the on-premise model. "
+            "I could not reach the on-premise model. "
             "Your message was saved — try again when Ollama is available."
         )
-        updates = []
-        summary_update = None
-    else:
-        reply = str(parsed.get("reply") or "I've updated the analysis based on your feedback.")
-        updates = parsed.get("updates") or []
-        summary_update = parsed.get("summary")
-
-    now = _now()
-    applied_changes: list[dict[str, Any]] = []
-    for upd in updates:
-        key = upd.get("criterion_key")
-        if not key:
-            continue
-        entry = draft["criteria"].get(key)
-        if not entry or entry.get("is_overridden"):
-            continue
-        ai = copy.deepcopy(entry.get("ai") or {})
-        prior_score = ai.get("score")
-        prior_comment = ai.get("comment")
-        criterion_refs = [r for r in evidence_refs if r.get("criterion_key") == key] or evidence_refs
-        new_comment = str(upd["comment"]) if upd.get("comment") else None
-        if new_comment and not _comment_cites_evidence(new_comment, criterion_refs):
-            continue
-        if upd.get("score") is not None:
-            ai["score"] = float(upd["score"])
-        if new_comment:
-            ai["comment"] = new_comment
-        ai["generated_at"] = now.isoformat()
-        ai["refined_via_chat"] = True
-        d = defs_by_key.get(key)
-        if d:
-            matches = match_criterion_to_evidence(
-                key, d["name"], d["description"], evidence_rows
-            )
-            ai["evidence_refs"] = _build_evidence_refs(matches)
-            persist_matches(
-                db, assessment_id=assessment.id, criterion_key=key, matches=matches
-            )
-        entry["ai"] = ai
-        entry["effective"] = _effective_value(ai, entry.get("teacher"), False)
-        applied_changes.append(
-            {
-                "criterion_key": key,
-                "before": {"score": prior_score, "comment": prior_comment},
-                "after": {"score": ai.get("score"), "comment": ai.get("comment")},
-            }
-        )
-
-    if summary_update and not draft["summary"].get("teacher"):
-        draft["summary"]["ai"] = summary_update
-        draft["summary"]["effective"] = summary_update
-
-    overall = _compute_overall_score(draft["criteria"], draft["criteria_defs"])
-    if overall is not None and not draft["overall_grade"].get("teacher"):
-        grade = _score_to_grade(overall)
-        draft["overall_grade"]["ai"] = grade
-        draft["overall_grade"]["effective"] = grade
 
     assistant_msg = ChatMessage(
         assessment_id=assessment.id,
         role="assistant",
         content=reply,
+        metadata_json={"type": "discuss"},
     )
     db.add(assistant_msg)
+    db.commit()
+    return reply
+
+
+def chat_propose_refine(
+    db: Session,
+    *,
+    assessment: Assessment,
+    teacher: Teacher,
+) -> dict[str, Any]:
+    """Generate a refinement proposal from the full conversation — does not mutate draft."""
+    _assert_editable(assessment)
+    draft = _load_draft(assessment)
+    _assert_has_suggestions(draft)
+
+    history = list_chat_messages(db, assessment.id)
+    if not any(m.role == "teacher" for m in history):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discuss the assessment before refining — send at least one message first",
+        )
+
+    _reject_pending_proposals(db, assessment.id)
+    ctx = _build_assessment_context(db, assessment=assessment, draft=draft)
+    catalog = _criteria_catalog_for_prompt(draft)
+
+    chat_messages: list[dict[str, str]] = [
+        {"role": "system", "content": _CHAT_PROPOSE_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                "Assessment context:\n"
+                + _context_block(ctx)
+                + "\n\nAvailable criteria (use criterion_key exactly):\n"
+                + catalog
+                + "\n\nBased on the conversation below, propose criterion updates grounded in evidence. "
+                "If the lecturer and assistant agreed on new scores, include every agreed change in updates[]."
+            ),
+        },
+        {
+            "role": "assistant",
+            "content": "Ready to propose updates from the discussion.",
+        },
+    ]
+    chat_messages.extend(_history_for_llm(history))
+
+    raw = ollama_client.chat(chat_messages, temperature=0.2, format_json=True)
+    parsed = ollama_client.parse_json_response(raw or "")
+
+    updates: list[dict[str, Any]] = []
+    summary_update: Optional[str] = None
+    parsed_reply: Optional[str] = None
+    if parsed:
+        parsed_reply = str(parsed.get("reply") or "").strip() or None
+        updates = parsed.get("updates") or []
+        summary_update = parsed.get("summary")
+
+    proposed, _ = _build_proposed_changes(draft, updates, ctx)
+
+    if not proposed:
+        inferred = _infer_updates_from_conversation(history, draft, ctx)
+        if inferred:
+            proposed, _ = _build_proposed_changes(draft, inferred, ctx)
+            updates = inferred
+
+    if not proposed and not updates:
+        convo_excerpt = "\n".join(
+            f"{m.role}: {m.content}"
+            for m in history[-10:]
+            if (m.metadata_json or {}).get("type") != "proposal"
+        )
+        retry_raw = ollama_client.chat(
+            [
+                {"role": "system", "content": _CHAT_PROPOSE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Criteria catalog:\n{catalog}\n\n"
+                        f"Conversation:\n{convo_excerpt}\n\n"
+                        "Return JSON only. The conversation contains agreed score changes — "
+                        "populate updates[] with every change. Do not return an empty updates array."
+                    ),
+                },
+            ],
+            temperature=0.15,
+            format_json=True,
+        )
+        retry_parsed = ollama_client.parse_json_response(retry_raw or "")
+        if retry_parsed:
+            parsed_reply = str(retry_parsed.get("reply") or "").strip() or parsed_reply
+            retry_updates = retry_parsed.get("updates") or []
+            if retry_updates:
+                updates = retry_updates
+                summary_update = retry_parsed.get("summary") or summary_update
+                proposed, _ = _build_proposed_changes(draft, updates, ctx)
+
+    reply = _proposal_summary_text(proposed, parsed_reply or "")
+
+    proposal_id = uuid.uuid4()
+    proposal_msg = ChatMessage(
+        id=proposal_id,
+        assessment_id=assessment.id,
+        role="assistant",
+        content=reply,
+        metadata_json={
+            "type": "proposal",
+            "status": "pending",
+            "proposal_id": str(proposal_id),
+            "proposed_changes": _changes_to_out(proposed),
+            "summary_proposed": summary_update,
+            "updates_requested": len(updates),
+        },
+    )
+    db.add(proposal_msg)
+    db.commit()
+
+    return {
+        "proposal_id": str(proposal_id),
+        "message_id": str(proposal_id),
+        "reply": reply,
+        "proposed_changes": _changes_to_out(proposed),
+        "summary_proposed": summary_update,
+        "updates_requested": len(updates),
+    }
+
+
+def chat_apply_proposal(
+    db: Session,
+    *,
+    assessment: Assessment,
+    teacher: Teacher,
+    proposal_id: UUID,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Accept a pending proposal and apply it to the draft."""
+    _assert_editable(assessment)
+    draft = _load_draft(assessment)
+    msg = _get_proposal_message(db, assessment.id, proposal_id)
+    meta = msg.metadata_json or {}
+    if meta.get("status") != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Proposal is already {meta.get('status')}",
+        )
+
+    ctx = _build_assessment_context(db, assessment=assessment, draft=draft)
+    proposed = []
+    for row in meta.get("proposed_changes") or []:
+        proposed.append(
+            {
+                "criterion_key": row["criterion_key"],
+                "criterion_name": row.get("criterion_name", row["criterion_key"]),
+                "before": {
+                    "score": row.get("before_score"),
+                    "comment": row.get("before_comment"),
+                },
+                "after": {
+                    "score": row.get("after_score"),
+                    "comment": row.get("after_comment"),
+                },
+            }
+        )
+
+    if not proposed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This proposal contains no applicable criterion changes",
+        )
+
+    applied = _apply_proposed_changes(
+        db,
+        assessment=assessment,
+        draft=draft,
+        proposed=proposed,
+        summary_update=meta.get("summary_proposed"),
+        ctx=ctx,
+    )
     _save_draft(db, assessment, draft)
+
+    meta = {**meta, "status": "applied", "applied_changes": _changes_to_out(applied)}
+    msg.metadata_json = meta
+    msg.content = f"Applied refinement: {msg.content}"
+    db.add(msg)
+    db.commit()
 
     audit_service.log_action(
         db,
@@ -803,13 +1318,107 @@ def chat_refine(
         teacher_name=teacher.name,
         assessment_id=assessment.id,
         details={
-            "teacher_message": message[:500],
-            "updates_requested": len(updates),
-            "updates_applied": len(applied_changes),
-            "changes": applied_changes,
+            "proposal_id": str(proposal_id),
+            "updates_applied": len(applied),
+            "changes": applied,
         },
     )
-    return reply, draft
+    return draft, _changes_to_out(applied)
+
+
+def chat_reject_proposal(
+    db: Session,
+    *,
+    assessment: Assessment,
+    teacher: Teacher,
+    proposal_id: UUID,
+) -> None:
+    _assert_editable(assessment)
+    msg = _get_proposal_message(db, assessment.id, proposal_id)
+    meta = msg.metadata_json or {}
+    if meta.get("status") != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Proposal is already {meta.get('status')}",
+        )
+    meta = {**meta, "status": "rejected"}
+    msg.metadata_json = meta
+    db.add(msg)
+    db.commit()
+
+
+def chat_undo_last_apply(
+    db: Session,
+    *,
+    assessment: Assessment,
+    teacher: Teacher,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Restore criterion AI values from the most recent applied chat refinement."""
+    _assert_editable(assessment)
+    event = (
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.assessment_id == assessment.id,
+            AuditEvent.action == "assessment.chat_refine",
+        )
+        .order_by(AuditEvent.timestamp.desc())
+        .first()
+    )
+    if not event or not event.details_json:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No applied refinement to undo",
+        )
+
+    draft = _load_draft(assessment)
+    restored: list[dict[str, Any]] = []
+    for change in event.details_json.get("changes") or []:
+        key = change.get("criterion_key")
+        if not key or key not in draft["criteria"]:
+            continue
+        entry = draft["criteria"][key]
+        if entry.get("is_overridden"):
+            continue
+        before = change.get("before") or {}
+        ai = copy.deepcopy(entry.get("ai") or {})
+        if before.get("score") is not None:
+            ai["score"] = before["score"]
+        if before.get("comment") is not None:
+            ai["comment"] = before["comment"]
+        ai["generated_at"] = _now().isoformat()
+        ai["refined_via_chat"] = False
+        entry["ai"] = ai
+        entry["effective"] = _effective_value(ai, entry.get("teacher"), False)
+        restored.append(
+            {
+                "criterion_key": key,
+                "criterion_name": change.get("criterion_name", key),
+                "before_score": (change.get("after") or {}).get("score"),
+                "after_score": before.get("score"),
+            }
+        )
+
+    if not restored:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nothing to undo — overridden criteria were not changed",
+        )
+
+    overall = _compute_overall_score(draft["criteria"], draft["criteria_defs"])
+    if overall is not None and not draft["overall_grade"].get("teacher"):
+        draft["overall_grade"]["ai"] = _score_to_grade(overall)
+        draft["overall_grade"]["effective"] = draft["overall_grade"]["ai"]
+
+    _save_draft(db, assessment, draft)
+    audit_service.log_action(
+        db,
+        action="assessment.chat_undo",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        assessment_id=assessment.id,
+        details={"restored": restored},
+    )
+    return draft, restored
 
 
 def finalize_assessment(
@@ -905,6 +1514,19 @@ def list_chat_messages(db: Session, assessment_id: UUID) -> list[ChatMessage]:
         .order_by(ChatMessage.timestamp)
         .all()
     )
+
+
+def serialize_chat_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "metadata": m.metadata_json,
+        }
+        for m in messages
+    ]
 
 
 def get_audit_trail(db: Session, assessment_id: UUID) -> list[AuditEvent]:
