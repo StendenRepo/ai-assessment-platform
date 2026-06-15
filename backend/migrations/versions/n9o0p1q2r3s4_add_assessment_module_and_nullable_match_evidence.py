@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "j5k6l7m8n9o0"
-down_revision: Union[str, None] = "i4j5k6l7m8n9"
+revision: str = "n9o0p1q2r3s4"
+down_revision: Union[str, None] = "m8n9o0p1q2r3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
