@@ -289,61 +289,6 @@ class TestEvidenceMatchingRoutes:
         ).json()
         assert _criterion(body, "architecture")["covered"] is True
 
-    def test_admin_can_run_matching_on_another_teachers_module(
-        self, client, db, seed, monkeypatch
-    ):
-        monkeypatch.setattr(
-            "app.ai.ai_judge.judge_criterion", _fake_supported_judge
-        )
-        from app.core.security import hash_password
-        from app.models.assessment import Assessment
-        from app.models.evidence_match import EvidenceMatch
-        from app.models.generation_run import GenerationRun
-        from app.models.teacher import Teacher
-
-        admin = Teacher(
-            id=uuid.uuid4(),
-            name="Admin",
-            email="admin@test.com",
-            password_hash=hash_password("password123"),
-            is_admin=True,
-        )
-        db.add(admin)
-        db.commit()
-        try:
-            res = client.post(
-                LOGIN_URL,
-                json={"email": "admin@test.com", "password": "password123"},
-            )
-            headers = {"Authorization": f"Bearer {res.json()['access_token']}"}
-            r = client.post(
-                "/api/v1/students/S-100/evidence-matches",
-                json={"module_id": str(seed["module"].id)},
-                headers=headers,
-            )
-            assert r.status_code == 200, r.text
-            run_id = r.json()["run_id"]
-            assert any(c["covered"] for c in r.json()["criteria"])
-
-            history = client.get(
-                "/api/v1/students/S-100/evidence-matches", headers=headers
-            ).json()
-            assert history["run_id"] == run_id
-            assert run_id in {run["run_id"] for run in history["runs"]}
-
-            gone = client.delete(
-                f"/api/v1/students/S-100/evidence-matches/runs/{run_id}",
-                headers=headers,
-            )
-            assert gone.status_code == 200, gone.text
-        finally:
-            db.query(EvidenceMatch).delete(synchronize_session=False)
-            db.query(GenerationRun).delete(synchronize_session=False)
-            db.query(Assessment).delete(synchronize_session=False)
-            db.delete(admin)
-            db.commit()
-            db.expire_all()
-
     def test_get_is_empty_before_any_run(self, client, seed):
         headers = _auth_headers(client)
         body = client.get(

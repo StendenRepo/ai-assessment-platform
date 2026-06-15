@@ -273,27 +273,27 @@ def _empty_report(assessment=None) -> dict:
 def _resolve_module_and_rubric(
     db: Session, student: Student, teacher: Teacher, module_id
 ) -> tuple[Module, FileRecord]:
-    is_admin = getattr(teacher, "is_admin", False)
     if module_id is not None:
-        query = db.query(Module).filter(Module.id == module_id)
-        if not is_admin:
-            query = query.filter(Module.teacher_id == teacher.id)
-        module = query.first()
+        module = (
+            db.query(Module)
+            .filter(Module.id == module_id, Module.teacher_id == teacher.id)
+            .first()
+        )
         if module is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found")
     else:
-        query = (
+        modules = (
             db.query(Module)
             .join(Project, Project.module_id == Module.id)
             .join(student_projects, student_projects.c.project_id == Project.id)
             .filter(
                 student_projects.c.student_id == student.student_number,
+                Module.teacher_id == teacher.id,
                 Module.rubric_file_id.isnot(None),
             )
+            .distinct()
+            .all()
         )
-        if not is_admin:
-            query = query.filter(Module.teacher_id == teacher.id)
-        modules = query.distinct().all()
         if not modules:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
