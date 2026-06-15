@@ -82,8 +82,12 @@ def seed(db, teacher, tmp_path, monkeypatch):
 
     from app.models.assessment import Assessment
     from app.models.evidence_match import EvidenceMatch
+    from app.models.generation_run import GenerationRun
+    from app.models.notification import Notification
 
+    db.query(Notification).delete(synchronize_session=False)
     db.query(EvidenceMatch).delete(synchronize_session=False)
+    db.query(GenerationRun).delete(synchronize_session=False)
     db.query(Assessment).delete(synchronize_session=False)
     db.query(Evidence).filter(Evidence.student_id == "S-100").delete(synchronize_session=False)
     db.execute(student_projects.delete())
@@ -99,7 +103,7 @@ def _criterion(body, needle):
     return next(c for c in body["criteria"] if needle in c["criterion_key"].lower())
 
 
-def _fake_supported_judge(criterion_text, candidates):
+def _fake_supported_judge(criterion_text, candidates, model=None):
     return {
         "supported": True,
         "best": candidates[0][0],
@@ -128,7 +132,6 @@ class TestEvidenceMatchingRoutes:
         assert best["confidence_score"] >= settings.MATCH_CONFIDENCE_THRESHOLD
         normalized = " ".join(EVIDENCE_TEXT.split())
         assert best["supporting_quote"] in normalized
-        # The AI verdict's reason is surfaced as the rationale.
         assert best["rationale"] and best["rationale"].startswith("AI:")
 
         deployment = _criterion(body, "deployment")
@@ -139,7 +142,6 @@ class TestEvidenceMatchingRoutes:
     def test_fallback_to_text_match_when_ai_unavailable(
         self, client, seed, monkeypatch
     ):
-        # AI down → judge returns None → grounded TF-IDF threshold decides.
         monkeypatch.setattr(
             "app.ai.ai_judge.judge_criterion", lambda *a, **k: None
         )
@@ -152,7 +154,7 @@ class TestEvidenceMatchingRoutes:
         assert arch["matches"][0]["rationale"] is None
         assert _criterion(body, "deployment")["covered"] is False
 
-    def test_get_returns_stored_mapping_and_rerun_replaces(
+    def test_rerun_keeps_previous_run_and_get_can_fetch_it(
         self, client, seed, monkeypatch
     ):
         monkeypatch.setattr(
@@ -162,16 +164,130 @@ class TestEvidenceMatchingRoutes:
         first = client.post(
             "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
         ).json()
+        first_run = first["run_id"]
+        assert first_run is not None
 
         got = client.get("/api/v1/students/S-100/evidence-matches", headers=headers)
         assert got.status_code == 200
+        assert got.json()["run_id"] == first_run
         assert got.json()["criteria"] == first["criteria"]
 
         again = client.post(
             "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
         ).json()
-        arch = _criterion(again, "architecture")
-        assert len(arch["matches"]) == len(_criterion(first, "architecture")["matches"])
+        second_run = again["run_id"]
+        assert second_run != first_run
+        latest = client.get(
+            "/api/v1/students/S-100/evidence-matches", headers=headers
+        ).json()
+        assert latest["run_id"] == second_run
+        run_ids = {r["run_id"] for r in latest["runs"]}
+        assert {first_run, second_run} <= run_ids
+
+        original = client.get(
+            f"/api/v1/students/S-100/evidence-matches?run_id={first_run}",
+            headers=headers,
+        ).json()
+        assert original["run_id"] == first_run
+        assert original["criteria"] == first["criteria"]
+
+    def test_thorough_mode_is_recorded_on_the_run(self, client, seed, monkeypatch):
+        monkeypatch.setattr(
+            "app.ai.ai_judge.judge_criterion", _fake_supported_judge
+        )
+        headers = _auth_headers(client)
+        body = client.post(
+            "/api/v1/students/S-100/evidence-matches",
+            json={"mode": "thorough"},
+            headers=headers,
+        ).json()
+        assert body["mode"] == "thorough"
+        assert body["runs"][0]["mode"] == "thorough"
+
+    def test_delete_run_removes_it(self, client, seed, monkeypatch):
+        monkeypatch.setattr(
+            "app.ai.ai_judge.judge_criterion", _fake_supported_judge
+        )
+        headers = _auth_headers(client)
+        first = client.post(
+            "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
+        ).json()
+        second = client.post(
+            "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
+        ).json()
+
+        res = client.delete(
+            f"/api/v1/students/S-100/evidence-matches/runs/{second['run_id']}",
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["run_id"] == first["run_id"]
+        assert {r["run_id"] for r in body["runs"]} == {first["run_id"]}
+
+        gone = client.get(
+            f"/api/v1/students/S-100/evidence-matches?run_id={second['run_id']}",
+            headers=headers,
+        )
+        assert gone.status_code == 404
+
+    def test_deleting_evidence_clears_saved_runs(
+        self, client, seed, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.ai.ai_judge.judge_criterion", _fake_supported_judge
+        )
+        headers = _auth_headers(client)
+        client.post(
+            "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
+        )
+        before = client.get(
+            "/api/v1/students/S-100/evidence-matches", headers=headers
+        ).json()
+        assert before["runs"]
+
+        ev_id = seed["evidence"].id
+        res = client.delete(f"/api/v1/evidence/{ev_id}", headers=headers)
+        assert res.status_code == 204, res.text
+
+        after = client.get(
+            "/api/v1/students/S-100/evidence-matches", headers=headers
+        ).json()
+        assert after["runs"] == []
+        assert after["criteria"] == []
+
+    def test_ai_vetoes_borderline_text_match(self, client, seed, monkeypatch):
+        monkeypatch.setattr(settings, "MATCH_STRONG_THRESHOLD", 1.0)
+        monkeypatch.setattr(
+            "app.ai.ai_judge.judge_criterion",
+            lambda *a, **k: {
+                "supported": False,
+                "best": None,
+                "reason": "The excerpt does not address this criterion.",
+            },
+        )
+        headers = _auth_headers(client)
+        body = client.post(
+            "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
+        ).json()
+        arch = _criterion(body, "architecture")
+        assert arch["covered"] is False
+        assert arch["matches"] == []
+        assert arch["missing_note"]
+
+    def test_very_strong_text_match_survives_ai_rejection(
+        self, client, seed, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "MATCH_STRONG_THRESHOLD", 0.0)
+        monkeypatch.setattr(
+            "app.ai.ai_judge.judge_criterion",
+            lambda *a, **k: {"supported": False, "best": None, "reason": "no"},
+        )
+        headers = _auth_headers(client)
+        body = client.post(
+            "/api/v1/students/S-100/evidence-matches", json={}, headers=headers
+        ).json()
+        assert _criterion(body, "architecture")["covered"] is True
 
     def test_get_is_empty_before_any_run(self, client, seed):
         headers = _auth_headers(client)

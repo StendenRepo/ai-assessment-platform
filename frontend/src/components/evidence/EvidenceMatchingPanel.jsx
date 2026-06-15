@@ -10,16 +10,40 @@ import {
   ChevronRight,
   FileText,
   Quote,
-  Shield,
+  History,
+  Trash2,
+  Clock,
 } from 'lucide-react';
 import {
   getEvidenceMatches,
   runEvidenceMatching,
+  deleteEvidenceMatchRun,
 } from '@/lib/api/evidenceMatching';
 
 function confidenceLabel(score) {
   if (score == null) return null;
   return `${Math.round(score * 100)}%`;
+}
+
+function formatWhen(iso) {
+  if (!iso) return '';
+  const utc = /[zZ]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`;
+  const d = new Date(utc);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function runLabel(run) {
+  const when = formatWhen(run.created_at);
+  const mode = run.mode === 'thorough' ? 'Thorough' : 'Standard';
+  return `${when} · ${mode} · ${run.criteria_covered}/${run.criteria_total}${
+    run.expired ? ' · expired' : ''
+  }`;
 }
 
 function CriterionRow({ criterion }) {
@@ -109,24 +133,33 @@ function CriterionRow({ criterion }) {
 
 export default function EvidenceMatchingPanel({ studentId, moduleId }) {
   const [criteria, setCriteria] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState(null);
+  const [mode, setMode] = useState('standard');
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [hasRun, setHasRun] = useState(false);
+
+  const applyReport = useCallback((report) => {
+    const list = report?.criteria ?? [];
+    setCriteria(list);
+    setRuns(report?.runs ?? []);
+    setSelectedRunId(report?.run_id ?? null);
+    setHasRun((report?.runs ?? []).length > 0);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const report = await getEvidenceMatches(studentId);
-      const list = report?.criteria ?? [];
-      setCriteria(list);
-      setHasRun(list.length > 0);
+      applyReport(await getEvidenceMatches(studentId));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [studentId]);
+  }, [studentId, applyReport]);
 
   useEffect(() => {
     if (studentId) load();
@@ -136,9 +169,7 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
     setError('');
     setRunning(true);
     try {
-      const report = await runEvidenceMatching(studentId, moduleId);
-      setCriteria(report?.criteria ?? []);
-      setHasRun(true);
+      applyReport(await runEvidenceMatching(studentId, moduleId, mode));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -146,7 +177,35 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
     }
   };
 
+  const handleSelectRun = async (runId) => {
+    if (!runId || runId === selectedRunId) return;
+    setError('');
+    setLoading(true);
+    try {
+      applyReport(await getEvidenceMatches(studentId, runId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedRunId) return;
+    setError('');
+    setDeleting(true);
+    try {
+      applyReport(await deleteEvidenceMatchRun(studentId, selectedRunId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const coveredCount = criteria.filter((c) => c.covered).length;
+  const selectedRun = runs.find((r) => r.run_id === selectedRunId);
+  const busy = running || deleting || loading;
 
   return (
     <div className="rounded-lg bg-card border border-border overflow-hidden">
@@ -164,9 +223,30 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
               : 'Match this student’s evidence to the rubric criteria'}
           </div>
         </div>
+        <div className="shrink-0 inline-flex rounded-md border border-border overflow-hidden">
+          {['standard', 'thorough'].map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              disabled={busy}
+              className={`px-2.5 py-2 text-[11px] font-semibold capitalize transition-colors cursor-pointer disabled:cursor-not-allowed ${
+                mode === m
+                  ? 'bg-secondary text-foreground'
+                  : 'bg-card text-muted-foreground hover:text-foreground'
+              }`}
+              title={
+                m === 'thorough'
+                  ? 'Slower, wider search for more accurate results'
+                  : 'Quick pass'
+              }
+            >
+              {m}
+            </button>
+          ))}
+        </div>
         <button
           onClick={handleRun}
-          disabled={running}
+          disabled={busy}
           className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {running ? (
@@ -174,21 +254,48 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
           ) : (
             <Sparkles size={13} />
           )}
-          {running ? 'Matching…' : hasRun ? 'Re-run matching' : 'Run AI matching'}
+          {running ? 'Matching…' : hasRun ? 'Re-run' : 'Run AI matching'}
         </button>
       </div>
 
-      <div className="p-4 space-y-3">
-        <div className="flex items-start gap-2 rounded-md bg-secondary border border-border p-3">
-          <Shield size={12} className="text-muted-foreground mt-0.5 shrink-0" />
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Quotes are taken verbatim from the evidence (never invented); a local
-            AI model then checks whether each genuinely supports the criterion.
-            Runs on-premises and never assigns grades — the final judgement stays
-            with you.
-          </p>
+      {hasRun && runs.length > 0 && (
+        <div className="flex items-center gap-2 px-5 py-2.5 border-b border-border bg-secondary/30">
+          <History size={13} className="text-muted-foreground shrink-0" />
+          <select
+            value={selectedRunId || ''}
+            onChange={(e) => handleSelectRun(e.target.value)}
+            disabled={busy}
+            className="flex-1 min-w-0 rounded-md border border-border bg-card px-2 py-1.5 text-[11px] text-foreground cursor-pointer disabled:cursor-not-allowed"
+          >
+            {runs.map((run, i) => (
+              <option key={run.run_id} value={run.run_id}>
+                {i === 0 ? 'Latest · ' : ''}
+                {runLabel(run)}
+              </option>
+            ))}
+          </select>
+          {selectedRun?.expired && (
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20 shrink-0">
+              <Clock size={10} /> Expired
+            </span>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={busy || !selectedRunId}
+            className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-md border border-border text-[11px] font-semibold text-muted-foreground hover:text-red-400 hover:border-red-500/30 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            title="Delete this run"
+          >
+            {deleting ? (
+              <span className="w-3 h-3 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Trash2 size={12} />
+            )}
+            Delete
+          </button>
         </div>
+      )}
 
+      <div className="p-4 space-y-3">
         {error && (
           <div className="flex items-start gap-2 rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2">
             <AlertTriangle size={12} className="text-red-400 mt-0.5 shrink-0" />

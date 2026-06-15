@@ -1,3 +1,5 @@
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -19,11 +21,29 @@ class CriterionCoverage(BaseModel):
     matches: list[MatchedEvidence]
 
 
+class GenerationRunSummary(BaseModel):
+    run_id: UUID
+    created_at: datetime
+    mode: str
+    ai_model: str | None = None
+    ai_used: bool
+    criteria_total: int
+    criteria_covered: int
+    expires_at: datetime | None = None
+    expired: bool = False
+
+
 class EvidenceMatchReport(BaseModel):
     assessment_id: UUID | None
     module_id: UUID | None
+    run_id: UUID | None = None
+    created_at: datetime | None = None
+    mode: str | None = None
+    expires_at: datetime | None = None
     criteria: list[CriterionCoverage]
+    runs: list[GenerationRunSummary] = []
 
 
 class RunMatchingRequest(BaseModel):
     module_id: UUID | None = None
+    mode: Literal["standard", "thorough"] = "standard"

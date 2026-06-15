@@ -29,7 +29,9 @@ def _build_prompt(criterion_text, candidates):
         f"Criterion: {criterion_text}\n\n"
         f"Candidate excerpts from the student's work:\n{numbered}\n\n"
         "Pick the single excerpt that best supports the criterion, or none if "
-        "none genuinely do. Reply ONLY as JSON: "
+        "none genuinely do. An excerpt that is merely on a related topic does "
+        "NOT count — it must directly demonstrate this specific criterion. When "
+        "in doubt, answer not supported. Reply ONLY as JSON: "
         '{"supported": true or false, "best": <excerpt number or null>, '
         '"reason": "<one short sentence in your own words>"}. '
         "Choose a number only from the list. In 'reason', briefly explain your "
@@ -56,7 +58,7 @@ def _parse_verdict(raw, valid_labels):
     }
 
 
-def judge_criterion(criterion_text, candidates):
+def judge_criterion(criterion_text, candidates, model=None):
     if not candidates:
         return None
     valid_labels = {label for label, _ in candidates}
@@ -66,7 +68,7 @@ def judge_criterion(criterion_text, candidates):
             response = client.post(
                 f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                 json={
-                    "model": settings.MATCH_AI_MODEL,
+                    "model": model or settings.MATCH_AI_MODEL,
                     "prompt": prompt,
                     "stream": False,
                     "format": "json",

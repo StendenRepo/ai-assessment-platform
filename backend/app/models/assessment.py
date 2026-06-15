@@ -38,6 +38,12 @@ class Assessment(Base):
     )
     chat_messages = relationship("ChatMessage", back_populates="assessment")
     evidence_matches = relationship("EvidenceMatch", back_populates="assessment")
+    generation_runs = relationship(
+        "GenerationRun",
+        back_populates="assessment",
+        order_by="GenerationRun.created_at.desc()",
+        cascade="all, delete-orphan",
+    )
     recordings = relationship(
         "Recording", back_populates="assessment", order_by="Recording.sequence_number"
     )

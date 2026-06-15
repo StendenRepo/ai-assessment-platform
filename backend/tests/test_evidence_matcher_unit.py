@@ -26,6 +26,25 @@ class TestChunking:
             for word in chunk.split():
                 assert word in text
 
+    def test_markdown_markers_are_stripped_from_quotes(self):
+        text = (
+            "## Testing\n"
+            "We wrote **comprehensive** unit tests for the modules.\n"
+            "- covering the booking calculation and pricing rules\n"
+        )
+        chunks = chunk_text(text, chunk_size=60, overlap=15)
+        joined = " ".join(chunks)
+        assert "#" not in joined
+        assert "*" not in joined
+        assert "- covering" not in joined
+        assert "Testing. We wrote comprehensive unit tests" in joined
+
+    def test_chunks_start_at_a_sentence_boundary(self):
+        text = " ".join(f"Sentence number {i} carries several words here." for i in range(30))
+        chunks = chunk_text(text, chunk_size=20, overlap=6)
+        assert len(chunks) > 1
+        assert all(c[0].isupper() for c in chunks)
+
 
 class TestRubricCriteria:
     def test_xlsx_one_row_per_criterion(self, tmp_path):

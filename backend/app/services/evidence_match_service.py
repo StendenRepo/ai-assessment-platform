@@ -1,4 +1,5 @@
 import uuid as _uuid
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.models.enums import AuditSource
 from app.models.evidence import Evidence
 from app.models.evidence_match import EvidenceMatch
 from app.models.file_record import FileRecord
+from app.models.generation_run import GenerationRun
 from app.models.module import Module
 from app.models.project import Project
 from app.models.student import Student, student_projects
@@ -24,8 +26,23 @@ from app.services.module_service import RUBRIC_UPLOAD_DIR
 _MISSING_NOTE = "No supporting evidence found"
 
 
+def _mode_settings(mode: str) -> tuple[str, int, str]:
+    if mode == "thorough":
+        return (
+            "thorough",
+            settings.MATCH_CANDIDATE_POOL_THOROUGH,
+            settings.MATCH_AI_MODEL_THOROUGH,
+        )
+    return "standard", settings.MATCH_CANDIDATE_POOL, settings.MATCH_AI_MODEL
+
+
 def run_matching(
-    db: Session, *, student_id: str, teacher: Teacher, module_id=None
+    db: Session,
+    *,
+    student_id: str,
+    teacher: Teacher,
+    module_id=None,
+    mode: str = "standard",
 ) -> dict:
     student = db.get(Student, student_id)
     if student is None:
@@ -45,59 +62,69 @@ def run_matching(
             "structured .xlsx file (one criterion per row).",
         )
 
+    mode, candidate_pool, ai_model = _mode_settings(mode)
     chunks = _evidence_chunks(db, student_id)
 
     candidate_results = evidence_matcher.match_criteria(
         criteria,
         chunks,
         threshold=0.0,
-        top_k=settings.MATCH_CANDIDATE_POOL,
+        top_k=candidate_pool,
     )
 
     assessment = assessment_service.get_or_create_for_student(
         db, student_id=student_id, teacher=teacher, module_id=module.id
     )
 
-    db.query(EvidenceMatch).filter(
-        EvidenceMatch.assessment_id == assessment.id
-    ).delete(synchronize_session=False)
+    run = GenerationRun(
+        assessment_id=assessment.id,
+        created_by=teacher.id,
+        mode=mode,
+        ai_model=ai_model if settings.MATCH_USE_AI else None,
+        criteria_total=len(criteria),
+        expires_at=datetime.utcnow()
+        + timedelta(days=settings.GENERATION_RETENTION_DAYS),
+    )
+    db.add(run)
+    db.flush()
 
     covered = 0
     ai_used = False
     for result in candidate_results:
         pool = [(i, m) for i, m in enumerate(result.matches) if m.score > 0]
-        label_map = {label: m for label, m in pool}
 
         verdict = None
         if settings.MATCH_USE_AI and pool:
             verdict = ai_judge.judge_criterion(
                 result.criterion.text,
                 [(label, m.chunk.text) for label, m in pool],
+                model=ai_model,
             )
             if verdict is not None:
                 ai_used = True
 
-        # The AI may *add* a match the text search missed, but never overturn a
-        # strong text match — a weak model must not bury grounded evidence.
         tfidf_best = pool[0][1] if pool else None
-        strong = (
+        very_strong = (
+            tfidf_best is not None
+            and tfidf_best.score >= settings.MATCH_STRONG_THRESHOLD
+        )
+        grounded = (
             tfidf_best is not None
             and tfidf_best.score >= settings.MATCH_CONFIDENCE_THRESHOLD
         )
-        ai_supported = verdict is not None and verdict["supported"]
+        ai_available = verdict is not None
+        ai_supported = ai_available and verdict["supported"]
+        ai_rejected = ai_available and not verdict["supported"]
 
         chosen = None
         rationale = None
         note = _MISSING_NOTE
 
-        if strong:
+        if very_strong or (grounded and not ai_rejected):
             chosen = tfidf_best
             if ai_supported:
                 rationale = verdict["reason"] or None
-        elif ai_supported:
-            chosen = label_map.get(verdict["best"]) or tfidf_best
-            rationale = verdict["reason"] or None
-        elif verdict is not None and verdict["reason"]:
+        elif ai_rejected and verdict["reason"]:
             note = verdict["reason"]
 
         if chosen is not None:
@@ -105,6 +132,7 @@ def run_matching(
             db.add(
                 EvidenceMatch(
                     assessment_id=assessment.id,
+                    run_id=run.id,
                     criterion_key=result.criterion.key,
                     evidence_id=_uuid.UUID(chosen.chunk.evidence_id),
                     chunk_index=chosen.chunk.chunk_index,
@@ -117,10 +145,14 @@ def run_matching(
             db.add(
                 EvidenceMatch(
                     assessment_id=assessment.id,
+                    run_id=run.id,
                     criterion_key=result.criterion.key,
                     missing_note=note,
                 )
             )
+
+    run.criteria_covered = covered
+    run.ai_used = ai_used
 
     audit_service.log_action(
         db,
@@ -130,6 +162,8 @@ def run_matching(
         teacher_name=teacher.name,
         assessment_id=assessment.id,
         details={
+            "run_id": str(run.id),
+            "mode": mode,
             "module_id": str(module.id),
             "criteria_total": len(criteria),
             "criteria_covered": covered,
@@ -140,23 +174,100 @@ def run_matching(
     )
     db.commit()
 
-    return _build_report(db, assessment)
+    return _build_report(db, assessment, run)
 
 
-def get_report(db: Session, *, student_id: str, teacher: Teacher) -> dict:
+def get_report(
+    db: Session, *, student_id: str, teacher: Teacher, run_id=None
+) -> dict:
     student = db.get(Student, student_id)
     if student is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found")
 
-    assessment = (
+    assessment = _latest_assessment(db, student_id, teacher)
+    if assessment is None:
+        return _empty_report()
+
+    runs = _runs_for(db, assessment)
+    if not runs:
+        return _empty_report(assessment)
+
+    if run_id is not None:
+        run = next((r for r in runs if r.id == run_id), None)
+        if run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+    else:
+        run = runs[0]
+
+    return _build_report(db, assessment, run, runs=runs)
+
+
+def delete_run(
+    db: Session, *, student_id: str, teacher: Teacher, run_id
+) -> dict:
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found")
+
+    assessment = _latest_assessment(db, student_id, teacher)
+    run = None
+    if assessment is not None:
+        run = (
+            db.query(GenerationRun)
+            .filter(
+                GenerationRun.id == run_id,
+                GenerationRun.assessment_id == assessment.id,
+            )
+            .first()
+        )
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
+
+    db.delete(run)
+    audit_service.log_action(
+        db,
+        action="ai.evidence_matching.run_deleted",
+        source=AuditSource.teacher,
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        assessment_id=assessment.id,
+        details={"run_id": str(run_id)},
+        commit=False,
+    )
+    db.commit()
+
+    return get_report(db, student_id=student_id, teacher=teacher)
+
+
+def _latest_assessment(db: Session, student_id: str, teacher: Teacher):
+    return (
         db.query(Assessment)
         .filter_by(student_id=student_id, teacher_id=teacher.id)
         .order_by(Assessment.created_at.desc())
         .first()
     )
-    if assessment is None:
-        return {"assessment_id": None, "module_id": None, "criteria": []}
-    return _build_report(db, assessment)
+
+
+def _runs_for(db: Session, assessment) -> list[GenerationRun]:
+    return (
+        db.query(GenerationRun)
+        .filter(GenerationRun.assessment_id == assessment.id)
+        .order_by(GenerationRun.created_at.desc())
+        .all()
+    )
+
+
+def _empty_report(assessment=None) -> dict:
+    return {
+        "assessment_id": assessment.id if assessment else None,
+        "module_id": assessment.module_id if assessment else None,
+        "run_id": None,
+        "created_at": None,
+        "mode": None,
+        "expires_at": None,
+        "criteria": [],
+        "runs": [],
+    }
 
 
 def _resolve_module_and_rubric(
@@ -252,10 +363,29 @@ def _evidence_text(evidence: Evidence) -> str | None:
         return None
 
 
-def _build_report(db: Session, assessment) -> dict:
+def _run_summary(run: GenerationRun, now: datetime) -> dict:
+    return {
+        "run_id": run.id,
+        "created_at": run.created_at,
+        "mode": run.mode,
+        "ai_model": run.ai_model,
+        "ai_used": run.ai_used,
+        "criteria_total": run.criteria_total,
+        "criteria_covered": run.criteria_covered,
+        "expires_at": run.expires_at,
+        "expired": run.expires_at is not None and run.expires_at <= now,
+    }
+
+
+def _build_report(
+    db: Session,
+    assessment,
+    run: GenerationRun,
+    runs: list[GenerationRun] | None = None,
+) -> dict:
     rows = (
         db.query(EvidenceMatch)
-        .filter(EvidenceMatch.assessment_id == assessment.id)
+        .filter(EvidenceMatch.run_id == run.id)
         .all()
     )
 
@@ -293,8 +423,17 @@ def _build_report(db: Session, assessment) -> dict:
             }
         )
 
+    if runs is None:
+        runs = _runs_for(db, assessment)
+    now = datetime.utcnow()
+
     return {
         "assessment_id": assessment.id,
         "module_id": assessment.module_id,
+        "run_id": run.id,
+        "created_at": run.created_at,
+        "mode": run.mode,
+        "expires_at": run.expires_at,
         "criteria": criteria,
+        "runs": [_run_summary(r, now) for r in runs],
     }

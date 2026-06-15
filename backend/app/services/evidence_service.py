@@ -22,6 +22,32 @@ from app.models.student import Student
 logger = logging.getLogger(__name__)
 
 
+def _purge_generation_runs_for_student(db: Session, student_id: str) -> None:
+    from app.models.assessment import Assessment
+    from app.models.evidence_match import EvidenceMatch
+    from app.models.generation_run import GenerationRun
+    from app.models.notification import Notification
+
+    run_ids = [
+        rid
+        for (rid,) in db.query(GenerationRun.id)
+        .join(Assessment, GenerationRun.assessment_id == Assessment.id)
+        .filter(Assessment.student_id == student_id)
+        .all()
+    ]
+    if not run_ids:
+        return
+    db.query(Notification).filter(
+        Notification.generation_run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(EvidenceMatch).filter(
+        EvidenceMatch.run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(GenerationRun).filter(
+        GenerationRun.id.in_(run_ids)
+    ).delete(synchronize_session=False)
+
+
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
     """Parse *value* as a UUID, raising HTTP 422 if it is not valid."""
     try:
@@ -402,6 +428,8 @@ class EvidenceService:
                 text_path.unlink()
         except OSError:
             pass  # Log in production; don't block the DB delete
+
+        _purge_generation_runs_for_student(db, evidence.student_id)
 
         db.delete(evidence)
         db.commit()
