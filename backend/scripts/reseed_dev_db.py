@@ -29,23 +29,18 @@ from app.core.security import hash_password  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import (  # noqa: E402
     Assessment,
-    AuditEvent,
-    ChatMessage,
     Department,
     Module,
     Project,
-    Recording,
     Student,
     Teacher,
 )
 from app.models.enums import (  # noqa: E402
     AssessmentStatus,
-    AuditSource,
     ConsentStatus,
     ModuleStatus,
     ProjectStatus,
     StudentStatus,
-    TranscriptionStatus,
 )
 
 
@@ -249,104 +244,6 @@ def build_seed_database(seed_path: str) -> None:
         )
     session.add_all(assessments)
 
-    recordings = []
-    for i, assessment in enumerate(assessments):
-        if i % 4 != 0:
-            continue
-
-        recordings.append(
-            Recording(
-                id=uid(f"recording-{assessment.id}-1"),
-                assessment_id=assessment.id,
-                file_id=None,
-                display_name="interview-intake.wav",
-                sequence_number=1,
-                transcript_text="Discussion covered architecture decisions, risk handling, and test strategy.",
-                transcription_status=TranscriptionStatus.completed,
-                created_at=(assessment.created_at or now) + timedelta(minutes=10),
-            )
-        )
-    session.add_all(recordings)
-
-    messages = []
-    for assessment in assessments[:80]:
-        base_time = assessment.created_at or now
-        messages.extend(
-            [
-                ChatMessage(
-                    id=uid(f"chat-{assessment.id}-1"),
-                    assessment_id=assessment.id,
-                    role="teacher",
-                    content="Please summarize the key contribution for this submission.",
-                    timestamp=base_time + timedelta(minutes=1),
-                ),
-                ChatMessage(
-                    id=uid(f"chat-{assessment.id}-2"),
-                    assessment_id=assessment.id,
-                    role="assistant",
-                    content="The team improved deployment reliability and reduced incident rates by adding smoke tests.",
-                    timestamp=base_time + timedelta(minutes=2),
-                ),
-                ChatMessage(
-                    id=uid(f"chat-{assessment.id}-3"),
-                    assessment_id=assessment.id,
-                    role="teacher",
-                    content="Highlight evidence quality and missing artifacts.",
-                    timestamp=base_time + timedelta(minutes=3),
-                ),
-            ]
-        )
-    session.add_all(messages)
-
-    audit_events = []
-    audit_id = 1
-    for i, assessment in enumerate(assessments):
-        base_time = assessment.created_at or now
-        audit_events.append(
-            AuditEvent(
-                id=audit_id,
-                assessment_id=assessment.id,
-                teacher_id=assessment.teacher_id,
-                action="assessment_created",
-                details_json='{"channel":"ui","note":"initial draft created"}',
-                timestamp=base_time,
-                source=AuditSource.teacher,
-                ip_address="127.0.0.1",
-            )
-        )
-        audit_id += 1
-
-        if assessment.status in {AssessmentStatus.reviewed, AssessmentStatus.final}:
-            audit_events.append(
-                AuditEvent(
-                    id=audit_id,
-                    assessment_id=assessment.id,
-                    teacher_id=assessment.teacher_id,
-                    action="assessment_reviewed",
-                    details_json='{"confidence":0.84,"flags":0}',
-                    timestamp=base_time + timedelta(hours=2),
-                    source=AuditSource.ai,
-                    ip_address="127.0.0.1",
-                )
-            )
-            audit_id += 1
-
-        if i % 9 == 0:
-            audit_events.append(
-                AuditEvent(
-                    id=audit_id,
-                    assessment_id=assessment.id,
-                    teacher_id=assessment.teacher_id,
-                    action="export_generated",
-                    details_json='{"format":"pdf"}',
-                    timestamp=base_time + timedelta(hours=4),
-                    source=AuditSource.system,
-                    ip_address="127.0.0.1",
-                )
-            )
-            audit_id += 1
-    session.add_all(audit_events)
-
     session.commit()
 
     print(f"Seed database created: {seed_path}")
@@ -356,9 +253,6 @@ def build_seed_database(seed_path: str) -> None:
     print(f"projects={session.query(Project).count()}")
     print(f"students={session.query(Student).count()}")
     print(f"assessments={session.query(Assessment).count()}")
-    print(f"recordings={session.query(Recording).count()}")
-    print(f"chat_messages={session.query(ChatMessage).count()}")
-    print(f"audit_events={session.query(AuditEvent).count()}")
 
     session.close()
 
