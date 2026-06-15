@@ -13,6 +13,12 @@ def _resolve_dir(value: str) -> str:
     return value if os.path.isabs(value) else os.path.normpath(os.path.join(BASE_DIR, value))
 
 
+def _as_bool(value: str, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     PROJECT_NAME: str = "AI Assessment Service"
     VERSION: str = "0.1.0"
@@ -29,6 +35,7 @@ class Settings:
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production-use-a-long-random-string")
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+    EVIDENCE_PATH_SALT: str = os.getenv("EVIDENCE_PATH_SALT", JWT_SECRET_KEY)
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
@@ -38,7 +45,6 @@ class Settings:
     OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
     OLLAMA_NUM_CTX: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 
-    # Assessment review and overlap LLM paths (larger models for JSON + reasoning).
     ASSESSMENT_OLLAMA_MODEL: str = os.getenv("ASSESSMENT_OLLAMA_MODEL", "qwen2.5:7b")
     ASSESSMENT_OLLAMA_MODEL_BACKUP: str = os.getenv(
         "ASSESSMENT_OLLAMA_MODEL_BACKUP", "llama3.1:8b"
@@ -47,7 +53,6 @@ class Settings:
         os.getenv("ASSESSMENT_OLLAMA_TIMEOUT_SECONDS", "120")
     )
 
-    # Vision model for image evidence (dev stack; optional on this branch).
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
     VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 

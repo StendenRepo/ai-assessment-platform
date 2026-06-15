@@ -10,6 +10,7 @@ import {
   listProjectGroups,
   listProjectStudents,
 } from '@/lib/api/modulesApi';
+import ProjectEvidencePanel from '@/components/evidence/ProjectEvidencePanel';
 const assessmentStatusConfig = {
   completed: {
     label: 'Completed',
@@ -117,6 +118,11 @@ export default function GroupDetailPage() {
           ))}
         </div>
       </div>
+
+      <ProjectEvidencePanel
+        projectId={group.id}
+        title="Shared Project Evidence"
+      />
 
       <div>
         <h2 className="text-base font-semibold text-foreground flex items-center gap-2 mb-3">

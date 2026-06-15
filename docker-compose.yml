@@ -56,6 +56,14 @@ services:
         volumes:
             - ollama_data:/root/.ollama
         command: serve
+        deploy:
+            resources:
+                limits:
+                    cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+                    memory: ${OLLAMA_MEMORY_LIMIT:-4G}
+                reservations:
+                    cpus: '${OLLAMA_CPU_RESERVATION:-1.0}'
+                    memory: ${OLLAMA_MEMORY_RESERVATION:-1G}
         restart: unless-stopped
     ollama-init:
         image: ollama/ollama:latest

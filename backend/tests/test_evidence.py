@@ -14,10 +14,12 @@ import io
 import uuid
 
 import pytest
+from PIL import Image
 
 UPLOAD_URL = "/api/v1/students/{student_id}/evidence"
 LIST_URL = "/api/v1/students/{student_id}/evidence"
 CONTENT_URL = "/api/v1/evidence/{evidence_id}/content"
+FILE_URL = "/api/v1/evidence/{evidence_id}/file"
 LOGIN_URL = "/api/v1/auth/login"
 
 
@@ -31,6 +33,22 @@ def _auth_header(client, teacher):
 
 def _make_md_file(content: str = "# Hello\n\nThis is evidence.", filename: str = "evidence.md"):
     return ("file", (filename, io.BytesIO(content.encode()), "text/markdown"))
+
+
+def _make_png_file(filename: str = "evidence.png"):
+    image = Image.new("RGB", (2, 2), color=(255, 255, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return ("file", (filename, buffer, "image/png"))
+
+
+def _evidence_root(tmp_path):
+    return tmp_path / "evidence"
+
+
+def _evidence_text_root(tmp_path):
+    return tmp_path / "evidence_text"
 
 
 @pytest.fixture
@@ -99,14 +117,39 @@ class TestUploadMarkdownEvidence:
         assert body["file_name"] == "evidence.md"
         assert body["file_type"] == "markdown"
         assert body["source_type"] == "upload"
-        assert body["embedding_status"] == "pending"
+        assert body["embedding_status"] == "completed"
 
     def test_upload_unsupported_extension_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.student_number))
-        bad_file = ("file", ("image.png", io.BytesIO(b"\x89PNG"), "image/png"))
+        bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
+
+    def test_upload_invalid_image_returns_422(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        bad_file = ("file", ("broken.png", io.BytesIO(b"not-an-image"), "image/png"))
+        res = client.post(url, files=[bad_file], headers=headers)
+        assert res.status_code == 422
+
+
+class TestUploadImageEvidence:
+    def test_upload_png_returns_201(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        res = client.post(url, files=[_make_png_file()], headers=headers)
+        assert res.status_code == 201
+
+    def test_upload_png_response_marks_image_type(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        res = client.post(url, files=[_make_png_file(filename="diagram.png")], headers=headers)
+        body = res.json()
+        assert body["file_name"] == "diagram.png"
+        assert body["file_type"] == "image"
+        assert body["source_type"] == "upload"
+        assert body["embedding_status"] == "completed"
 
     def test_upload_without_auth_returns_401(self, client, student):
         url = UPLOAD_URL.format(student_id=str(student.student_number))
@@ -146,6 +189,38 @@ class TestEvidenceLinkedToStudent:
         res = client.get(url, headers=headers)
         assert res.status_code == 404
 
+    def test_upload_preserves_raw_image_and_writes_text_sidecar(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        res = client.post(url, files=[_make_png_file(filename="proof.png")], headers=headers)
+        assert res.status_code == 201
+
+        saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
+        assert saved_path.exists()
+        assert saved_path.read_bytes().startswith(b"\x89PNG")
+
+        text_path = _evidence_text_root(tmp_path) / res.json()["file_path"]
+        text_path = text_path.with_name(f"{text_path.name}.txt")
+        assert text_path.exists()
+        assert text_path.read_text(encoding="utf-8") == "[Image evidence uploaded: proof.png]"
+
+    def test_upload_markdown_does_not_write_text_sidecar(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        res = client.post(url, files=[_make_md_file(filename="notes.md")], headers=headers)
+        assert res.status_code == 201
+
+        saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
+        assert saved_path.exists()
+        assert saved_path.read_text(encoding="utf-8") == "# Hello\n\nThis is evidence."
+
+        text_path = saved_path.with_name(f"{saved_path.name}.txt")
+        assert not text_path.exists()
+
 
 # ── AC 3: Content is read correctly ──────────────────────────────────────────
 
@@ -178,6 +253,164 @@ class TestReadEvidenceContent:
         res = client.get(url, headers=headers)
         assert res.status_code == 404
 
+    def test_image_content_endpoint_returns_fallback_text(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        # No vision model configured — should fall back to placeholder
+
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            url,
+            files=[_make_png_file(filename="whiteboard.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        content_url = CONTENT_URL.format(evidence_id=evidence_id)
+        res = client.get(content_url, headers=headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["file_name"] == "whiteboard.png"
+        assert body["content"] == "[Image evidence uploaded: whiteboard.png]"
+
+    def test_service_reprocess_rebuilds_text_from_stored_file(self, client, teacher, student, db, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="board.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        relative_path = upload_res.json()["file_path"]
+        text_path = _evidence_text_root(tmp_path) / relative_path
+        text_sidecar = text_path.with_name(f"{text_path.name}.txt")
+        text_sidecar.parent.mkdir(parents=True, exist_ok=True)
+        text_sidecar.write_text("stale text", encoding="utf-8")
+
+        from app.services.evidence_service import EvidenceService
+
+        _, content = EvidenceService.reprocess_content(upload_res.json()["id"], db)
+        assert content == "[Image evidence uploaded: board.png]"
+        assert text_sidecar.read_text(encoding="utf-8") == "[Image evidence uploaded: board.png]"
+
+    def test_vision_model_text_is_saved_when_available(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "fake-vision")
+
+        import httpx as _httpx
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"response": "A screenshot showing a student project dashboard."}
+
+        class _FakeClient:
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def post(self, *_args, **_kwargs): return _FakeResponse()
+
+        monkeypatch.setattr(_httpx, "Client", lambda **_kw: _FakeClient())
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="dashboard.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
+        content_res = client.get(content_url, headers=headers)
+        assert content_res.status_code == 200
+        assert content_res.json()["content"] == "A screenshot showing a student project dashboard."
+
+    def test_content_read_retries_ai_when_sidecar_has_placeholder(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "")
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="retry.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        # Simulate vision becoming available later; content read should refresh placeholder text.
+        monkeypatch.setattr("app.services.evidence_service.settings.VISION_MODEL", "fake-vision")
+        import httpx as _httpx
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"response": "Recovered AI text for retry image."}
+
+        class _FakeClient:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                pass
+
+            def post(self, *_args, **_kwargs):
+                return _FakeResponse()
+
+        monkeypatch.setattr(_httpx, "Client", lambda **_kw: _FakeClient())
+
+        content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
+        content_res = client.get(content_url, headers=headers)
+        assert content_res.status_code == 200
+        assert content_res.json()["content"] == "Recovered AI text for retry image."
+
+        sidecar = (_evidence_text_root(tmp_path) / upload_res.json()["file_path"]).with_name(
+            f"{(_evidence_text_root(tmp_path) / upload_res.json()['file_path']).name}.txt"
+        )
+        assert sidecar.read_text(encoding="utf-8") == "Recovered AI text for retry image."
+
+
+class TestReadEvidenceFile:
+    def test_file_endpoint_returns_raw_image_bytes(self, client, teacher, student, tmp_path, monkeypatch):
+        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
+
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="preview.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        file_url = FILE_URL.format(evidence_id=upload_res.json()["id"])
+        res = client.get(file_url, headers=headers)
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "image/png"
+        assert res.content.startswith(b"\x89PNG")
+
+    def test_file_endpoint_requires_auth(self, client, teacher, student):
+        headers = _auth_header(client, teacher)
+        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(
+            upload_url,
+            files=[_make_png_file(filename="preview.png")],
+            headers=headers,
+        )
+        assert upload_res.status_code == 201
+
+        file_url = FILE_URL.format(evidence_id=upload_res.json()["id"])
+        res = client.get(file_url)
+        assert res.status_code == 401
+
 
 # ── Extensibility: supported-types endpoint ───────────────────────────────────
 
@@ -198,15 +431,20 @@ class TestSupportedTypes:
         assert ".xlsx" in extensions
         assert ".csv" in extensions
 
+    def test_png_is_in_supported_types(self, client):
+        res = client.get("/api/v1/evidence/supported-types")
+        assert ".png" in res.json()["supported_extensions"]
+
     def test_unsupported_extension_error_mentions_allowed_types(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.student_number))
-        bad_file = ("file", ("image.png", io.BytesIO(b"\x89PNG"), "image/png"))
+        bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
         detail = res.json()["detail"]
         assert ".md" in detail
         assert ".pdf" in detail
+        assert ".png" in detail
 
 
 def _docx_bytes(paragraphs: list[str]) -> bytes:

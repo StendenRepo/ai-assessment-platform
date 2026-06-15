@@ -59,6 +59,7 @@ class NotificationOut(BaseModel):
     id: str
     type: NotificationType
     message: str
+    target_path: Optional[str] = None
     assessment_id: Optional[str] = None
     due_date: Optional[datetime] = None
     created_at: Optional[datetime] = None

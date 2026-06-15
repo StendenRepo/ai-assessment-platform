@@ -132,8 +132,10 @@ The default values in `.env` work out of the box with Docker Compose. Edit the f
 Starts all services with hot-reload for frontend and backend, plus local AI services and pgAdmin:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose up -d --build
 ```
+
+To enable the NVIDIA GPU override for Ollama, set `USE_GPU=1` in [/.env](.env). Leave it blank for CPU-only mode.
 
 Development uploads, recordings, and exports are stored in [backend/data](backend/data) on the host so files created by the Dockerized backend are visible locally.
 
@@ -601,7 +603,7 @@ Run Alembic inside the backend container.
 1. Start services:
 
     ```bash
-    docker compose -f docker-compose.dev.yml up -d --build
+    docker compose up -d --build
     ```
 
 2. Create a new migration after model changes:

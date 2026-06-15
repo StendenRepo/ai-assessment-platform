@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
-  CheckCircle2,
   Download,
   FileText,
   FolderPlus,
@@ -17,6 +16,9 @@ import {
   Users,
   Upload,
 } from 'lucide-react';
+import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import EvidenceStatusIndicator from '@/components/evidence/EvidenceStatusIndicator';
+import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import {
   getProject,
   listProjectGroups,
@@ -34,8 +36,6 @@ import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
-
-const ALLOWED_RUBRIC_LABEL = 'PDF or Excel (.xlsx)';
 
 function formatBytes(bytes) {
   if (!bytes) return '';
@@ -84,14 +84,63 @@ export default function ModulePage() {
   const [deletingRubric, setDeletingRubric] = useState(false);
   const [rubricDragActive, setRubricDragActive] = useState(false);
   const [rubricError, setRubricError] = useState('');
+  const [pendingRubricReplace, setPendingRubricReplace] = useState(null);
 
   const moduleBookInputRef = useRef(null);
   const [uploadingModuleBook, setUploadingModuleBook] = useState(false);
   const [deletingModuleBook, setDeletingModuleBook] = useState(false);
   const [moduleBookError, setModuleBookError] = useState('');
+  const [pendingModuleBookReplace, setPendingModuleBookReplace] =
+    useState(null);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+
+  const {
+    pendingItem: rubricDeleteTarget,
+    requestDelete: requestRubricDelete,
+    cancelDelete: cancelRubricDelete,
+    confirmDelete: confirmRubricDelete,
+  } = useDeleteConfirm({
+    onDelete: async () => {
+      setRubricError('');
+      setDeletingRubric(true);
+      try {
+        await deleteRubric(moduleId);
+      } finally {
+        setDeletingRubric(false);
+      }
+    },
+    onDeleted: () => {
+      setProject((prev) => ({ ...prev, rubric_file: null }));
+    },
+    onError: (err) => {
+      setRubricError(err.message);
+    },
+  });
+
+  const {
+    pendingItem: moduleBookDeleteTarget,
+    requestDelete: requestModuleBookDelete,
+    cancelDelete: cancelModuleBookDelete,
+    confirmDelete: confirmModuleBookDelete,
+  } = useDeleteConfirm({
+    onDelete: async () => {
+      setModuleBookError('');
+      setDeletingModuleBook(true);
+      try {
+        await deleteModuleBook(moduleId);
+      } finally {
+        setDeletingModuleBook(false);
+      }
+    },
+    onDeleted: () => {
+      setProject((prev) => ({ ...prev, module_book_file: null }));
+    },
+    onError: (err) => {
+      setModuleBookError(err.message);
+    },
+  });
 
   const groupProgress = useMemo(() => {
     return students.reduce((summary, student) => {
@@ -231,27 +280,7 @@ export default function ModulePage() {
     }
   };
 
-  const handleRubricFile = async (file) => {
-    if (!file) return;
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (ext !== 'pdf' && ext !== 'xlsx') {
-      setRubricError(
-        `Only PDF and Excel files are allowed. "${file.name}" is not supported.`
-      );
-      if (rubricInputRef.current) rubricInputRef.current.value = '';
-      return;
-    }
-    // Confirm before replacing an existing rubric (the old file is removed).
-    const existing = project?.rubric_file;
-    if (
-      existing &&
-      !confirm(
-        `Replace the current rubric "${existing.file_name || 'rubric'}" with "${file.name}"? The existing file will be permanently removed.`
-      )
-    ) {
-      if (rubricInputRef.current) rubricInputRef.current.value = '';
-      return;
-    }
+  const performRubricUpload = async (file) => {
     setRubricError('');
     setUploadingRubric(true);
     try {
@@ -263,6 +292,31 @@ export default function ModulePage() {
       setUploadingRubric(false);
       if (rubricInputRef.current) rubricInputRef.current.value = '';
     }
+  };
+
+  const handleRubricFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && ext !== 'xlsx') {
+      setRubricError(
+        `Only PDF and Excel files are allowed. "${file.name}" is not supported.`
+      );
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
+      return;
+    }
+
+    const existing = project?.rubric_file;
+    if (existing) {
+      setPendingRubricReplace({
+        oldName: existing.file_name || 'rubric',
+        newName: file.name,
+        file,
+      });
+      if (rubricInputRef.current) rubricInputRef.current.value = '';
+      return;
+    }
+
+    await performRubricUpload(file);
   };
 
   const handleRubricDrop = (e) => {
@@ -278,41 +332,13 @@ export default function ModulePage() {
     setRubricDragActive(e.type === 'dragenter' || e.type === 'dragover');
   };
 
-  const handleRubricDelete = async () => {
-    if (!confirm('Remove the rubric from this module?')) return;
-    setRubricError('');
-    setDeletingRubric(true);
-    try {
-      await deleteRubric(moduleId);
-      setProject((prev) => ({ ...prev, rubric_file: null }));
-    } catch (err) {
-      setRubricError(err.message);
-    } finally {
-      setDeletingRubric(false);
-    }
+  const handleRubricDelete = () => {
+    requestRubricDelete({
+      label: project?.rubric_file?.file_name || 'rubric',
+    });
   };
 
-  const handleModuleBookFile = async (file) => {
-    if (!file) return;
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (ext !== 'pdf' && ext !== 'docx') {
-      setModuleBookError(
-        `Only PDF and Word (.docx) files are allowed. "${file.name}" is not supported.`
-      );
-      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
-      return;
-    }
-    // Confirm before replacing an existing module book (the old file is removed).
-    const existing = project?.module_book_file;
-    if (
-      existing &&
-      !confirm(
-        `Replace the current module book "${existing.file_name || 'module book'}" with "${file.name}"? The existing file will be permanently removed.`
-      )
-    ) {
-      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
-      return;
-    }
+  const performModuleBookUpload = async (file) => {
     setModuleBookError('');
     setUploadingModuleBook(true);
     try {
@@ -329,18 +355,49 @@ export default function ModulePage() {
     }
   };
 
-  const handleModuleBookDelete = async () => {
-    if (!confirm('Remove the module book from this module?')) return;
-    setModuleBookError('');
-    setDeletingModuleBook(true);
-    try {
-      await deleteModuleBook(moduleId);
-      setProject((prev) => ({ ...prev, module_book_file: null }));
-    } catch (err) {
-      setModuleBookError(err.message);
-    } finally {
-      setDeletingModuleBook(false);
+  const handleModuleBookFile = async (file) => {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'pdf' && ext !== 'docx') {
+      setModuleBookError(
+        `Only PDF and Word (.docx) files are allowed. "${file.name}" is not supported.`
+      );
+      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
+      return;
     }
+
+    const existing = project?.module_book_file;
+    if (existing) {
+      setPendingModuleBookReplace({
+        oldName: existing.file_name || 'module book',
+        newName: file.name,
+        file,
+      });
+      if (moduleBookInputRef.current) moduleBookInputRef.current.value = '';
+      return;
+    }
+
+    await performModuleBookUpload(file);
+  };
+
+  const handleModuleBookDelete = () => {
+    requestModuleBookDelete({
+      label: project?.module_book_file?.file_name || 'module book',
+    });
+  };
+
+  const handleConfirmRubricReplace = async () => {
+    if (!pendingRubricReplace?.file) return;
+    const nextFile = pendingRubricReplace.file;
+    setPendingRubricReplace(null);
+    await performRubricUpload(nextFile);
+  };
+
+  const handleConfirmModuleBookReplace = async () => {
+    if (!pendingModuleBookReplace?.file) return;
+    const nextFile = pendingModuleBookReplace.file;
+    setPendingModuleBookReplace(null);
+    await performModuleBookUpload(nextFile);
   };
 
   if (loading) {
@@ -369,7 +426,10 @@ export default function ModulePage() {
     setExportError('');
     setExporting(true);
     try {
-      const { blob, filename } = await exportGradesExcel(moduleId, project?.name || '');
+      const { blob, filename } = await exportGradesExcel(
+        moduleId,
+        project?.name || ''
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -664,10 +724,7 @@ export default function ModulePage() {
                         <span className="text-sm font-semibold text-foreground truncate">
                           {rubric.file_name || 'rubric'}
                         </span>
-                        <CheckCircle2
-                          size={13}
-                          className="text-emerald-400 shrink-0"
-                        />
+                        <EvidenceStatusIndicator status="completed" size={13} />
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {rubric.file_type && (
@@ -768,10 +825,7 @@ export default function ModulePage() {
                         <span className="text-sm font-semibold text-foreground truncate">
                           {moduleBook.file_name || 'module book'}
                         </span>
-                        <CheckCircle2
-                          size={13}
-                          className="text-emerald-400 shrink-0"
-                        />
+                        <EvidenceStatusIndicator status="completed" size={13} />
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         {moduleBook.file_type && (
@@ -988,6 +1042,86 @@ export default function ModulePage() {
           )}
         </div>
       </div>
+
+      <DeleteConfirmDialog
+        open={Boolean(rubricDeleteTarget)}
+        title="Remove Rubric"
+        label={rubricDeleteTarget?.label}
+        message={
+          <>
+            Remove the rubric{' '}
+            <span className="font-semibold text-foreground">
+              {rubricDeleteTarget?.label}
+            </span>{' '}
+            from this module?
+          </>
+        }
+        loading={deletingRubric}
+        confirmLabel="Remove"
+        onConfirm={confirmRubricDelete}
+        onCancel={cancelRubricDelete}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(pendingRubricReplace)}
+        title="Replace Rubric"
+        confirmLabel="Replace"
+        message={
+          <>
+            Are you sure you want to replace{' '}
+            <span className="font-semibold text-foreground">
+              {pendingRubricReplace?.oldName}
+            </span>{' '}
+            with{' '}
+            <span className="font-semibold text-foreground">
+              {pendingRubricReplace?.newName}
+            </span>
+            ?
+          </>
+        }
+        onConfirm={handleConfirmRubricReplace}
+        onCancel={() => setPendingRubricReplace(null)}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(moduleBookDeleteTarget)}
+        title="Remove Module Book"
+        label={moduleBookDeleteTarget?.label}
+        message={
+          <>
+            Remove the module book{' '}
+            <span className="font-semibold text-foreground">
+              {moduleBookDeleteTarget?.label}
+            </span>{' '}
+            from this module?
+          </>
+        }
+        loading={deletingModuleBook}
+        confirmLabel="Remove"
+        onConfirm={confirmModuleBookDelete}
+        onCancel={cancelModuleBookDelete}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(pendingModuleBookReplace)}
+        title="Replace Module Book"
+        confirmLabel="Replace"
+        message={
+          <>
+            Are you sure you want to replace{' '}
+            <span className="font-semibold text-foreground">
+              {pendingModuleBookReplace?.oldName}
+            </span>{' '}
+            with{' '}
+            <span className="font-semibold text-foreground">
+              {pendingModuleBookReplace?.newName}
+            </span>
+            ?
+          </>
+        }
+        onConfirm={handleConfirmModuleBookReplace}
+        onCancel={() => setPendingModuleBookReplace(null)}
+      />
     </div>
   );
 }
