@@ -12,10 +12,7 @@ from sqlalchemy.orm import Session
 from app.services import ollama_client
 from app.services.overlap_highlight import (
     apply_paired_student_highlights,
-    highlight_phrase_in_document,
-    highlight_phrases_in_document,
     highlight_phrases_paired,
-    phrase_locatable_in_text,
 )
 from app.services.overlap_integrity_detector import (
     IntegrityFlag,
@@ -26,7 +23,6 @@ from app.services.overlap_integrity_detector import (
     combine_ai_results,
     dedupe_student_flag_dicts,
     detect_ai_segments,
-    ensure_flag_match_ids,
     enrich_hit_with_ai,
     merge_integrity_results,
 )

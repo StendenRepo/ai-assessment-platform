@@ -1,7 +1,4 @@
-"""Assessment draft workflow: AI suggestions, teacher overrides, chat refine, finalize.
-
-Implements G2-146 (overrule), G2-147 (chat refine), G2-150 (finalize).
-"""
+"""Assessment draft workflow: suggestions, overrides, chat refine, finalize."""
 from __future__ import annotations
 
 import copy
@@ -384,7 +381,7 @@ def _infer_updates_from_conversation(
     draft: dict[str, Any],
     ctx: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Fallback: extract agreed score changes from discuss messages when JSON updates are empty."""
+    """Extract agreed score changes from chat history when the LLM returns empty updates."""
     lines: list[str] = []
     for msg in history:
         meta = msg.metadata_json or {}
@@ -457,7 +454,6 @@ def _build_proposed_changes(
         entry = draft["criteria"].get(key)
         if not entry or entry.get("is_overridden"):
             continue
-        ai = entry.get("ai") or {}
         eff = entry.get("effective") or {}
         before_score = eff.get("score")
         before_comment = eff.get("comment")
@@ -939,7 +935,7 @@ def apply_overrides(
     summary: Optional[str] = None,
     overall_grade: Optional[str] = None,
 ) -> dict[str, Any]:
-    """G2-146: teacher overrules AI suggestions; both values retained."""
+    """Apply teacher overrides; AI values are retained for audit."""
     _assert_editable(assessment)
     draft = _load_draft(assessment)
     defs_by_key = {d["key"]: d for d in draft["criteria_defs"]}
@@ -1428,7 +1424,7 @@ def finalize_assessment(
     teacher: Teacher,
     teacher_notes: Optional[str] = None,
 ) -> dict[str, Any]:
-    """G2-150: lock form and persist final snapshot."""
+    """Lock the assessment and persist the final snapshot."""
     if assessment.status == AssessmentStatus.final:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

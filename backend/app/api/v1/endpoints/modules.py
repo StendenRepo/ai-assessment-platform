@@ -37,7 +37,7 @@ from app.schemas.project import (
 from app.services.module_service import ModuleService
 from app.services.overlap_integrity_detector import derive_signal_metrics
 from app.services.overlap_service import OverlapService, build_highlighted_documents, parse_signal_detail
-from app.services.overlap_integrity_detector import dedupe_student_flag_dicts, ensure_flag_match_ids
+from app.services.overlap_integrity_detector import dedupe_student_flag_dicts
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()

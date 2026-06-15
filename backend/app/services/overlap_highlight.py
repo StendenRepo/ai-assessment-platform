@@ -303,7 +303,6 @@ def highlight_phrases_in_document(
     if not full_text:
         return full_text or ""
 
-    clean = strip_markers(full_text)
     occupied: list[tuple[int, int]] = []
     ranked: list[tuple[int, str]] = []
     seen: set[str] = set()

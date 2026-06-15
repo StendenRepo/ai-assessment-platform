@@ -10,8 +10,6 @@ from app.services.overlap_integrity_detector import (
     scan_evidence_pair_plagiarism,
     _near_duplicate_plagiarism_result,
     _flags_from_direct_text_comparison,
-    scan_document_for_ai,
-    score_ai_writing_heuristics,
     IntegrityResult,
     IntegrityFlag,
 )

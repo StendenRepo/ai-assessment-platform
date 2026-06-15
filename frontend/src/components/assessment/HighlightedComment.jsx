@@ -1,6 +1,6 @@
 'use client';
 
-/** Renders AI comments that may embed [[file]] markers for evidence citations. */
+/** Renders comments that may embed [[file]] markers for evidence citations. */
 export default function HighlightedComment({ text, className = '' }) {
   if (!text) return null;
   const parts = text.split(/(\[\[[^\]]+\]\])/g);
