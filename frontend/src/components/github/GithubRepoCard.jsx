@@ -140,7 +140,8 @@ export default function GithubRepoCard({
       {!editing && savedUrl ? (
         /* ── Saved view ── */
         <>
-          <div className="space-y-3">
+          {/* GitHub Configuration Section */}
+          <div className="space-y-3 pb-3 border-b border-border">
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">
                 Repository
@@ -167,18 +168,24 @@ export default function GithubRepoCard({
             )}
           </div>
 
-          {error && (
-            <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
-              {error}
-            </p>
-          )}
-          {success && (
-            <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
-              {success}
-            </p>
+          {/* Status Messages Section */}
+          {(error || success) && (
+            <div className="space-y-2 pb-3 border-b border-border">
+              {error && (
+                <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
+                  {error}
+                </p>
+              )}
+              {success && (
+                <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
+                  {success}
+                </p>
+              )}
+            </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          {/* Actions Section */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               type="button"
               onClick={() => {
@@ -205,10 +212,13 @@ export default function GithubRepoCard({
         /* ── Edit / new view ── */
         <form onSubmit={handleSave} className="space-y-4">
           {description && (
-            <p className="text-xs text-muted-foreground">{description}</p>
+            <p className="text-xs text-muted-foreground pb-2 border-b border-border">
+              {description}
+            </p>
           )}
 
-          <div className="space-y-2">
+          {/* Repository Input Section */}
+          <div className="space-y-2 pb-3 border-b border-border">
             <input
               value={repoUrl}
               onChange={(e) => {
@@ -239,8 +249,9 @@ export default function GithubRepoCard({
             </button>
           </div>
 
+          {/* Branch Selection Section */}
           {verified && branches.length > 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 pb-3 border-b border-border">
               <label className="text-xs font-medium text-muted-foreground">
                 Branch
               </label>
@@ -258,17 +269,23 @@ export default function GithubRepoCard({
             </div>
           )}
 
-          {error && (
-            <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
-              {error}
-            </p>
-          )}
-          {success && (
-            <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
-              {success}
-            </p>
+          {/* Status Messages Section */}
+          {(error || success) && (
+            <div className="space-y-2 pb-3 border-b border-border">
+              {error && (
+                <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
+                  {error}
+                </p>
+              )}
+              {success && (
+                <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
+                  {success}
+                </p>
+              )}
+            </div>
           )}
 
+          {/* Submit Button Section */}
           <button
             type="submit"
             disabled={saving || !verified}
