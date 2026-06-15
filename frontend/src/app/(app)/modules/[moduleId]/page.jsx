@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
   Download,
+  Eye,
   FileText,
   FolderPlus,
   Search,
@@ -16,8 +17,13 @@ import {
   Upload,
 } from 'lucide-react';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceStatusIndicator from '@/components/evidence/EvidenceStatusIndicator';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
+import {
+  getPreviewKind,
+  useDocumentPreview,
+} from '@/lib/hooks/useDocumentPreview';
 import {
   getProject,
   listProjectGroups,
@@ -30,6 +36,10 @@ import {
   uploadModuleBook,
   deleteModuleBook,
   exportGradesExcel,
+  getRubricFileBlob,
+  getRubricContent,
+  getModuleBookFileBlob,
+  getModuleBookContent,
 } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 
@@ -94,6 +104,8 @@ export default function ModulePage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+
+  const docPreview = useDocumentPreview();
 
   const {
     pendingItem: rubricDeleteTarget,
@@ -421,6 +433,21 @@ export default function ModulePage() {
   const rubric = project?.rubric_file;
   const moduleBook = project?.module_book_file;
 
+  const rubricDescriptor = rubric && {
+    file_name: rubric.file_name || 'rubric',
+    file_type: rubric.file_type,
+    fetchBlob: () => getRubricFileBlob(moduleId),
+    fetchContent: () => getRubricContent(moduleId),
+    supportsAltText: false,
+  };
+  const moduleBookDescriptor = moduleBook && {
+    file_name: moduleBook.file_name || 'module book',
+    file_type: moduleBook.file_type,
+    fetchBlob: () => getModuleBookFileBlob(moduleId),
+    fetchContent: () => getModuleBookContent(moduleId),
+    supportsAltText: false,
+  };
+
   const handleExportGrades = async () => {
     setExportError('');
     setExporting(true);
@@ -733,6 +760,22 @@ export default function ModulePage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-2">
+                    {getPreviewKind(rubric.file_type) && (
+                      <button
+                        type="button"
+                        onClick={() => docPreview.openPreview(rubricDescriptor)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                      >
+                        <Eye size={12} /> View
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => docPreview.download(rubricDescriptor)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                    >
+                      <Download size={12} /> Download
+                    </button>
                     <button
                       type="button"
                       onClick={() => rubricInputRef.current?.click()}
@@ -836,6 +879,24 @@ export default function ModulePage() {
                     </div>
                   </div>
                   <div className="flex items-center justify-center gap-2">
+                    {getPreviewKind(moduleBook.file_type) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          docPreview.openPreview(moduleBookDescriptor)
+                        }
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                      >
+                        <Eye size={12} /> View
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => docPreview.download(moduleBookDescriptor)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                    >
+                      <Download size={12} /> Download
+                    </button>
                     <button
                       type="button"
                       onClick={() => moduleBookInputRef.current?.click()}
@@ -1113,6 +1174,20 @@ export default function ModulePage() {
         onConfirm={handleConfirmModuleBookReplace}
         onCancel={() => setPendingModuleBookReplace(null)}
       />
+
+      {(docPreview.previewDoc || docPreview.previewLoading) && (
+        <EvidencePreviewDialog
+          evidence={docPreview.previewDoc}
+          previewKind={docPreview.activePreviewKind}
+          basePreviewKind={docPreview.basePreviewKind}
+          previewUrl={docPreview.previewUrl}
+          previewContent={docPreview.previewContent}
+          loading={docPreview.previewLoading}
+          showImageExtractedText={docPreview.showImageExtractedText}
+          onToggleImageExtractedText={docPreview.toggleImageExtractedText}
+          onClose={docPreview.closePreview}
+        />
+      )}
     </div>
   );
 }
