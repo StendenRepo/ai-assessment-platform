@@ -7,6 +7,7 @@ place that writes AuditEvent rows so the format stays consistent.
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.models.audit_event import AuditEvent
@@ -48,3 +49,29 @@ def log_action(
     else:
         db.flush()
     return event
+
+
+def list_events(
+    db: Session,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    teacher_id: Optional[UUID] = None,
+    assessment_id: Optional[UUID] = None,
+    action_contains: Optional[str] = None,
+) -> list[AuditEvent]:
+    query = db.query(AuditEvent)
+
+    if teacher_id is not None:
+        query = query.filter(AuditEvent.teacher_id == teacher_id)
+    if assessment_id is not None:
+        query = query.filter(AuditEvent.assessment_id == assessment_id)
+    if action_contains:
+        query = query.filter(AuditEvent.action.ilike(f"%{action_contains}%"))
+
+    return (
+        query.order_by(desc(AuditEvent.timestamp), desc(AuditEvent.id))
+        .offset(max(0, offset))
+        .limit(max(1, min(limit, 500)))
+        .all()
+    )

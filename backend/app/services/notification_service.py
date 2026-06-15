@@ -15,6 +15,7 @@ def create_notification(
     teacher_id: UUID,
     type: NotificationType,
     message: str,
+    target_path: Optional[str] = None,
     assessment_id: Optional[UUID] = None,
     recording_id: Optional[UUID] = None,
     generation_run_id: Optional[UUID] = None,
@@ -28,6 +29,7 @@ def create_notification(
         generation_run_id=generation_run_id,
         type=type,
         message=message,
+        target_path=target_path,
         due_date=due_date,
     )
     db.add(notification)
