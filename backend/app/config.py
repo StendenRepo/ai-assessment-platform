@@ -32,13 +32,20 @@ class Settings:
 
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
-    OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
-    OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "llama3.1:8b")
+    OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
+    OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
+    OLLAMA_NUM_CTX: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
 
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))
+
+    # Dedicated AI-text classifier (on-premise RoBERTa — not a generic LLM)
+    AI_DETECTOR_URL: str = os.getenv("AI_DETECTOR_URL", "http://ai-detector:9001")
+    AI_DETECTOR_TIMEOUT_SECONDS: int = int(os.getenv("AI_DETECTOR_TIMEOUT_SECONDS", "120"))
+    AI_DETECTOR_MODEL: str = os.getenv("AI_DETECTOR_MODEL", "Hello-SimpleAI/chatgpt-detector-roberta")
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.

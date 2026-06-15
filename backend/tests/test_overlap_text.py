@@ -44,6 +44,53 @@ def test_highlight_shared_finds_mid_document_phrase():
     assert "JWT authentication" in marked_a or "implemented JWT" in marked_a
 
 
+def test_highlight_phrase_in_full_document():
+    from app.services.overlap_highlight import highlight_phrase_in_document
+
+    full = (
+        "Title line\n\n"
+        "Before overlap. Shared authentication module with JWT tokens. After overlap."
+    )
+    phrase = "Shared authentication module with JWT tokens"
+    marked = highlight_phrase_in_document(full, phrase)
+    assert "⟦student:" in marked
+    assert "Shared authentication module with JWT tokens" in marked
+    assert marked.startswith("Title line")
+
+
+def test_shared_phrases_between_documents_finds_multiple_blocks():
+    from app.services.overlap_service import shared_phrases_between_documents
+    from app.services.overlap_highlight import highlight_phrases_in_document
+
+    block_one = (
+        "OVERLAP_BLOCK_START: Our cohort implemented authentication using JWT tokens "
+        "and bcrypt password hashing for the planning application."
+    )
+    block_two = (
+        "OVERLAP_BLOCK_MIDDLE: For sprint testing we used pytest with fixtures "
+        "for the database and httpx for API calls in continuous integration."
+    )
+    unique_a = "Student A wrote unique Kanban renderer notes that should not be highlighted."
+    unique_b = "Student B wrote unique Docker Compose notes that should not be highlighted."
+
+    doc_a = "\n\n".join([block_one, unique_a, block_two, unique_a, block_one])
+    doc_b = "\n\n".join(
+        [
+            block_one.replace("cohort", "team"),
+            unique_b,
+            block_two.replace("pytest", "unittest"),
+            unique_b,
+            block_one.replace("cohort", "team"),
+        ]
+    )
+
+    phrases = shared_phrases_between_documents(doc_a, doc_b)
+    assert len(phrases) >= 2
+
+    marked_a = highlight_phrases_in_document(doc_a, phrases)
+    assert marked_a.count("⟦student:m") >= 2
+
+
 def test_analyze_module_overlap_with_text_evidence(db, teacher, monkeypatch):
     from app.models.evidence import Evidence
     from app.models.module import Module
@@ -54,6 +101,15 @@ def test_analyze_module_overlap_with_text_evidence(db, teacher, monkeypatch):
         OverlapService,
         "_generate_ollama_warning",
         staticmethod(lambda _prompt: "Review overlap manually."),
+    )
+    monkeypatch.setattr(
+        "app.services.overlap_service.enrich_hit_with_ai",
+        lambda hit: {
+            **hit,
+            "ai_verified": True,
+            "ai_explanation": "AI confirmed overlap.",
+            "detection_method": "ai_textual",
+        },
     )
 
     module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name="Text Overlap")

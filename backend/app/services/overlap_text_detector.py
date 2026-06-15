@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-CONFIRMED_MIN = 0.55
-POSSIBLE_MIN = 0.38
+CONFIRMED_MIN = 0.68
+POSSIBLE_MIN = 0.50
 MAX_RESULTS = 50
 
 

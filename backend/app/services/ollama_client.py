@@ -27,7 +27,11 @@ def generate(
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": settings.OLLAMA_NUM_PREDICT,
+                    "num_ctx": settings.OLLAMA_NUM_CTX,
+                },
             }
             if system:
                 payload["system"] = system
@@ -62,7 +66,11 @@ def chat(
                         "model": model,
                         "messages": messages,
                         "stream": False,
-                        "options": {"temperature": temperature},
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": settings.OLLAMA_NUM_PREDICT,
+                            "num_ctx": settings.OLLAMA_NUM_CTX,
+                        },
                     },
                 )
                 response.raise_for_status()

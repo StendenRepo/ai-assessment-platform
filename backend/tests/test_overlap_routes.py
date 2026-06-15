@@ -13,20 +13,19 @@ def _auth_headers(client):
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
-def _seed_module_with_overlap(db, teacher):
+def _seed_module_with_overlap(db, teacher, upload_dir=None):
     from app.models.evidence import Evidence
     from app.models.module import Module
     from app.models.project import Project
     from app.models.student import Student
+    from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
 
     module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name="Overlap Module")
     db.add(module)
     db.commit()
 
-    group_a = Project(id=uuid.uuid4(), module_id=module.id, name="Group A")
-    group_b = Project(id=uuid.uuid4(), module_id=module.id, name="Group B")
-    db.add(group_a)
-    db.add(group_b)
+    group = Project(id=uuid.uuid4(), module_id=module.id, name="Group A")
+    db.add(group)
     db.commit()
 
     alice = Student(name="Alice", student_number="1001001")
@@ -34,25 +33,38 @@ def _seed_module_with_overlap(db, teacher):
     db.add(alice)
     db.add(bob)
     db.flush()
-    alice.projects.append(group_a)
-    bob.projects.append(group_b)
+    alice.projects.append(group)
+    bob.projects.append(group)
     db.commit()
 
-    # Same file name across students should trigger a high-confidence textual signal.
+    shared = (
+        "Our team implemented the authentication module using JWT tokens and bcrypt hashing. "
+        "We documented every REST endpoint and wrote integration tests for login and logout."
+    )
+    base_dir = upload_dir or EVIDENCE_UPLOAD_DIR
+    rel_a = f"{alice.student_number}/alice-report.md"
+    rel_b = f"{bob.student_number}/bob-report.md"
+    path_a = base_dir / rel_a
+    path_b = base_dir / rel_b
+    path_a.parent.mkdir(parents=True, exist_ok=True)
+    path_b.parent.mkdir(parents=True, exist_ok=True)
+    path_a.write_text(shared, encoding="utf-8")
+    path_b.write_text(shared, encoding="utf-8")
+
     ev_a = Evidence(
         id=uuid.uuid4(),
         student_id=alice.student_number,
-        file_name="Architecture_Report.pdf",
-        file_type=FileType.pdf,
-        file_path="/tmp/alice-architecture-report.pdf",
+        file_name="report_a.md",
+        file_type=FileType.markdown,
+        file_path=rel_a,
         source_type=SourceType.upload,
     )
     ev_b = Evidence(
         id=uuid.uuid4(),
         student_id=bob.student_number,
-        file_name="Architecture_Report.pdf",
-        file_type=FileType.pdf,
-        file_path="/tmp/bob-architecture-report.pdf",
+        file_name="report_b.md",
+        file_type=FileType.markdown,
+        file_path=rel_b,
         source_type=SourceType.upload,
     )
     db.add(ev_a)
@@ -61,8 +73,8 @@ def _seed_module_with_overlap(db, teacher):
 
     return {
         "module": module,
-        "group_a": group_a,
-        "group_b": group_b,
+        "group_a": group,
+        "group_b": group,
         "alice": alice,
         "bob": bob,
         "evidence": [ev_a, ev_b],
@@ -77,7 +89,7 @@ def _cleanup_module_seed(db, seed):
     from app.models.student import Student
 
     module = seed["module"]
-    project_ids = [seed["group_a"].id, seed["group_b"].id]
+    project_ids = [seed["group_a"].id]
     student_ids = [seed["alice"].student_number, seed["bob"].student_number]
 
     (
@@ -104,16 +116,64 @@ def _cleanup_module_seed(db, seed):
 
 
 class TestOverlapRoutes:
-    def test_analyze_overlap_generates_signal_and_warning(self, client, db, teacher, monkeypatch):
+    def _patch_ai(self, monkeypatch):
         from app.services.overlap_service import OverlapService
 
+        def _fake_enrich(hit):
+            return {
+                **hit,
+                "ai_verified": True,
+                "ai_explanation": "AI detected shared authentication wording.",
+                "detection_method": "ai_plagiarism",
+                "integrity_type": "student_plagiarism",
+                "ai_shared_excerpt": "authentication module using JWT tokens",
+                "flags": [
+                    {
+                        "type": "student",
+                        "confidence": 0.85,
+                        "reason": "Paraphrased shared paragraph",
+                        "text_a": "authentication module using JWT tokens",
+                        "text_b": "authentication module using JWT tokens",
+                    }
+                ],
+            }
+
+        monkeypatch.setattr(
+            "app.services.overlap_service.enrich_hit_with_ai",
+            _fake_enrich,
+        )
+        monkeypatch.setattr(
+            "app.services.overlap_service.detect_ai_segments",
+            lambda _text: __import__(
+                "app.services.overlap_integrity_detector",
+                fromlist=["IntegrityResult"],
+            ).IntegrityResult(integrity_type="none", confidence=0, status="none"),
+        )
+        monkeypatch.setattr(
+            "app.services.overlap_service.combine_ai_results",
+            lambda *_args, **_kwargs: None,
+        )
         monkeypatch.setattr(
             OverlapService,
             "_generate_ollama_warning",
             staticmethod(lambda _prompt: "AI warning: possible overlap found, review manually."),
         )
 
-        seed = _seed_module_with_overlap(db, teacher)
+    def test_analyze_overlap_generates_signal_and_warning(
+        self, client, db, teacher, monkeypatch, tmp_path
+    ):
+        upload_dir = tmp_path / "evidence"
+        monkeypatch.setattr(
+            "app.services.evidence_service.EVIDENCE_UPLOAD_DIR",
+            upload_dir,
+        )
+        monkeypatch.setattr(
+            "app.services.overlap_service.EVIDENCE_UPLOAD_DIR",
+            upload_dir,
+        )
+        self._patch_ai(monkeypatch)
+
+        seed = _seed_module_with_overlap(db, teacher, upload_dir=upload_dir)
         headers = _auth_headers(client)
         module_id = seed["module"].id
         try:
@@ -148,16 +208,21 @@ class TestOverlapRoutes:
             db.delete(module)
             db.commit()
 
-    def test_list_signals_returns_detected_pairs(self, client, db, teacher, monkeypatch):
-        from app.services.overlap_service import OverlapService
-
+    def test_list_signals_returns_detected_pairs(
+        self, client, db, teacher, monkeypatch, tmp_path
+    ):
+        upload_dir = tmp_path / "evidence"
         monkeypatch.setattr(
-            OverlapService,
-            "_generate_ollama_warning",
-            staticmethod(lambda _prompt: "warning"),
+            "app.services.evidence_service.EVIDENCE_UPLOAD_DIR",
+            upload_dir,
         )
+        monkeypatch.setattr(
+            "app.services.overlap_service.EVIDENCE_UPLOAD_DIR",
+            upload_dir,
+        )
+        self._patch_ai(monkeypatch)
 
-        seed = _seed_module_with_overlap(db, teacher)
+        seed = _seed_module_with_overlap(db, teacher, upload_dir=upload_dir)
         headers = _auth_headers(client)
         module_id = seed["module"].id
 

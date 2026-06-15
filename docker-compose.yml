@@ -35,6 +35,8 @@ services:
                 condition: service_started
             stt:
                 condition: service_healthy
+            ai-detector:
+                condition: service_healthy
         command: >
             sh -c "
             alembic upgrade head &&
@@ -63,8 +65,8 @@ services:
             - ollama_data:/root/.ollama
         environment:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
-            OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
-            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-llama3.1:8b}
         depends_on:
             ollama:
                 condition: service_started
@@ -99,6 +101,23 @@ services:
             timeout: 10s
             retries: 5
             start_period: 60s
+        restart: unless-stopped
+    ai-detector:
+        build:
+            context: ./ai-detector
+            target: production
+        container_name: ai-detector
+        volumes:
+            - ai_detector_cache:/root/.cache
+        environment:
+            AI_DETECTOR_MODEL: ${AI_DETECTOR_MODEL:-Hello-SimpleAI/chatgpt-detector-roberta}
+            AI_DETECTOR_DEVICE: ${AI_DETECTOR_DEVICE:-cpu}
+        healthcheck:
+            test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:9001/health'')" || exit 1']
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 180s
         restart: unless-stopped
     retention-worker:
         build:
@@ -135,3 +154,4 @@ volumes:
     ollama_data:
     frontend_tmp:
     stt_cache:
+    ai_detector_cache:

@@ -64,6 +64,7 @@ const insightConfig = {
 };
 
 function overlapToInsight(signal, studentId, studentNames = {}) {
+  const integrityType = signal.integrity_type || 'student_plagiarism';
   const isA = signal.student_a_id === studentId;
   const otherId = isA ? signal.student_b_id : signal.student_a_id;
   const otherName =
@@ -76,16 +77,36 @@ function overlapToInsight(signal, studentId, studentNames = {}) {
       : signal.status === 'confirmed'
         ? 'medium'
         : 'low';
+
+  let title = `Overlap with ${otherName}`;
+  if (integrityType === 'ai') {
+    title = 'AI-generated content detected';
+  } else if (integrityType === 'both') {
+    title = `AI content + plagiarism with ${otherName}`;
+  } else if (integrityType === 'student_plagiarism') {
+    title = `Plagiarism with ${otherName}`;
+  }
+
+  const typeLabel =
+    integrityType === 'ai'
+      ? 'AI-generated'
+      : integrityType === 'both'
+        ? 'AI + student plagiarism'
+        : 'Student plagiarism';
+
   return {
     id: signal.id,
     type: 'overlap',
-    title: `Overlap with ${otherName}`,
+    title,
     severity,
     description:
+      signal.ai_explanation ||
       signal.passage_a ||
       signal.snippet ||
-      `Possible ${signal.overlap_type} overlap detected (confidence ${Math.round((signal.confidence || 0) * 100)}%).`,
-    sourceFiles: [signal.file_a, signal.file_b].filter(Boolean),
+      `${typeLabel} detected (confidence ${Math.round((signal.confidence || 0) * 100)}%).`,
+    sourceFiles: [signal.evidence_a_name, signal.evidence_b_name].filter(
+      (f, i) => f && (integrityType !== 'ai' || i === 0)
+    ),
     link: null,
   };
 }
@@ -262,9 +283,6 @@ function AIInsightsPanel({ moduleId, studentId }) {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function EvidenceUpload({ studentId }) {
   const fileInputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
@@ -276,11 +294,7 @@ function EvidenceUpload({ studentId }) {
   // Allowed extensions fetched from the backend — starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(['.md']);
 
-  const isValidUUID = UUID_REGEX.test(studentId);
-
-  // Fetch supported types from the API on mount (only when we have a real UUID)
   useEffect(() => {
-    if (!isValidUUID) return;
     fetch(`${API_BASE}/api/v1/evidence/supported-types`)
       .then((r) => r.json())
       .then((data) => {
@@ -291,11 +305,11 @@ function EvidenceUpload({ studentId }) {
       .catch(() => {
         // Keep the default if the request fails
       });
-  }, [isValidUUID]);
+  }, []);
 
   // Fetch existing evidence for this student on mount
   useEffect(() => {
-    if (!isValidUUID) return;
+    if (!studentId) return;
     const load = async () => {
       setEvidenceLoading(true);
       try {
@@ -312,17 +326,7 @@ function EvidenceUpload({ studentId }) {
       }
     };
     load();
-  }, [studentId, isValidUUID]);
-
-  // Guard: only render the upload UI when studentId is a real UUID
-  if (!isValidUUID) {
-    return (
-      <div className="rounded-lg border border-dashed border-border px-5 py-4 text-xs text-muted-foreground">
-        Evidence upload is available once this student is linked to a real
-        database record.
-      </div>
-    );
-  }
+  }, [studentId]);
 
   const isAllowed = (filename) => {
     const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
@@ -536,11 +540,15 @@ export default function StudentAssessmentPage() {
   useEffect(() => {
     listProjectStudents(moduleId)
       .then((students) => {
-        const found = students.find((s) => s.id === studentId);
+        const found = students.find(
+          (s) => s.id === studentId || s.student_number === studentId
+        );
         if (found) setStudent(found);
         else setLoadError('Student not found in this module.');
       })
-      .catch((e) => setLoadError(e.message));
+      .catch((e) =>
+        setLoadError(e?.message || 'Failed to load student data')
+      );
   }, [moduleId, studentId]);
 
   // Resolve (or lazily create) the assessment for this student so the recording
@@ -549,7 +557,10 @@ export default function StudentAssessmentPage() {
     let active = true;
     resolveAssessmentForStudent(studentId)
       .then((s) => active && setAssessmentId(s.assessment_id))
-      .catch((e) => active && setLoadError(e.message));
+      .catch((e) =>
+        active &&
+        setLoadError(e?.message || 'Failed to resolve assessment for student')
+      );
     return () => {
       active = false;
     };

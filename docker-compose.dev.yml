@@ -32,6 +32,8 @@ services:
                 condition: service_healthy
             ollama:
                 condition: service_started
+            ai-detector:
+                condition: service_started
         volumes:
             - ./backend:/app
             - ./backend/data:/app/data
@@ -53,6 +55,20 @@ services:
         environment:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+        restart: unless-stopped
+    ai-detector:
+        build:
+            context: ./ai-detector
+            target: dev
+        container_name: ai-detector
+        volumes:
+            - ./ai-detector:/app
+            - ai_detector_cache:/root/.cache
+        ports:
+            - '9001:9001'
+        environment:
+            AI_DETECTOR_MODEL: ${AI_DETECTOR_MODEL:-Hello-SimpleAI/chatgpt-detector-roberta}
+            AI_DETECTOR_DEVICE: ${AI_DETECTOR_DEVICE:-cpu}
         restart: unless-stopped
     retention-worker:
         build:
@@ -85,8 +101,8 @@ services:
             - ollama_data:/root/.ollama
         environment:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
-            OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
-            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-llama3.1:8b}
         depends_on:
             ollama:
                 condition: service_started
@@ -143,4 +159,5 @@ volumes:
     frontend_node_modules:
     frontend_next_cache:
     stt_cache:
+    ai_detector_cache:
     pgadmin_data:

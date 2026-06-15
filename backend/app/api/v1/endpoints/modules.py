@@ -35,7 +35,9 @@ from app.schemas.project import (
     StudentOut,
 )
 from app.services.module_service import ModuleService
-from app.services.overlap_service import OverlapService, parse_signal_detail
+from app.services.overlap_integrity_detector import derive_signal_metrics
+from app.services.overlap_service import OverlapService, build_highlighted_documents, parse_signal_detail
+from app.services.overlap_integrity_detector import dedupe_student_flag_dicts, ensure_flag_match_ids
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -189,12 +191,31 @@ def _build_student_project_map(db: Session, project_ids: list) -> dict:
     return {row.student_id: row.project_id for row in rows}
 
 
-def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+def _signal_to_out(
+    signal,
+    student_names: dict,
+    evidence_names: dict,
+    *,
+    db: Session | None = None,
+    include_documents: bool = False,
+) -> OverlapSignalOut:
     detail = parse_signal_detail(signal.snippet)
     confidence = round(float(signal.confidence or 0.0), 2)
     status = detail.get("status")
     if not status:
-        status = "confirmed" if confidence >= 0.55 else "possible"
+        status = "confirmed" if confidence >= 0.68 else "possible"
+    integrity_type = detail.get("integrity_type") or "student_plagiarism"
+    if integrity_type == "ai":
+        view_mode = "single"
+    else:
+        view_mode = "side_by_side"
+    document_a = document_b = None
+    effective_flags = dedupe_student_flag_dicts(detail.get("flags") or [])
+    if include_documents and db is not None:
+        document_a, document_b, effective_flags = build_highlighted_documents(
+            db, signal, detail=detail
+        )
+    metrics = derive_signal_metrics(detail, confidence, integrity_type)
     return OverlapSignalOut(
         id=str(signal.id),
         student_a_id=str(signal.student_a_id),
@@ -213,10 +234,24 @@ def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> Overlap
         scope=detail.get("scope"),
         passage_a=detail.get("passage_a"),
         passage_b=detail.get("passage_b"),
+        document_a=document_a,
+        document_b=document_b,
         group_a_id=detail.get("group_a_id"),
         group_b_id=detail.get("group_b_id"),
         group_a_name=detail.get("group_a_name"),
         group_b_name=detail.get("group_b_name"),
+        ai_verified=detail.get("ai_verified"),
+        ai_explanation=detail.get("ai_explanation"),
+        detection_method=detail.get("detection_method"),
+        integrity_type=integrity_type,
+        flags=effective_flags or None,
+        view_mode=view_mode,
+        ai_content_percent=metrics.get("ai_content_percent"),
+        peak_ai_section_percent=metrics.get("peak_ai_section_percent"),
+        student_match_count=metrics.get("student_match_count"),
+        overlap_confidence_percent=metrics.get("overlap_confidence_percent"),
+        detection_confidence_percent=metrics.get("detection_confidence_percent"),
+        metrics_summary=metrics.get("metrics_summary"),
     )
 
 
@@ -967,7 +1002,13 @@ def get_module_overlap_signal(
     if not signal:
         raise HTTPException(status_code=404, detail="Overlap signal not found")
     student_names, evidence_names = _module_signal_context(db, module)
-    return _signal_to_out(signal, student_names, evidence_names)
+    return _signal_to_out(
+        signal,
+        student_names,
+        evidence_names,
+        db=db,
+        include_documents=True,
+    )
 
 
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)

@@ -1,16 +1,22 @@
-import io
 import uuid as _uuid
 from pathlib import Path
 
-from docx import Document as DocxDocument
-from pypdf import PdfReader
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.enums import EmbeddingStatus, FileType, SourceType
+from app.models.enums import EmbeddingStatus, SourceType
 from app.models.evidence import Evidence
+from app.models.evidence_match import EvidenceMatch
+from app.models.overlap_signal import OverlapSignal
 from app.models.student import Student
+from app.services.text_extraction import (
+    EVIDENCE_EXTENSIONS,
+    extract_document_text_strict,
+    read_stored_evidence_text,
+    resolve_evidence_file_type,
+)
 
 
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
@@ -26,76 +32,21 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
 
 EVIDENCE_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "evidence"
 
-# ---------------------------------------------------------------------------
-# Supported file types — extend this dict when new user stories are added.
-# Key   : lowercase file extension (with dot)
-# Value : FileType enum value
-# ---------------------------------------------------------------------------
-SUPPORTED_EXTENSIONS: dict[str, FileType] = {
-    ".md": FileType.markdown,
-    ".docx": FileType.docx,
-    ".pdf": FileType.pdf,
-}
+# Re-export for API / tests that import SUPPORTED_EXTENSIONS from here.
+SUPPORTED_EXTENSIONS = EVIDENCE_EXTENSIONS
 
 
-def _resolve_file_type(filename: str) -> FileType:
-    """Return the FileType for *filename*, or raise 422 if unsupported."""
-    ext = Path(filename).suffix.lower()
-    file_type = SUPPORTED_EXTENSIONS.get(ext)
-    if file_type is None:
-        allowed = ", ".join(SUPPORTED_EXTENSIONS.keys())
+def _resolve_file_type(filename: str):
+    try:
+        return resolve_evidence_file_type(filename)
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Unsupported file type '{ext}'. Allowed: {allowed}",
-        )
-    return file_type
-
-
-def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
-    """Extract plain-text content from *raw* bytes based on *file_type*."""
-    if file_type == FileType.markdown:
-        try:
-            return raw.decode("utf-8")
-        except UnicodeDecodeError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Markdown file is not valid UTF-8 text",
-            )
-
-    if file_type == FileType.docx:
-        try:
-            doc = DocxDocument(io.BytesIO(raw))
-            return "\n".join(
-                paragraph.text for paragraph in doc.paragraphs
-            )
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Could not parse '{filename}' as a valid Word document (.docx)",
-            )
-
-    if file_type == FileType.pdf:
-        try:
-            reader = PdfReader(io.BytesIO(raw))
-            pages = [page.extract_text() or "" for page in reader.pages]
-            return "\n\n".join(pages)
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Could not parse '{filename}' as a valid PDF",
-            )
-
-    # Fallback for any future types not yet handled
-    raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail=f"Text extraction not implemented for file type '{file_type}'",
-    )
+            detail=str(exc),
+        ) from exc
 
 
 class EvidenceService:
-    # ------------------------------------------------------------------
-    # Upload a file as evidence for a student
-    # ------------------------------------------------------------------
     @staticmethod
     def upload_file(
         student_id: str,
@@ -109,15 +60,18 @@ class EvidenceService:
                 detail="Student not found",
             )
 
-        # Resolve & validate file type
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
 
-        # Read raw bytes and extract plain-text content per file type
         raw = file.file.read()
-        content = _extract_text(raw, file_type, filename)
+        try:
+            content = extract_document_text_strict(raw, filename)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
-        # Persist to disk
         upload_dir = EVIDENCE_UPLOAD_DIR / str(student_id)
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -125,14 +79,8 @@ class EvidenceService:
         file_path = upload_dir / unique_name
         file_path.write_text(content, encoding="utf-8")
 
-        # Store path relative to EVIDENCE_UPLOAD_DIR so the record stays
-        # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(EVIDENCE_UPLOAD_DIR))
 
-        # Create DB record. The file is stored and its text extracted, but no
-        # embedding step has run yet, so the status stays "pending" until the
-        # AI pipeline processes it. (Was incorrectly "completed", which claimed
-        # embedding had finished when nothing had embedded the file.)
         evidence = Evidence(
             student_id=student_id,
             file_name=filename,
@@ -146,9 +94,6 @@ class EvidenceService:
         db.refresh(evidence)
         return evidence
 
-    # ------------------------------------------------------------------
-    # List all evidence for a student
-    # ------------------------------------------------------------------
     @staticmethod
     def list_for_student(student_id: str, db: Session) -> list[Evidence]:
         student = db.get(Student, student_id)
@@ -164,9 +109,6 @@ class EvidenceService:
             .all()
         )
 
-    # ------------------------------------------------------------------
-    # Delete an evidence record (DB + file on disk)
-    # ------------------------------------------------------------------
     @staticmethod
     def delete(evidence_id: str, db: Session) -> None:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
@@ -175,22 +117,29 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        # Reconstruct full path from the stored relative path
+
+        eid = evidence.id
+        db.query(OverlapSignal).filter(
+            or_(
+                OverlapSignal.evidence_a_id == eid,
+                OverlapSignal.evidence_b_id == eid,
+            )
+        ).delete(synchronize_session=False)
+        db.query(EvidenceMatch).filter(EvidenceMatch.evidence_id == eid).delete(
+            synchronize_session=False
+        )
+
         full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
 
-        # Remove file from disk (ignore if already gone)
         try:
             if full_path.exists():
                 full_path.unlink()
         except OSError:
-            pass  # Log in production; don't block the DB delete
+            pass
 
         db.delete(evidence)
         db.commit()
 
-    # ------------------------------------------------------------------
-    # Read the raw text content of a single evidence record
-    # ------------------------------------------------------------------
     @staticmethod
     def read_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
@@ -199,11 +148,10 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        full_path = EVIDENCE_UPLOAD_DIR / evidence.file_path
-        if not full_path.exists():
+        if not (EVIDENCE_UPLOAD_DIR / evidence.file_path).exists():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence file not found on disk",
             )
-        content = full_path.read_text(encoding="utf-8")
+        content = read_stored_evidence_text(evidence, EVIDENCE_UPLOAD_DIR)
         return evidence, content

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.evidence import Evidence
 from app.models.evidence_match import EvidenceMatch
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
+from app.services.text_extraction import read_stored_evidence_text
 from app.services.text_chunker import chunk_text
 
 _MIN_SIMILARITY = 0.12
@@ -29,13 +30,7 @@ class MatchedChunk:
 
 
 def _read_evidence_text(evidence: Evidence) -> str:
-    path = EVIDENCE_UPLOAD_DIR / evidence.file_path
-    if not path.exists():
-        return ""
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
+    return read_stored_evidence_text(evidence, EVIDENCE_UPLOAD_DIR)
 
 
 def match_criterion_to_evidence(
