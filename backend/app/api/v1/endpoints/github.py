@@ -6,7 +6,7 @@ branch names.  The branch list is NOT stored — it is only used client-side to
 present the branch selection dropdown before the user saves a configuration.
 """
 from urllib.parse import urlparse
-from typing import List, Optional
+from typing import List
 
 import httpx
 from fastapi import APIRouter, HTTPException, status
