@@ -801,7 +801,12 @@ Return JSON:
   "confidence": <0.0-1.0>,
   "missing_gaps": "<optional note if evidence is thin>"
 }}"""
-    raw = ollama_client.generate(prompt, system=_ASSESSMENT_SYSTEM_PROMPT, temperature=0.15)
+    raw = ollama_client.generate(
+        prompt,
+        system=_ASSESSMENT_SYSTEM_PROMPT,
+        temperature=0.15,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
     if parsed and parsed.get("score") is not None:
         return {
@@ -825,7 +830,12 @@ Base it ONLY on these criterion analyses (do not invent evidence):
 {chr(10).join(lines)}
 
 Return JSON: {{"summary": "<paragraph>"}}"""
-    raw = ollama_client.generate(prompt, system=_ASSESSMENT_SYSTEM_PROMPT, temperature=0.2)
+    raw = ollama_client.generate(
+        prompt,
+        system=_ASSESSMENT_SYSTEM_PROMPT,
+        temperature=0.2,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
     if parsed and parsed.get("summary"):
         return str(parsed["summary"])
@@ -1107,7 +1117,7 @@ def chat_discuss(
     chat_messages.extend(_history_for_llm(history[:-1]))
     chat_messages.append({"role": "user", "content": message.strip()})
 
-    raw = ollama_client.chat(chat_messages, temperature=0.35)
+    raw = ollama_client.chat(chat_messages, temperature=0.35, **ollama_client.assessment_llm_options())
     reply = (raw or "").strip()
     if not reply:
         reply = (
@@ -1168,7 +1178,12 @@ def chat_propose_refine(
     ]
     chat_messages.extend(_history_for_llm(history))
 
-    raw = ollama_client.chat(chat_messages, temperature=0.2, format_json=True)
+    raw = ollama_client.chat(
+        chat_messages,
+        temperature=0.2,
+        format_json=True,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
 
     updates: list[dict[str, Any]] = []
@@ -1208,6 +1223,7 @@ def chat_propose_refine(
             ],
             temperature=0.15,
             format_json=True,
+            **ollama_client.assessment_llm_options(),
         )
         retry_parsed = ollama_client.parse_json_response(retry_raw or "")
         if retry_parsed:

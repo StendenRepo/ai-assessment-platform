@@ -65,8 +65,11 @@ services:
             - ollama_data:/root/.ollama
         environment:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
-            OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
-            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-llama3.1:8b}
+            OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+            OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            ASSESSMENT_OLLAMA_MODEL: ${ASSESSMENT_OLLAMA_MODEL:-qwen2.5:7b}
+            ASSESSMENT_OLLAMA_MODEL_BACKUP: ${ASSESSMENT_OLLAMA_MODEL_BACKUP:-llama3.1:8b}
+            VISION_MODEL: ${VISION_MODEL:-llava:7b}
         depends_on:
             ollama:
                 condition: service_started
@@ -76,13 +79,12 @@ services:
             set -e;
             echo 'Waiting for Ollama API...';
             until ollama list >/dev/null 2>&1; do sleep 2; done;
-                        echo 'Pulling primary model: ${OLLAMA_MODEL}';
-            ollama pull ${OLLAMA_MODEL};
-                        if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
-                            echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
-                            ollama pull ${OLLAMA_MODEL_BACKUP};
-                        fi;
-                        echo 'Models ready';
+            for m in \"${OLLAMA_MODEL}\" \"${OLLAMA_MODEL_BACKUP}\" \"${ASSESSMENT_OLLAMA_MODEL}\" \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" \"${VISION_MODEL}\"; do
+              [ -z \"$$m\" ] && continue;
+              echo \"Pulling $$m\";
+              ollama pull \"$$m\" || true;
+            done;
+            echo 'Models ready';
             "
         restart: 'no'
     stt:

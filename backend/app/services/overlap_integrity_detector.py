@@ -644,7 +644,12 @@ Rules:
 - Each flag needs confidence >= {STUDENT_AI_FLAG_MIN}.
 """
 
-    raw = ollama_client.generate(prompt, system=_INTEGRITY_SYSTEM, temperature=0.05)
+    raw = ollama_client.generate(
+        prompt,
+        system=_INTEGRITY_SYSTEM,
+        temperature=0.05,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
     if not parsed:
         return assess_student_plagiarism(
@@ -914,7 +919,12 @@ Detection rules:
 - If the submission appears authentically student-written with specific project detail, set ai_detected=false.
 """
 
-    raw = ollama_client.generate(prompt, system=_AI_DETECTION_SYSTEM, temperature=0.05)
+    raw = ollama_client.generate(
+        prompt,
+        system=_AI_DETECTION_SYSTEM,
+        temperature=0.05,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
     if not parsed:
         return IntegrityResult(
@@ -1139,7 +1149,12 @@ Rules:
 - Include flags with confidence >= {AI_FLAG_MIN}.
 - If this excerpt is likely AI-written, set ai_detected=true even if you cannot quote a short substring.
 """
-        raw = ollama_client.generate(prompt, system=_AI_DETECTION_SYSTEM, temperature=0.05)
+        raw = ollama_client.generate(
+            prompt,
+            system=_AI_DETECTION_SYSTEM,
+            temperature=0.05,
+            **ollama_client.assessment_llm_options(),
+        )
         parsed = ollama_client.parse_json_response(raw or "")
         if not parsed:
             continue
@@ -1278,7 +1293,12 @@ Rules:
 - Prefer fewer high-quality flags over many weak ones.
 """
 
-    raw = ollama_client.generate(prompt, system=_INTEGRITY_SYSTEM, temperature=0.05)
+    raw = ollama_client.generate(
+        prompt,
+        system=_INTEGRITY_SYSTEM,
+        temperature=0.05,
+        **ollama_client.assessment_llm_options(),
+    )
     parsed = ollama_client.parse_json_response(raw or "")
     if not parsed:
         return _student_fallback(tfidf_score)

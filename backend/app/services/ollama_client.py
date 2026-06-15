@@ -12,16 +12,50 @@ from app.config import settings
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 
 
+def default_models() -> tuple[str, ...]:
+    return _dedupe_models(settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP)
+
+
+def assessment_models() -> tuple[str, ...]:
+    return _dedupe_models(
+        settings.ASSESSMENT_OLLAMA_MODEL,
+        settings.ASSESSMENT_OLLAMA_MODEL_BACKUP,
+    )
+
+
+def _dedupe_models(*names: str) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in names:
+        if name and name not in seen:
+            seen.add(name)
+            ordered.append(name)
+    return tuple(ordered)
+
+
+def assessment_llm_options() -> dict[str, Any]:
+    return {
+        "models": assessment_models(),
+        "timeout_seconds": settings.ASSESSMENT_OLLAMA_TIMEOUT_SECONDS,
+    }
+
+
 def generate(
     prompt: str,
     *,
     system: str | None = None,
     temperature: float = 0.2,
+    models: tuple[str, ...] | None = None,
+    timeout_seconds: float | None = None,
 ) -> Optional[str]:
     """Single-turn text generation. Returns None if all models fail."""
-    for model in (settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP):
-        if not model:
-            continue
+    chain = models or default_models()
+    timeout = (
+        timeout_seconds
+        if timeout_seconds is not None
+        else settings.OLLAMA_TIMEOUT_SECONDS
+    )
+    for model in chain:
         try:
             payload: dict[str, Any] = {
                 "model": model,
@@ -35,7 +69,7 @@ def generate(
             }
             if system:
                 payload["system"] = system
-            with httpx.Client(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
+            with httpx.Client(timeout=timeout) as client:
                 response = client.post(
                     f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
                     json=payload,
@@ -54,11 +88,17 @@ def chat(
     *,
     temperature: float = 0.3,
     format_json: bool = False,
+    models: tuple[str, ...] | None = None,
+    timeout_seconds: float | None = None,
 ) -> Optional[str]:
     """Multi-turn chat completion. Each message: {role, content}."""
-    for model in (settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP):
-        if not model:
-            continue
+    chain = models or default_models()
+    timeout = (
+        timeout_seconds
+        if timeout_seconds is not None
+        else settings.OLLAMA_TIMEOUT_SECONDS
+    )
+    for model in chain:
         try:
             payload: dict[str, Any] = {
                 "model": model,
@@ -72,7 +112,7 @@ def chat(
             }
             if format_json:
                 payload["format"] = "json"
-            with httpx.Client(timeout=settings.OLLAMA_TIMEOUT_SECONDS) as client:
+            with httpx.Client(timeout=timeout) as client:
                 response = client.post(
                     f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
                     json=payload,

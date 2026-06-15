@@ -185,13 +185,19 @@ Use this when setting up fresh, or when upgrading an existing `dev` deployment t
 cp .env.example .env   # skip if you already have .env
 ```
 
-Ensure these keys are present (they are new compared to `dev`):
+Ensure these keys are present:
 
 ```env
 OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:7b
-OLLAMA_MODEL_BACKUP=llama3.1:8b
-OLLAMA_TIMEOUT_SECONDS=120
+OLLAMA_MODEL=llama3.2:1b
+OLLAMA_MODEL_BACKUP=qwen2.5:3b
+OLLAMA_TIMEOUT_SECONDS=20
+
+ASSESSMENT_OLLAMA_MODEL=qwen2.5:7b
+ASSESSMENT_OLLAMA_MODEL_BACKUP=llama3.1:8b
+ASSESSMENT_OLLAMA_TIMEOUT_SECONDS=120
+
+VISION_MODEL=llava:7b
 
 AI_DETECTOR_URL=http://ai-detector:9001
 AI_DETECTOR_MODEL=Hello-SimpleAI/chatgpt-detector-roberta
@@ -222,7 +228,7 @@ Container images and LLM weights are separate. After `ollama` is running, pull t
 docker compose -f docker-compose.yml run --rm ollama-init
 ```
 
-Use the same command with `docker-compose.dev.yml` in dev. This can take several minutes on first run (~4–5 GB for `qwen2.5:7b`).
+Use the same command with `docker-compose.dev.yml` in dev. This pulls general, assessment, and vision models into the shared `ollama_data` volume. First run can take a while (~10+ GB total if all models are new).
 
 ## 4. ai-detector model download
 
@@ -255,10 +261,12 @@ The new services plug into the stack without replacing what was already there.
 | ---- | ------------ | ----- |
 | Auth, modules, students, evidence | Postgres | Unchanged |
 | Recordings & STT | `stt` container | Unchanged |
-| Assessment suggestions & chat | Ollama | Unchanged wiring (`http://ollama:11434`); larger default models on this branch |
+| Assessment suggestions & chat | Ollama (`ASSESSMENT_OLLAMA_*`) | 7B models for JSON and reasoning |
 | Overlap text similarity | Backend detectors | Unchanged |
-| Overlap AI-segment flags | **ai-detector** (primary) | New; RoBERTa classifier for segment-level scores |
-| Overlap AI fallback | Ollama + heuristics | Used when the classifier is unavailable at request time |
+| Overlap AI-segment flags | **ai-detector** (primary) | RoBERTa classifier |
+| Overlap AI fallback | Ollama (`ASSESSMENT_OLLAMA_*`) + heuristics | When classifier unavailable |
+| Image evidence (after merge with `dev`) | Ollama (`VISION_MODEL`) | `llava:7b` |
+| General / future dev paths | Ollama (`OLLAMA_*`) | Fast 1B/3B defaults |
 
 **ai-detector is additive.** Assessment, uploads, recordings, and text overlap scanning work the same as before. Only the AI-writing segment analysis in overlap review prefers the new container; if it is down or still loading, the backend falls back to the existing Ollama-based detection path.
 
@@ -270,35 +278,30 @@ No wipe of Postgres or upload volumes is needed when upgrading from `dev`.
 
 All inference runs on-premise inside Docker. Nothing is sent to external APIs.
 
-## Ollama (general LLM)
+Ollama uses **two model tiers** so this branch aligns with `dev` defaults while keeping quality for assessment and overlap:
 
-Used for:
-
-- Per-criterion assessment suggestions and summaries
-- Discuss / refine chat on the student assessment page
-- Overlap review warnings and integrity commentary
-
-The backend connects to Ollama at `http://ollama:11434` (Docker service name). Configuration lives in `.env`:
+| Env vars | Default models | Used for |
+| -------- | -------------- | -------- |
+| `OLLAMA_MODEL` / `OLLAMA_MODEL_BACKUP` | `llama3.2:1b` / `qwen2.5:3b` | General dev stack, image evidence helpers, fast paths |
+| `ASSESSMENT_OLLAMA_MODEL` / backup | `qwen2.5:7b` / `llama3.1:8b` | Assessment suggestions, discuss/refine chat, overlap LLM |
+| `VISION_MODEL` | `llava:7b` | Image evidence descriptions (same as `dev`) |
 
 ```env
 OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:7b
-OLLAMA_MODEL_BACKUP=llama3.1:8b
-OLLAMA_TIMEOUT_SECONDS=120
+OLLAMA_MODEL=llama3.2:1b
+OLLAMA_MODEL_BACKUP=qwen2.5:3b
+OLLAMA_TIMEOUT_SECONDS=20
+
+ASSESSMENT_OLLAMA_MODEL=qwen2.5:7b
+ASSESSMENT_OLLAMA_MODEL_BACKUP=llama3.1:8b
+ASSESSMENT_OLLAMA_TIMEOUT_SECONDS=120
+
+VISION_MODEL=llava:7b
 ```
 
-### Why larger models than `dev`?
+`ollama-init` pulls every model listed above. Assessment and overlap code routes through `ollama_client.assessment_models()`; everything else uses `OLLAMA_*`.
 
-The `dev` branch defaults to `llama3.2:1b` and `qwen2.5:3b`. Those models start quickly and suit basic smoke tests, but they struggle with structured JSON (refinement proposals, grounded comments) and longer reasoning chains.
-
-This branch uses **7B-class models** because assessment chat and overlap analysis need reliable JSON output and enough context to reference rubric and evidence. Trade-off: slower inference on CPU inside Docker, and a larger initial download (~4–5 GB for `qwen2.5:7b`).
-
-| Branch | Primary | Backup | Timeout |
-| ------ | ------- | ------ | ------- |
-| `dev`  | `llama3.2:1b` | `qwen2.5:3b` | 20s |
-| This branch | `qwen2.5:7b` | `llama3.1:8b` | 120s |
-
-Pull or refresh Ollama models (not the ai-detector image — see above):
+Pull or refresh all Ollama weights:
 
 ```bash
 docker compose -f docker-compose.yml run --rm ollama-init
@@ -310,7 +313,7 @@ Check what is available:
 curl http://localhost:8000/api/v1/health/ollama
 ```
 
-Shared client: `backend/app/services/ollama_client.py` (primary model with automatic backup fallback).
+Shared client: `backend/app/services/ollama_client.py` (per-call model chain with backup fallback).
 
 ## AI detector (RoBERTa)
 
@@ -539,8 +542,11 @@ RECORDING_DIR=/app/data/recordings
 EXPORT_DIR=/app/data/exports
 
 OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:7b
-OLLAMA_MODEL_BACKUP=llama3.1:8b
+OLLAMA_MODEL=llama3.2:1b
+OLLAMA_MODEL_BACKUP=qwen2.5:3b
+
+ASSESSMENT_OLLAMA_MODEL=qwen2.5:7b
+ASSESSMENT_OLLAMA_MODEL_BACKUP=llama3.1:8b
 
 AI_DETECTOR_URL=http://ai-detector:9001
 ```

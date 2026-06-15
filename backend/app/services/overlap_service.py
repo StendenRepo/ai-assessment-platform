@@ -767,4 +767,8 @@ class OverlapService:
 
     @staticmethod
     def _generate_ollama_warning(prompt: str) -> Optional[str]:
-        return ollama_client.generate(prompt, temperature=0.3)
+        return ollama_client.generate(
+            prompt,
+            temperature=0.3,
+            **ollama_client.assessment_llm_options(),
+        )
