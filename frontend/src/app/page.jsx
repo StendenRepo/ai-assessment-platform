@@ -13,6 +13,8 @@ export default function RootPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [pin, setPin] = useState('');
+  const [pinRequired, setPinRequired] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -34,13 +36,21 @@ export default function RootPage() {
     setError('');
     setLoading(true);
     try {
-      const userData = await apiLogin(email, password);
-      if (isAdmin && !userData.is_admin) {
+      const result = await apiLogin(
+        email,
+        password,
+        pinRequired ? pin : undefined
+      );
+      if (result.pinRequired) {
+        setPinRequired(true);
+        return;
+      }
+      if (isAdmin && !result.is_admin) {
         clearSession();
         setError('This account does not have administrator access.');
         return;
       }
-      login(userData);
+      login(result);
       // navigation is handled by the useEffect above
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
@@ -126,6 +136,26 @@ export default function RootPage() {
               className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
             />
           </div>
+
+          {pinRequired && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">PIN</label>
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit(e)}
+                placeholder="••••"
+                autoFocus
+                required
+                className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+              />
+              <p className="text-xs text-muted-foreground">
+                This account is protected by a PIN. Enter it to continue.
+              </p>
+            </div>
+          )}
 
           {error && (
             <p className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
