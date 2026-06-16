@@ -5,6 +5,8 @@ recording has its own file, transcript, status and expiry.
 """
 import asyncio
 import logging
+import mimetypes
+import os
 from uuid import UUID
 
 from fastapi import (
@@ -20,6 +22,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -43,6 +46,7 @@ from app.schemas.recording import (
 )
 from app.services import (
     assessment_service,
+    audit_service,
     notification_service,
     recording_service,
     stt_client,
@@ -285,6 +289,60 @@ def get_recording(
     assessment = _get_owned_assessment(assessment_id, db, teacher)
     recording = _get_recording(db, assessment, recording_id)
     return _detail(db, recording)
+
+
+@router.get("/assessments/{assessment_id}/recordings/{recording_id}/audio")
+def get_recording_audio(
+    assessment_id: UUID,
+    recording_id: UUID,
+    request: Request,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    """Stream a recording's audio for in-app playback.
+
+    Reuses the same ownership gate as the rest of the recording endpoints and
+    writes a 'recording.played' audit entry (FR-06 full audit trail)."""
+    assessment = _get_owned_assessment(assessment_id, db, teacher)
+    recording = _get_recording(db, assessment, recording_id)
+
+    record = (
+        db.query(FileRecord).filter(FileRecord.id == recording.file_id).first()
+        if recording.file_id
+        else None
+    )
+    if record is None or not record.path or not os.path.exists(record.path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording audio is no longer available",
+        )
+
+    media_type, _ = mimetypes.guess_type(record.path)
+    if not media_type:
+        media_type = (
+            record.file_type
+            if record.file_type and "/" in record.file_type
+            else "audio/webm"
+        )
+
+    audit_service.log_action(
+        db,
+        action="recording.played",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        assessment_id=recording.assessment_id,
+        details={
+            "recording_id": str(recording.id),
+            "file_id": str(record.id),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return FileResponse(
+        path=record.path,
+        media_type=media_type,
+        content_disposition_type="inline",
+    )
 
 
 @router.patch(
