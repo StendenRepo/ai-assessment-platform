@@ -3,6 +3,8 @@
 An assessment has ONE consent decision (up front) and MANY recordings. Each
 recording has its own file, transcript, status and expiry.
 """
+import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import (
@@ -14,11 +16,16 @@ from fastapi import (
     UploadFile,
     File,
     Form,
+    WebSocket,
+    WebSocketDisconnect,
     status,
 )
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_teacher, get_db
+from app.config import settings
+from app.core.security import decode_access_token
 from app.database import SessionLocal
 from app.models.assessment import Assessment
 from app.models.enums import ConsentStatus
@@ -34,9 +41,16 @@ from app.schemas.recording import (
     RecordingPatchIn,
     RecordingSummary,
 )
-from app.services import assessment_service, notification_service, recording_service
+from app.services import (
+    assessment_service,
+    notification_service,
+    recording_service,
+    stt_client,
+)
 
 router = APIRouter()
+
+logger = logging.getLogger("recording.live")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -388,3 +402,103 @@ def mark_notification_read(
         created_at=notification.created_at,
         read_at=notification.read_at,
     )
+
+
+# ── live subtitles (FR-06, additive, transient) ──────────────────────────────--
+#
+# A SEPARATE layer from the recording/upload/batch-transcript path. Audio chunks
+# are forwarded to the on-premise STT /transcribe-chunk endpoint and partial text
+# is streamed back. NOTHING is persisted; if anything here fails, the recording
+# and the official transcript are entirely unaffected.
+
+def _authenticate_ws_teacher(token: str | None, db: Session) -> Teacher | None:
+    """Resolve the Teacher for a WebSocket token (query param), or None.
+
+    WebSocket clients can't send an Authorization header, so the JWT arrives as a
+    query param and is validated with the same decoder used for HTTP requests.
+    """
+    if not token:
+        return None
+    teacher_id = decode_access_token(token)
+    if not teacher_id:
+        return None
+    return db.query(Teacher).filter(Teacher.id == teacher_id).first()
+
+
+@router.websocket("/assessments/{assessment_id}/recording/live")
+async def recording_live_subtitles(
+    websocket: WebSocket,
+    assessment_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Stream transient live subtitles for an in-progress recording.
+
+    Auth: ``?token=<jwt>`` query param; the teacher must own the assessment (or be
+    admin). Receives binary WAV chunks, forwards each to STT, and sends back
+    ``{"type": "partial", "text": ...}``. Stateless per chunk, persists nothing.
+    Backpressure: a chunk that arrives while the previous one is still being
+    transcribed is dropped (latency over completeness).
+    """
+    token = websocket.query_params.get("token")
+    teacher = _authenticate_ws_teacher(token, db)
+    if teacher is None:
+        await websocket.close(code=4401)  # unauthorized
+        return
+
+    assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
+    if assessment is None:
+        await websocket.close(code=4404)  # not found
+        return
+    if assessment.teacher_id != teacher.id and not teacher.is_admin:
+        await websocket.close(code=4403)  # forbidden
+        return
+
+    # Force a language by default (short chunks mis-detect); client may override.
+    language = (
+        websocket.query_params.get("language")
+        or settings.LIVE_SUBTITLE_LANGUAGE
+        or None
+    )
+
+    await websocket.accept()
+
+    # Single in-flight chunk at a time; `busy` implements drop-newest backpressure.
+    state = {"busy": False}
+    current_task: asyncio.Task | None = None  # strong ref so the task isn't GC'd
+
+    async def _handle_chunk(audio: bytes) -> None:
+        try:
+            result = await run_in_threadpool(
+                stt_client.transcribe_chunk, audio, language
+            )
+            text = (result or {}).get("text", "").strip()
+            if text:
+                await websocket.send_json({"type": "partial", "text": text})
+        except Exception as exc:  # noqa: BLE001 - live is best-effort, never fatal
+            logger.debug("live subtitle chunk dropped: %s", exc)
+        finally:
+            state["busy"] = False
+
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            audio = message.get("bytes")
+            if audio is None:
+                continue  # ignore text/control frames
+            if state["busy"]:
+                continue  # backpressure: drop the newest chunk
+            state["busy"] = True
+            current_task = asyncio.create_task(_handle_chunk(audio))
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001 - never let the live path raise outward
+        logger.debug("live subtitle socket closed: %s", exc)
+    finally:
+        if current_task is not None and not current_task.done():
+            current_task.cancel()
+        try:
+            await websocket.close()
+        except Exception:  # noqa: BLE001 - already closed
+            pass

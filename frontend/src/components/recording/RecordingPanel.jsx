@@ -11,6 +11,8 @@ import {
 import ConsentBadge from '@/components/recording/ConsentBadge';
 import ConsentPromptDialog from '@/components/recording/ConsentPromptDialog';
 import RecordingRow from '@/components/recording/RecordingRow';
+import LiveSubtitles from '@/components/recording/LiveSubtitles';
+import { createLiveSubtitleSession } from '@/lib/recording/liveSubtitles';
 
 /**
  * Multi-recording panel for an individual assessment (FR-06).
@@ -31,12 +33,15 @@ export default function RecordingPanel({
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [liveText, setLiveText] = useState(''); // transient live subtitle (FR-06)
+  const [liveActive, setLiveActive] = useState(false); // hide subtitle area on failure
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
+  const liveSessionRef = useRef(null); // live-subtitle session (additive, best-effort)
 
   async function refresh() {
     const [c, recs] = await Promise.all([
@@ -88,6 +93,7 @@ export default function RecordingPanel({
 
   useEffect(() => {
     return () => {
+      liveSessionRef.current?.stop();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       pollRef.current && clearInterval(pollRef.current);
     };
@@ -123,6 +129,7 @@ export default function RecordingPanel({
       recorder.start();
       setElapsed(0);
       setIsRecording(true);
+      startLiveSubtitles(stream);
     } catch {
       setError(
         'Microphone access denied. Please allow microphone access to record.'
@@ -130,7 +137,43 @@ export default function RecordingPanel({
     }
   }
 
+  // Live subtitles run ALONGSIDE MediaRecorder on the same stream. Entirely
+  // best-effort: any failure is swallowed so it can never affect the recording.
+  function startLiveSubtitles(stream) {
+    try {
+      setLiveText('');
+      setLiveActive(true);
+      const session = createLiveSubtitleSession({
+        assessmentId,
+        onText: (text) => setLiveText(text),
+        onClose: () => {
+          // WS error or unexpected close -> hide the caption silently. Recording
+          // is untouched and continues.
+          liveSessionRef.current = null;
+          setLiveActive(false);
+        },
+      });
+      liveSessionRef.current = session;
+      session.start(stream);
+    } catch {
+      liveSessionRef.current = null;
+      setLiveActive(false);
+    }
+  }
+
+  function stopLiveSubtitles() {
+    try {
+      liveSessionRef.current?.stop();
+    } catch {
+      /* best-effort */
+    }
+    liveSessionRef.current = null;
+    setLiveActive(false);
+    setLiveText('');
+  }
+
   function stopRecording() {
+    stopLiveSubtitles();
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
   }
@@ -200,6 +243,9 @@ export default function RecordingPanel({
             >
               <Square size={14} /> Stop &amp; Save
             </button>
+            {/* Transient live subtitles (FR-06). Hidden silently if the live
+                path fails; the recording continues regardless. */}
+            {liveActive && <LiveSubtitles text={liveText} />}
           </div>
         ) : uploading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
