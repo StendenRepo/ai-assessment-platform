@@ -399,6 +399,11 @@ def _build_report(
                 {
                     "evidence_id": row.evidence_id,
                     "file_name": row.evidence.file_name if row.evidence else None,
+                    "file_type": (
+                        row.evidence.file_type.value
+                        if row.evidence and row.evidence.file_type
+                        else None
+                    ),
                     "chunk_index": row.chunk_index,
                     "supporting_quote": row.supporting_quote,
                     "confidence_score": row.confidence_score,
