@@ -1,5 +1,11 @@
 'use client';
 
+import {
+  aiMetricLabel,
+  aiScoreLabel,
+  peakSectionLabel,
+} from '@/lib/overlapLabels';
+
 function roundPct(fraction) {
   return Math.round((fraction || 0) * 100);
 }
@@ -20,10 +26,10 @@ export function buildOverlapMetricRows(signal) {
 
   if (type === 'ai' || type === 'both') {
     const aiPct = signal.ai_content_percent ?? confPct;
-    rows.push({ key: 'ai', label: 'AI-written', value: `~${aiPct}%` });
+    rows.push({ key: 'ai', label: aiMetricLabel(), value: aiScoreLabel(aiPct) });
     const peak = signal.peak_ai_section_percent ?? peakFlagPct(flags, 'ai');
     if (peak != null && peak > aiPct + 5) {
-      rows.push({ key: 'peak', label: 'Peak section', value: `${peak}%` });
+      rows.push({ key: 'peak', label: 'Peak section', value: peakSectionLabel(peak) });
     }
   }
 
@@ -37,7 +43,7 @@ export function buildOverlapMetricRows(signal) {
       });
     }
     const overlapPct = signal.overlap_confidence_percent ?? confPct;
-    rows.push({ key: 'overlap', label: 'Overlap', value: `${overlapPct}%` });
+    rows.push({ key: 'overlap', label: 'Similarity est.', value: `${overlapPct}%` });
   }
 
   return rows;
@@ -82,8 +88,8 @@ function CompactMetrics({ signal }) {
       <div className="grid grid-cols-2 gap-1.5 w-[11.5rem] shrink-0">
         <StatCell
           value={ai?.value ?? '—'}
-          label={ai?.label ?? 'AI-written'}
-          sub={peak ? `peak ${peak.value}` : undefined}
+          label={ai?.label ?? aiMetricLabel()}
+          sub={peak ? peak.value : undefined}
           tone="violet"
         />
         <StatCell
@@ -101,8 +107,8 @@ function CompactMetrics({ signal }) {
       <div className="w-[11.5rem] shrink-0">
         <StatCell
           value={ai?.value ?? '—'}
-          label={ai?.label ?? 'AI-written'}
-          sub={peak ? `peak ${peak.value}` : undefined}
+          label={ai?.label ?? aiMetricLabel()}
+          sub={peak ? peak.value : undefined}
           tone="violet"
           className="w-full"
         />

@@ -14,10 +14,11 @@ import {
   buildOverlapMetricRows,
   integrityAccentClass,
 } from '@/components/overlaps/OverlapSignalMetrics';
+import { OVERLAP_REVIEW_DISCLAIMER } from '@/lib/overlapLabels';
 
 function integrityTitle(data) {
   const type = data.integrity_type || 'student_plagiarism';
-  if (type === 'ai') return 'AI-generated content';
+  if (type === 'ai') return 'Possible AI-assisted text';
   return 'Overlap signal';
 }
 
@@ -141,10 +142,14 @@ export default function OverlapDetailPage() {
             )}
             {data.ai_verified && (
               <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20">
-                AI verified
+                Classifier flag
               </span>
             )}
           </div>
+
+          <p className="text-[10px] text-muted-foreground leading-snug border-t border-border pt-2">
+            {OVERLAP_REVIEW_DISCLAIMER}
+          </p>
 
           {metricRows.length > 0 && (
             <div className="grid grid-cols-2 gap-1.5">

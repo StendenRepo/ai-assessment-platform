@@ -16,6 +16,7 @@ import OverlapSignalMetrics, {
   integrityAccentClass,
 } from '@/components/overlaps/OverlapSignalMetrics';
 import ScanProgressBar from '@/components/overlaps/ScanProgressBar';
+import { OVERLAP_REVIEW_DISCLAIMER, overlapStatusLabel } from '@/lib/overlapLabels';
 
 const selectCls =
   'h-9 bg-secondary border border-border rounded-md pl-3 pr-8 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring';
@@ -71,8 +72,8 @@ export default function ModuleOverlapsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Overlap review</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            AI-generated content detection and student plagiarism (paraphrase-aware).
-            Scores show estimated AI share and matched passages — not a single overall grade.
+            Classifier and similarity indicators to support manual review — not definitive findings.
+            Scores are estimates; always verify before academic action.
           </p>
         </div>
         <button
@@ -90,6 +91,10 @@ export default function ModuleOverlapsPage() {
         </button>
       </div>
 
+      <p className="text-xs text-muted-foreground border border-border/60 rounded-md px-3 py-2 bg-secondary/20">
+        {OVERLAP_REVIEW_DISCLAIMER}
+      </p>
+
       <ScanProgressBar active={scanning} />
 
       {error && (
@@ -106,13 +111,13 @@ export default function ModuleOverlapsPage() {
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`px-4 py-2 text-sm font-medium rounded-md capitalize transition-colors ${
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                   tab === key
                     ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
                 }`}
               >
-                {key}
+                {overlapStatusLabel(key)}
               </button>
             ))}
           </div>

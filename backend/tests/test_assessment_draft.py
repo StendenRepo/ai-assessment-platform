@@ -44,7 +44,7 @@ MOCK_CHAT_RESPONSE = """{
 
 
 class TestGenerateSuggestions:
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.generate")
     def test_generate_populates_draft(self, mock_gen, db, assessment, teacher):
         mock_gen.return_value = '{"score": 7.5, "comment": "Good work.", "confidence": 0.8}'
         draft_assessment_service.generate_suggestions(
@@ -65,7 +65,7 @@ class TestGenerateSuggestions:
 
 
 class TestOverrides:
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.generate")
     def test_override_skips_unchanged_values(self, mock_gen, db, assessment, teacher):
         mock_gen.return_value = '{"score": 6, "comment": "AI view.", "confidence": 0.7}'
         draft_assessment_service.generate_suggestions(
@@ -86,7 +86,7 @@ class TestOverrides:
         )
         assert audit_count == 0
 
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.generate")
     def test_override_records_ai_and_teacher(self, mock_gen, db, assessment, teacher):
         mock_gen.return_value = '{"score": 6, "comment": "AI view.", "confidence": 0.7}'
         draft_assessment_service.generate_suggestions(
@@ -113,8 +113,8 @@ class TestOverrides:
 
 
 class TestChatDiscuss:
-    @patch("app.services.draft_assessment_service.ollama_client.chat")
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_discuss_does_not_mutate_draft(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(
@@ -138,8 +138,8 @@ class TestChatDiscuss:
 
 
 class TestChatRefineFlow:
-    @patch("app.services.draft_assessment_service.ollama_client.chat")
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_propose_then_apply_updates_draft(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(
@@ -173,8 +173,8 @@ class TestChatRefineFlow:
         assert applied
         assert draft["criteria"]["crit-4"]["ai"].get("refined_via_chat") is True
 
-    @patch("app.services.draft_assessment_service.ollama_client.chat")
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_propose_infers_from_conversation_when_llm_empty(
         self, mock_gen, mock_chat, db, assessment, teacher
     ):
@@ -204,8 +204,8 @@ class TestChatRefineFlow:
         assert crit1["after_score"] == 0.0
         assert crit1["before_score"] == 8.0
 
-    @patch("app.services.draft_assessment_service.ollama_client.chat")
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_propose_skips_overridden_criterion(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(
@@ -233,8 +233,8 @@ class TestChatRefineFlow:
         db.refresh(assessment)
         assert assessment.draft_form_json["criteria"]["crit-4"]["effective"]["score"] == 10
 
-    @patch("app.services.draft_assessment_service.ollama_client.chat")
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_chat_blocked_after_finalize(self, mock_gen, mock_chat, client, db, assessment, teacher):
         mock_gen.return_value = '{"score": 7, "comment": "OK.", "confidence": 0.7}'
         draft_assessment_service.generate_suggestions(
@@ -254,7 +254,7 @@ class TestChatRefineFlow:
 
 
 class TestFinalize:
-    @patch("app.services.draft_assessment_service.ollama_client.generate")
+    @patch("app.services.ollama_client.generate")
     def test_finalize_locks_assessment(self, mock_gen, client, db, assessment, teacher):
         mock_gen.return_value = '{"score": 7, "comment": "OK.", "confidence": 0.7}'
         draft_assessment_service.generate_suggestions(

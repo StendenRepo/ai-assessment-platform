@@ -1,7 +1,7 @@
 """add metadata_json to chat_messages
 
-Revision ID: j5k6l7m8n9o0
-Revises: i4j5k6l7m8n9
+Revision ID: n0p1q2r3s4t5
+Revises: m8n9o0p1q2r3
 """
 from typing import Sequence, Union
 
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "j5k6l7m8n9o0"
-down_revision: Union[str, None] = "i4j5k6l7m8n9"
+revision: str = "n0p1q2r3s4t5"
+down_revision: Union[str, None] = "m8n9o0p1q2r3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

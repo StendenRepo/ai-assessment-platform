@@ -261,7 +261,7 @@ export default function AssessmentFormPanel({
       'Finalize this assessment? The form will be locked from further AI changes.';
     if (confirmedOverlap) {
       msg +=
-        '\n\nWarning: confirmed overlap signals exist for this student. Review overlaps before finalizing.';
+        '\n\nNote: high-confidence overlap indicators exist for this student. Review overlaps manually before finalizing.';
     }
     if (!window.confirm(msg)) return;
 
@@ -345,7 +345,7 @@ export default function AssessmentFormPanel({
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground">
-              Overlap detected ({confirmedOverlaps.length} confirmed)
+              Overlap indicators ({confirmedOverlaps.length} high confidence)
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">
               Review overlap signals before finalizing this assessment.

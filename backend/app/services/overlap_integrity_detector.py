@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
+from app.lib.llm_json import parse_json_response
 from app.services import ollama_client
 from app.services import ai_detector_client
 from app.services.text_chunker import chunk_text
@@ -650,7 +651,7 @@ Rules:
         temperature=0.05,
         **ollama_client.assessment_llm_options(),
     )
-    parsed = ollama_client.parse_json_response(raw or "")
+    parsed = parse_json_response(raw or "")
     if not parsed:
         return assess_student_plagiarism(
             clean_a[:_MAX_PAIR_CHARS],
@@ -925,7 +926,7 @@ Detection rules:
         temperature=0.05,
         **ollama_client.assessment_llm_options(),
     )
-    parsed = ollama_client.parse_json_response(raw or "")
+    parsed = parse_json_response(raw or "")
     if not parsed:
         return IntegrityResult(
             integrity_type="none",
@@ -1155,7 +1156,7 @@ Rules:
             temperature=0.05,
             **ollama_client.assessment_llm_options(),
         )
-        parsed = ollama_client.parse_json_response(raw or "")
+        parsed = parse_json_response(raw or "")
         if not parsed:
             continue
         chunk_verified = True
@@ -1299,7 +1300,7 @@ Rules:
         temperature=0.05,
         **ollama_client.assessment_llm_options(),
     )
-    parsed = ollama_client.parse_json_response(raw or "")
+    parsed = parse_json_response(raw or "")
     if not parsed:
         return _student_fallback(tfidf_score)
 

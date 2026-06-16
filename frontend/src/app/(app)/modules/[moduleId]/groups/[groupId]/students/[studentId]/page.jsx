@@ -96,21 +96,21 @@ function overlapToInsight(signal, studentId, studentNames = {}) {
         ? 'medium'
         : 'low';
 
-  let title = `Overlap with ${otherName}`;
+  let title = `Possible overlap with ${otherName}`;
   if (integrityType === 'ai') {
-    title = 'AI-generated content detected';
+    title = 'Possible AI-assisted text';
   } else if (integrityType === 'both') {
-    title = `AI content + plagiarism with ${otherName}`;
+    title = `Possible AI + overlap with ${otherName}`;
   } else if (integrityType === 'student_plagiarism') {
-    title = `Plagiarism with ${otherName}`;
+    title = `Possible overlap with ${otherName}`;
   }
 
   const typeLabel =
     integrityType === 'ai'
-      ? 'AI-generated'
+      ? 'Possible AI-assisted'
       : integrityType === 'both'
-        ? 'AI + student plagiarism'
-        : 'Student plagiarism';
+        ? 'Possible AI + student overlap'
+        : 'Possible student overlap';
 
   return {
     id: signal.id,
@@ -121,7 +121,7 @@ function overlapToInsight(signal, studentId, studentNames = {}) {
       signal.ai_explanation ||
       signal.passage_a ||
       signal.snippet ||
-      `${typeLabel} detected (confidence ${Math.round((signal.confidence || 0) * 100)}%).`,
+      `${typeLabel} (estimated confidence ${Math.round((signal.confidence || 0) * 100)}%). Manual review recommended.`,
     sourceFiles: [signal.evidence_a_name, signal.evidence_b_name].filter(
       (f, i) => f && (integrityType !== 'ai' || i === 0)
     ),

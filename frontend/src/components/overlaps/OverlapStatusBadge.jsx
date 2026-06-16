@@ -1,10 +1,9 @@
 'use client';
 
-const INTEGRITY_LABELS = {
-  ai: 'AI-generated',
-  student_plagiarism: 'Student plagiarism',
-  both: 'AI + student plagiarism',
-};
+import {
+  INTEGRITY_TYPE_LABELS,
+  overlapStatusLabel,
+} from '@/lib/overlapLabels';
 
 const INTEGRITY_STYLES = {
   ai: 'bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20',
@@ -20,18 +19,18 @@ const styles = {
 };
 
 export function IntegrityTypeBadge({ type }) {
-  if (!type || !INTEGRITY_LABELS[type]) return null;
+  if (!type || !INTEGRITY_TYPE_LABELS[type]) return null;
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${INTEGRITY_STYLES[type]}`}
     >
-      {INTEGRITY_LABELS[type]}
+      {INTEGRITY_TYPE_LABELS[type]}
     </span>
   );
 }
 
 export default function OverlapStatusBadge({ kind, label }) {
-  const text = label || kind?.replace('_', ' ');
+  const text = label || overlapStatusLabel(kind);
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${styles[kind] || 'bg-secondary text-muted-foreground ring-1 ring-border'}`}
