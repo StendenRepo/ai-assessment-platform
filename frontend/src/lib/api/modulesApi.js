@@ -212,3 +212,32 @@ export async function exportGradesExcel(moduleId, moduleName = '') {
 
   return { blob, filename };
 }
+
+async function fetchModuleBlob(path) {
+  const res = await fetch(`${API_URL}/api/v1${path}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`
+    );
+  }
+  return res.blob();
+}
+
+export const getRubricFileBlob = (moduleId) =>
+  fetchModuleBlob(API_PATHS.moduleRubricFile(moduleId));
+
+export const getRubricContent = async (moduleId) => {
+  const body = await request(API_PATHS.moduleRubricContent(moduleId));
+  return body.content ?? '';
+};
+
+export const getModuleBookFileBlob = (moduleId) =>
+  fetchModuleBlob(API_PATHS.moduleBookFile(moduleId));
+
+export const getModuleBookContent = async (moduleId) => {
+  const body = await request(API_PATHS.moduleBookContent(moduleId));
+  return body.content ?? '';
+};

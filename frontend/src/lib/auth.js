@@ -55,6 +55,15 @@ export async function apiLogin(email, password) {
   return user;
 }
 
+export async function apiGetLoginUsers(isAdmin = false) {
+  const url = isAdmin
+    ? `${API_URL}/api/v1${API_PATHS.authUsers}?is_admin=true`
+    : `${API_URL}/api/v1${API_PATHS.authUsers}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch users');
+  return res.json();
+}
+
 export function authHeaders() {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
