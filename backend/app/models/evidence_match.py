@@ -10,13 +10,20 @@ class EvidenceMatch(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     assessment_id = Column(UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=False)
+    run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("generation_runs.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     criterion_key = Column(String, nullable=False)
-    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=False)
+    evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True)
     chunk_index = Column(Integer)
     confidence_score = Column(Float)
     supporting_quote = Column(Text)
     missing_note = Column(Text, nullable=True)
+    rationale = Column(Text, nullable=True)
 
     # Relationships
     assessment = relationship("Assessment", back_populates="evidence_matches")
+    run = relationship("GenerationRun", back_populates="matches")
     evidence = relationship("Evidence", back_populates="evidence_matches")
