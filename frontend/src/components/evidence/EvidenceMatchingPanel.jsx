@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  ExternalLink,
   Quote,
   History,
   Trash2,
@@ -19,6 +20,8 @@ import {
   runEvidenceMatching,
   deleteEvidenceMatchRun,
 } from '@/lib/api/evidenceMatching';
+import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
+import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 
 function confidenceLabel(score) {
   if (score == null) return null;
@@ -46,7 +49,7 @@ function runLabel(run) {
   }`;
 }
 
-function CriterionRow({ criterion }) {
+function CriterionRow({ criterion, onOpenSource }) {
   const [open, setOpen] = useState(false);
   const covered = criterion.covered;
 
@@ -90,13 +93,31 @@ function CriterionRow({ criterion }) {
                 className="rounded-md bg-card border border-border p-3 space-y-2"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground font-mono truncate">
-                    <FileText
-                      size={12}
-                      className="text-muted-foreground shrink-0"
-                    />
-                    {match.file_name || 'Evidence'}
-                  </span>
+                  {onOpenSource && match.evidence_id ? (
+                    <button
+                      onClick={() =>
+                        onOpenSource(
+                          {
+                            id: match.evidence_id,
+                            file_type: match.file_type,
+                            file_name: match.file_name,
+                          },
+                          match.supporting_quote,
+                        )
+                      }
+                      className="group flex items-center gap-1.5 text-xs font-semibold text-primary font-mono truncate hover:underline cursor-pointer"
+                      title="Open the source evidence"
+                    >
+                      <FileText size={12} className="shrink-0" />
+                      <span className="truncate">{match.file_name || 'Evidence'}</span>
+                      <ExternalLink size={11} className="shrink-0 opacity-70" />
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground font-mono truncate">
+                      <FileText size={12} className="text-muted-foreground shrink-0" />
+                      {match.file_name || 'Evidence'}
+                    </span>
+                  )}
                   {confidenceLabel(match.confidence_score) && (
                     <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary ring-1 ring-primary/20">
                       {confidenceLabel(match.confidence_score)} match
@@ -147,6 +168,30 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [hasRun, setHasRun] = useState(false);
+  const [highlightQuote, setHighlightQuote] = useState(null);
+
+  const {
+    previewEvidence,
+    previewUrl,
+    previewContent,
+    previewLoading,
+    activePreviewKind,
+    basePreviewKind,
+    showImageExtractedText,
+    openPreview,
+    closePreview,
+    toggleImageExtractedText,
+  } = useEvidencePreview();
+
+  const handleOpenSource = async (evidence, quote) => {
+    setError('');
+    setHighlightQuote(quote || null);
+    try {
+      await openPreview(evidence);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const applyReport = useCallback((report) => {
     const list = report?.criteria ?? [];
@@ -214,6 +259,7 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
   const busy = running || deleting || loading;
 
   return (
+    <>
     <div className="rounded-lg bg-card border border-border overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
         <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
@@ -329,10 +375,37 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
           </div>
         ) : (
           criteria.map((criterion) => (
-            <CriterionRow key={criterion.criterion_key} criterion={criterion} />
+            <CriterionRow
+              key={criterion.criterion_key}
+              criterion={criterion}
+              onOpenSource={handleOpenSource}
+            />
           ))
         )}
       </div>
     </div>
+
+    <EvidencePreviewDialog
+      evidence={previewEvidence}
+      previewKind={activePreviewKind}
+      basePreviewKind={basePreviewKind}
+      previewUrl={previewUrl}
+      previewContent={previewContent}
+      loading={previewLoading}
+      highlightQuote={highlightQuote}
+      showImageExtractedText={showImageExtractedText}
+      onToggleImageExtractedText={async () => {
+        try {
+          await toggleImageExtractedText();
+        } catch (err) {
+          setError(err.message);
+        }
+      }}
+      onClose={() => {
+        setHighlightQuote(null);
+        closePreview();
+      }}
+    />
+    </>
   );
 }

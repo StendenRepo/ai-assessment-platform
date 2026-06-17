@@ -1,7 +1,60 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { XCircle } from 'lucide-react';
+
+function buildHighlightRegex(quote) {
+  const words = (quote || '').match(/\w+/g);
+  if (!words || words.length === 0) return null;
+  const pattern = words
+    .slice(0, 40)
+    .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^\\w]*');
+  try {
+    return new RegExp(pattern);
+  } catch {
+    return null;
+  }
+}
+
+function HighlightedText({ content, quote }) {
+  const markRef = useRef(null);
+
+  useEffect(() => {
+    if (markRef.current) {
+      markRef.current.scrollIntoView({ block: 'center' });
+    }
+  }, [content, quote]);
+
+  const text = content || 'No extracted text available for this file.';
+  const regex = quote ? buildHighlightRegex(quote) : null;
+  const match = regex ? text.match(regex) : null;
+
+  let body = text;
+  if (match && match.index != null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    body = (
+      <>
+        {text.slice(0, start)}
+        <mark
+          ref={markRef}
+          className="rounded bg-primary/25 text-foreground"
+        >
+          {text.slice(start, end)}
+        </mark>
+        {text.slice(end)}
+      </>
+    );
+  }
+
+  return (
+    <pre className="h-full w-full overflow-auto rounded-lg border border-border bg-background p-4 text-left text-xs text-foreground whitespace-pre-wrap wrap-break-word">
+      {body}
+    </pre>
+  );
+}
 
 export default function EvidencePreviewDialog({
   evidence,
@@ -10,6 +63,7 @@ export default function EvidencePreviewDialog({
   previewUrl,
   previewContent,
   loading,
+  highlightQuote,
   showImageExtractedText,
   onToggleImageExtractedText,
   onClose,
@@ -72,9 +126,7 @@ export default function EvidencePreviewDialog({
               className="h-full w-full rounded-lg border border-border bg-background"
             />
           ) : previewKind === 'text' ? (
-            <pre className="h-full w-full overflow-auto rounded-lg border border-border bg-background p-4 text-left text-xs text-foreground whitespace-pre-wrap wrap-break-word">
-              {previewContent || 'No extracted text available for this file.'}
-            </pre>
+            <HighlightedText content={previewContent} quote={highlightQuote} />
           ) : (
             <p className="text-sm text-muted-foreground">
               Preview unavailable.
