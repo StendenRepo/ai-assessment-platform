@@ -13,15 +13,28 @@ import {
   Loader2,
   Download,
   FileSpreadsheet,
+  KeyRound,
 } from 'lucide-react';
+
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
-import { downloadStudentTemplate, downloadRubricTemplate } from '@/lib/api/modulesApi';
+import { useAuth } from '@/context/AuthContext';
+
+import {
+  downloadStudentTemplate,
+  downloadRubricTemplate,
+} from '@/lib/api/modulesApi';
+
+import {
+  setPin as apiSetPin,
+  removePin as apiRemovePin,
+} from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
+  { key: 'security', label: 'Security', icon: KeyRound },
   { key: 'ai', label: 'AI Configuration', icon: Brain },
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
@@ -65,6 +78,114 @@ function SectionCard({ title, children }) {
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {children}
     </div>
+  );
+}
+
+function LoginPinSection() {
+  const { user, login } = useAuth();
+  const [hasPin, setHasPin] = useState(Boolean(user?.has_pin));
+  const [password, setPassword] = useState('');
+  const [pin, setPinValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const applyUpdated = (updated) => {
+    setHasPin(Boolean(updated.has_pin));
+    login(updated);
+    setPassword('');
+    setPinValue('');
+  };
+
+  const handleSet = async () => {
+    setMessage(null);
+    setLoading(true);
+    try {
+      applyUpdated(await apiSetPin(password, pin));
+      setMessage({
+        type: 'success',
+        text: 'PIN set. It will be required after your password next time you log in.',
+      });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setMessage(null);
+    setLoading(true);
+    try {
+      applyUpdated(await apiRemovePin(password));
+      setMessage({ type: 'success', text: 'PIN removed.' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Login PIN">
+      <p className="text-xs text-muted-foreground">
+        {hasPin
+          ? 'A PIN is currently required after your password when you log in.'
+          : 'Add an optional PIN for an extra step after your password at login.'}
+      </p>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">
+          Current password
+        </label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className={inputClass}
+        />
+      </div>
+      {!hasPin && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            New PIN (4–6 digits)
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPinValue(e.target.value)}
+            placeholder="••••"
+            className={inputClass}
+          />
+        </div>
+      )}
+      {message && (
+        <p
+          className={`text-xs rounded-md px-3 py-2 ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20' : 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'}`}
+        >
+          {message.text}
+        </p>
+      )}
+      <div className="flex gap-2">
+        {hasPin ? (
+          <button
+            onClick={handleRemove}
+            disabled={loading || !password}
+            className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-red-400 hover:border-red-500/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Removing…' : 'Remove PIN'}
+          </button>
+        ) : (
+          <button
+            onClick={handleSet}
+            disabled={loading || !password || !pin}
+            className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Saving…' : 'Set PIN'}
+          </button>
+        )}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -301,6 +422,12 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </SectionCard>
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <>
+              <LoginPinSection />
             </>
           )}
 

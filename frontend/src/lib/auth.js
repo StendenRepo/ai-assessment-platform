@@ -30,20 +30,29 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY);
 }
 
-export async function apiLogin(email, password) {
+function errorMessage(data, fallback) {
+  if (typeof data?.detail === 'string') return data.detail;
+  return fallback;
+}
+
+export async function apiLogin(email, password, pin) {
   const res = await fetch(`${API_URL}/api/v1${API_PATHS.authLogin}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(pin ? { pin } : {}) }),
   });
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || 'Login failed');
+    throw new Error(errorMessage(data, 'Login failed'));
   }
 
-  const { access_token } = await res.json();
+  const data = await res.json();
+  if (data.pin_required) {
+    return { pinRequired: true };
+  }
 
+  const access_token = data.access_token;
   const meRes = await fetch(`${API_URL}/api/v1${API_PATHS.authMe}`, {
     headers: { Authorization: `Bearer ${access_token}` },
   });
@@ -53,6 +62,32 @@ export async function apiLogin(email, password) {
 
   saveSession(access_token, user);
   return user;
+}
+
+export async function setPin(password, pin) {
+  const res = await fetch(`${API_URL}/api/v1${API_PATHS.authPin}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ password, pin }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(errorMessage(data, 'Failed to set PIN'));
+  }
+  return res.json();
+}
+
+export async function removePin(password) {
+  const res = await fetch(`${API_URL}/api/v1${API_PATHS.authPin}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(errorMessage(data, 'Failed to remove PIN'));
+  }
+  return res.json();
 }
 
 export async function apiGetLoginUsers(isAdmin = false) {
