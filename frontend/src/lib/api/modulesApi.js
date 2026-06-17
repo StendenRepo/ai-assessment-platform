@@ -75,6 +75,72 @@ export const updateModuleStudent = (moduleId, studentId, payload) =>
 export const moveStudentToGroup = (moduleId, studentId, projectId) =>
   updateModuleStudent(moduleId, studentId, { project_id: projectId });
 
+export const setStudentGithubRepo = (moduleId, studentId, githubRepoUrl) =>
+  updateModuleStudent(moduleId, studentId, {
+    github_repo_url: githubRepoUrl || null,
+  });
+
+export const setGroupGithubRepo = (moduleId, groupId, githubRepoUrl) =>
+  updateProjectGroup(moduleId, groupId, {
+    github_repo_url: githubRepoUrl || null,
+  });
+
+/**
+ * Verify a GitHub repository and return its default branch + branch list.
+ * Calls the public GitHub REST API directly from the browser so the backend
+ * container does not need outbound internet access.
+ */
+export async function verifyGithubRepo(repoUrl) {
+  // Normalise: strip trailing .git and extract owner/repo
+  const raw = repoUrl.trim().replace(/\.git$/, '');
+  const candidate = raw.startsWith('http') ? raw : `https://${raw}`;
+  const { pathname } = new URL(candidate);
+  const parts = pathname.split('/').filter(Boolean);
+  if (parts.length < 2) {
+    throw new Error('Repository URL must include owner and repository name.');
+  }
+  const [owner, repo] = parts;
+
+  const ghHeaders = { Accept: 'application/vnd.github+json' };
+
+  // 1. Verify the repo and get the default branch
+  const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    headers: ghHeaders,
+  });
+  if (repoRes.status === 404) {
+    throw new Error(
+      `Repository '${owner}/${repo}' not found on GitHub. Check the URL and ensure it is public.`
+    );
+  }
+  if (!repoRes.ok) {
+    throw new Error(`GitHub API returned status ${repoRes.status}.`);
+  }
+  const repoData = await repoRes.json();
+  const defaultBranch = repoData.default_branch || 'main';
+
+  // 2. Collect all branches (paginated)
+  const branches = [];
+  let page = 1;
+  while (page <= 5) {
+    const brRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100&page=${page}`,
+      { headers: ghHeaders }
+    );
+    if (!brRes.ok) break;
+    const pageData = await brRes.json();
+    if (!pageData.length) break;
+    pageData.forEach((b) => branches.push(b.name));
+    if (pageData.length < 100) break;
+    page += 1;
+  }
+
+  return {
+    repo_url: `https://github.com/${owner}/${repo}`,
+    default_branch: defaultBranch,
+    branches: branches.length ? branches : [defaultBranch],
+  };
+}
+
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
   formData.append('file', file);

@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   FolderPlus,
+  Github,
   Search,
   UserCheck,
   UserPlus,
@@ -216,7 +217,11 @@ export default function ModulePage() {
       setStudents((prev) =>
         prev.map((s) =>
           s.id === assignStudentId
-            ? { ...s, project_id: updated.project_id }
+            ? {
+                ...s,
+                project_id: updated.project_id,
+                github_repo_url: updated.github_repo_url || null,
+              }
             : s
         )
       );
@@ -238,7 +243,13 @@ export default function ModulePage() {
       );
       setStudents((prev) =>
         prev.map((s) =>
-          s.id === studentId ? { ...s, project_id: updated.project_id } : s
+          s.id === studentId
+            ? {
+                ...s,
+                project_id: updated.project_id,
+                github_repo_url: updated.github_repo_url || null,
+              }
+            : s
         )
       );
     } catch {
@@ -551,6 +562,12 @@ export default function ModulePage() {
                               {group.file_count ?? 0}{' '}
                               {(group.file_count ?? 0) === 1 ? 'file' : 'files'}
                             </span>
+                            {group.github_repo_url && (
+                              <span className="flex items-center gap-1.5 leading-none truncate">
+                                <Github size={13} />
+                                Repo linked
+                              </span>
+                            )}
                           </div>
                           <div className="space-y-1.5 pr-3">
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -661,6 +678,18 @@ export default function ModulePage() {
                         <div className="text-xs text-muted-foreground mt-0.5 font-mono">
                           {student.student_number}
                         </div>
+                        {student.github_repo_url && (
+                          <a
+                            href={student.github_repo_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                          >
+                            <Github size={12} />
+                            GitHub Repo
+                          </a>
+                        )}
                       </div>
                       <div className="w-16 text-right shrink-0">
                         <div className="text-xs text-muted-foreground">

@@ -91,6 +91,8 @@ def _student_to_out(
         id=s.student_number,
         name=s.name,
         student_number=s.student_number,
+        github_repo_url=s.github_repo_url,
+        github_branch=s.github_branch,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         assessment_status=assessment_status,
@@ -104,6 +106,8 @@ def _group_to_out(p: Project, student_count: int, file_count: int = 0) -> Projec
         id=str(p.id),
         name=p.name,
         group_name=p.group_name,
+        github_repo_url=p.github_repo_url,
+        github_branch=p.github_branch,
         module_id=str(p.module_id),
         status=p.status.value if p.status else "active",
         created_at=p.created_at,
@@ -1180,6 +1184,7 @@ def create_module_group(
         module_id=module.id,
         name=payload.name,
         group_name=payload.group_name or payload.name,
+        github_repo_url=payload.github_repo_url,
     )
     db.add(project)
     db.commit()
@@ -1196,6 +1201,8 @@ def create_module_group(
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
             "project_name": project.name,
+            "github_repo_url": project.github_repo_url,
+            "github_branch": project.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups",
@@ -1223,17 +1230,49 @@ def update_module_group(
     )
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-    if payload.name is None and payload.group_name is None:
+    updates = payload.model_fields_set
+    if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
 
     old_name = group.name
     old_group_name = group.group_name
+    old_github_repo_url = group.github_repo_url
+    old_github_branch = group.github_branch
 
     if payload.name is not None:
         group.name = payload.name
     if payload.group_name is not None:
         group.group_name = payload.group_name
+    if "github_repo_url" in updates:
+        group.github_repo_url = payload.github_repo_url
 
+        # Keep student-level repo references in sync whenever a group repo changes.
+        student_ids = [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id == group.id)
+            ).all()
+        ]
+        if student_ids:
+            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+                student.github_repo_url = payload.github_repo_url
+
+    if "github_branch" in updates:
+        group.github_branch = payload.github_branch
+
+        # Sync branch to all students in this group.
+        student_ids = [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id == group.id)
+            ).all()
+        ]
+        if student_ids:
+            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+                student.github_branch = payload.github_branch
+
+    repo_removed = old_github_repo_url is not None and group.github_repo_url is None
+    repo_added = old_github_repo_url is None and group.github_repo_url is not None
     audit_service.log_action(
         db,
         action="group.updated",
@@ -1246,6 +1285,13 @@ def update_module_group(
             "new_name": group.name,
             "old_group_name": old_group_name,
             "new_group_name": group.group_name,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": group.github_repo_url,
+            "repo_removed": repo_removed,
+            "repo_added": repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": group.github_branch,
+            "branch_changed": old_github_branch != group.github_branch and not repo_removed and not repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -1349,6 +1395,11 @@ def delete_module_group(
                     student_projects.insert().values(student_id=sid, project_id=default_group.id)
                 )
 
+        # Preserve group-level repo consistency after moving members.
+        for student in db.query(Student).filter(Student.student_number.in_(student_ids_in_group)).all():
+            student.github_repo_url = default_group.github_repo_url
+            student.github_branch = default_group.github_branch
+
     db.delete(group)
     db.commit()
 
@@ -1362,6 +1413,8 @@ def delete_module_group(
             "module_name": module.name,
             "group_id": str(group.id),
             "group_name": group_name,
+            "github_repo_url": group.github_repo_url,
+            "github_branch": group.github_branch,
             "operation": "delete",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups/{group_id}",
@@ -1425,6 +1478,16 @@ def add_module_student(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
+    if (
+        payload.github_repo_url
+        and project.github_repo_url
+        and payload.github_repo_url != project.github_repo_url
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This group already has a GitHub repository. Use the group repository instead.",
+        )
+
     if _student_duplicate_in_module(db, _module_project_ids(db, module.id), payload.student_number):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
 
@@ -1434,6 +1497,16 @@ def add_module_student(
         student = Student(name=payload.name, student_number=payload.student_number)
         db.add(student)
         db.flush()
+
+    if payload.github_repo_url:
+        student.github_repo_url = payload.github_repo_url
+    elif project.github_repo_url:
+        student.github_repo_url = project.github_repo_url
+
+    if payload.github_branch:
+        student.github_branch = payload.github_branch
+    elif project.github_branch:
+        student.github_branch = project.github_branch
 
     student.projects.append(project)
     try:
@@ -1455,6 +1528,8 @@ def add_module_student(
             "student_name": student.name,
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
+            "github_repo_url": student.github_repo_url,
+            "github_branch": student.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Students",
             "route": "/api/v1/modules/{module_id}/students",
@@ -1494,11 +1569,14 @@ def move_student_to_group(
         and payload.name is None
         and payload.student_number is None
         and payload.status is None
+        and "github_repo_url" not in payload.model_fields_set
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No student updates provided")
 
     original_name = student.name
     original_number = student.student_number
+    old_github_repo_url = student.github_repo_url
+    old_github_branch = student.github_branch
     current_group_row = db.execute(
         student_projects.select().where(
             student_projects.c.student_id == student.student_number,
@@ -1528,6 +1606,17 @@ def move_student_to_group(
             student_projects.insert().values(student_id=student.student_number, project_id=target.id)
         )
 
+        if target.github_repo_url is not None:
+            requested_repo = payload.github_repo_url if "github_repo_url" in payload.model_fields_set else None
+            if requested_repo is not None and requested_repo != target.github_repo_url:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This group already has a GitHub repository. Use the group repository instead.",
+                )
+            student.github_repo_url = target.github_repo_url
+            if target.github_branch is not None:
+                student.github_branch = target.github_branch
+
     if payload.name is not None:
         student.name = payload.name
 
@@ -1551,12 +1640,26 @@ def move_student_to_group(
     if payload.status is not None:
         student.status = StudentStatus(payload.status)
 
+    if "github_repo_url" in payload.model_fields_set:
+        if target and target.github_repo_url is not None:
+            student.github_repo_url = target.github_repo_url
+        else:
+            student.github_repo_url = payload.github_repo_url
+
+    if "github_branch" in payload.model_fields_set:
+        if target and target.github_branch is not None:
+            student.github_branch = target.github_branch
+        else:
+            student.github_branch = payload.github_branch
+
     new_project_id = str(target.id) if target is not None else old_project_id
     old_group = (
         db.query(Project).filter(Project.id == old_project_id).first()
         if old_project_id
         else None
     )
+    student_repo_removed = old_github_repo_url is not None and student.github_repo_url is None
+    student_repo_added = old_github_repo_url is None and student.github_repo_url is not None
     audit_service.log_action(
         db,
         action="student.updated",
@@ -1574,6 +1677,13 @@ def move_student_to_group(
             "old_project_id": old_project_id,
             "new_project_id": new_project_id,
             "new_status": student.status.value if student.status else None,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": student.github_repo_url,
+            "repo_removed": student_repo_removed,
+            "repo_added": student_repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": student.github_branch,
+            "branch_changed": old_github_branch != student.github_branch and not student_repo_removed and not student_repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -1656,6 +1766,10 @@ async def import_module_students(
             student = Student(name=name, student_number=number)
             db.add(student)
             db.flush()
+        if project.github_repo_url:
+            student.github_repo_url = project.github_repo_url
+        if project.github_branch:
+            student.github_branch = project.github_branch
         student.projects.append(project)
         to_add.append(student)
 
