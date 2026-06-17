@@ -91,7 +91,10 @@ function CriterionRow({ criterion }) {
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground font-mono truncate">
-                    <FileText size={12} className="text-muted-foreground shrink-0" />
+                    <FileText
+                      size={12}
+                      className="text-muted-foreground shrink-0"
+                    />
                     {match.file_name || 'Evidence'}
                   </span>
                   {confidenceLabel(match.confidence_score) && (
@@ -102,7 +105,10 @@ function CriterionRow({ criterion }) {
                 </div>
                 {match.supporting_quote && (
                   <div className="flex gap-2 rounded bg-background border border-border px-3 py-2">
-                    <Quote size={12} className="text-muted-foreground mt-0.5 shrink-0" />
+                    <Quote
+                      size={12}
+                      className="text-muted-foreground mt-0.5 shrink-0"
+                    />
                     <p className="text-[11px] text-muted-foreground leading-relaxed italic">
                       {match.supporting_quote}
                     </p>
@@ -309,7 +315,10 @@ export default function EvidenceMatchingPanel({ studentId, moduleId }) {
           </div>
         ) : criteria.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-center">
-            <Sparkles size={18} className="text-muted-foreground mx-auto mb-2" />
+            <Sparkles
+              size={18}
+              className="text-muted-foreground mx-auto mb-2"
+            />
             <p className="text-sm font-medium text-foreground">
               No matching run yet
             </p>

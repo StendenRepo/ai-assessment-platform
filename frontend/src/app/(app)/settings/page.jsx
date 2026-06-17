@@ -25,10 +25,7 @@ import {
   downloadRubricTemplate,
 } from '@/lib/api/modulesApi';
 
-import {
-  setPin as apiSetPin,
-  removePin as apiRemovePin,
-} from '@/lib/auth';
+import { setPin as apiSetPin, removePin as apiRemovePin } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -277,23 +274,23 @@ export default function SettingsPage() {
   };
 
   const handleDownloadRubricTemplate = async () => {
-   setRubricDownloading(true);
-   setRubricError('');
-   try {
-     const { blob, filename } = await downloadRubricTemplate();
-     const url = URL.createObjectURL(blob);
-     const a = document.createElement('a');
-     a.href = url;
-     a.download = filename;
-     document.body.appendChild(a);
-     a.click();
-     document.body.removeChild(a);
-     URL.revokeObjectURL(url);
-   } catch (err) {
-     setRubricError(err.message || 'Failed to download template');
-   } finally {
-     setRubricDownloading(false);
-   }
+    setRubricDownloading(true);
+    setRubricError('');
+    try {
+      const { blob, filename } = await downloadRubricTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setRubricError(err.message || 'Failed to download template');
+    } finally {
+      setRubricDownloading(false);
+    }
   };
 
   return (
@@ -710,8 +707,9 @@ export default function SettingsPage() {
             <>
               <SectionCard title="Student Import Template">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Download a standardized template for bulk importing students and groups.
-                  The template includes columns for Name and Student Number with example data.
+                  Download a standardized template for bulk importing students
+                  and groups. The template includes columns for Name and Student
+                  Number with example data.
                 </p>
                 <button
                   onClick={handleDownloadTemplate}
@@ -735,16 +733,18 @@ export default function SettingsPage() {
                 )}
                 <div className="mt-4 pt-4 border-t border-border">
                   <p className="text-xs text-muted-foreground">
-                    <strong>Instructions:</strong> Download the template, fill in student names and numbers,
-                    then upload the file in the Module Management page to add multiple students at once.
+                    <strong>Instructions:</strong> Download the template, fill
+                    in student names and numbers, then upload the file in the
+                    Module Management page to add multiple students at once.
                   </p>
                 </div>
               </SectionCard>
 
               <SectionCard title="Rubric Scoring Template">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Download a standardized rubric template for creating scoring criteria and proficiency levels.
-                  The template includes example criteria and can be customized for any assessment.
+                  Download a standardized rubric template for creating scoring
+                  criteria and proficiency levels. The template includes example
+                  criteria and can be customized for any assessment.
                 </p>
                 <button
                   onClick={handleDownloadRubricTemplate}
@@ -768,8 +768,10 @@ export default function SettingsPage() {
                 )}
                 <div className="mt-4 pt-4 border-t border-border">
                   <p className="text-xs text-muted-foreground">
-                    <strong>Features:</strong> Includes predefined proficiency levels (Excellent, Good, Fair, Poor),
-                    point values for each level, and space for detailed descriptors of student performance.
+                    <strong>Features:</strong> Includes predefined proficiency
+                    levels (Excellent, Good, Fair, Poor), point values for each
+                    level, and space for detailed descriptors of student
+                    performance.
                   </p>
                 </div>
               </SectionCard>
