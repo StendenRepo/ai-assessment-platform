@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
  	evidence_matches,
  	students,
  	recordings,
+	reports,
 )
 
 api_router = APIRouter()
@@ -24,3 +25,4 @@ api_router.include_router(
     evidence_matches.router, prefix="/students", tags=["Evidence Matching"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])
+api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])

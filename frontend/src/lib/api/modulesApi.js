@@ -17,6 +17,9 @@ async function request(path, options = {}) {
 
 export const listModules = () => request(API_PATHS.modules);
 
+export const listReports = (limit = 50) =>
+  request(`${API_PATHS.reportsOverview}?limit=${limit}`);
+
 export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
 export const createModule = (payload) =>

@@ -109,9 +109,10 @@ def list_evidence(
 )
 def export_student_dossier(
     student_id: str,
+    request: Request,
     format: Literal["zip", "tar"] = "zip",
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
     """Return an archive containing:
     - All evidence files uploaded for the student (in an ``evidence/`` folder).
@@ -278,6 +279,20 @@ def export_student_dossier(
         buf.seek(0)
         filename = f"dossier_{safe_student}_{today}.zip"
         media_type = "application/zip"
+
+    audit_service.log_action(
+        db,
+        action="student.dossier_exported",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "student_id": student.student_number,
+            "student_name": student.name,
+            "format": format,
+            "evidence_count": len(evidence_records),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
 
     return StreamingResponse(
         buf,

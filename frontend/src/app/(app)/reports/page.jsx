@@ -19,6 +19,7 @@ import {
   listProjectStudents,
   exportStudentDossier,
   exportModuleArchive,
+  listReports,
 } from '@/lib/api/modulesApi';
 import { apiRequest } from '@/lib/api/apiClient';
 
@@ -58,26 +59,54 @@ const reportTypes = [
   },
 ];
 
-const recentReports = [
-  {
-    name: 'E-Commerce Platform — Individual Reports',
-    date: 'May 15, 2026 · 2:32 PM',
-    format: 'PDF',
-    files: 4,
-  },
-  {
-    name: 'Machine Learning Model — AI Analysis',
-    date: 'May 14, 2026 · 10:15 AM',
-    format: 'Excel',
-    files: 1,
-  },
-  {
-    name: 'Mobile App Prototype — Group Overview',
-    date: 'May 12, 2026 · 4:45 PM',
-    format: 'PDF',
-    files: 1,
-  },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatReportDate(isoString) {
+  if (!isoString) return '—';
+  const d = new Date(isoString);
+  return d.toLocaleString('nl-NL', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function reportIcon(action) {
+  if (action === 'student.dossier_exported') return Package;
+  if (action === 'module.archive_exported') return Users;
+  if (action === 'grades.exported') return FileText;
+  return FileText;
+}
+
+function reportTitle(report) {
+  if (report.action === 'student.dossier_exported') {
+    return report.student_name
+      ? `${report.student_name} — Individual Dossier`
+      : 'Individual Student Dossier';
+  }
+  if (report.action === 'module.archive_exported') {
+    return report.module_name
+      ? `${report.module_name} — Group Archive`
+      : 'Group Overview Archive';
+  }
+  if (report.action === 'grades.exported') {
+    return report.module_name
+      ? `${report.module_name} — Grade Export`
+      : 'Grade Export (Excel)';
+  }
+  return report.label || report.action;
+}
+
+function reportMeta(report) {
+  const parts = [];
+  if (report.format) parts.push(report.format.toUpperCase());
+  if (report.student_count != null) parts.push(`${report.student_count} students`);
+  if (report.evidence_count != null) parts.push(`${report.evidence_count} files`);
+  if (report.teacher_name) parts.push(`by ${report.teacher_name}`);
+  return parts.join(' · ');
+}
 
 const inputClass =
   'bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -487,6 +516,95 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
   );
 }
 
+// ─── Recent Report Row ────────────────────────────────────────────────────────
+
+function RecentReportRow({ report }) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState('');
+
+  const canDownload =
+    (report.action === 'student.dossier_exported' && report.student_id) ||
+    (report.action === 'module.archive_exported' && report.module_id) ||
+    (report.action === 'grades.exported' && report.module_id);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    setError('');
+    try {
+      let blob, filename;
+      const fmt = report.format || 'zip';
+
+      if (report.action === 'student.dossier_exported') {
+        ({ blob, filename } = await exportStudentDossier(
+          report.student_id,
+          report.student_name || '',
+          fmt
+        ));
+      } else if (report.action === 'module.archive_exported') {
+        ({ blob, filename } = await exportModuleArchive(
+          report.module_id,
+          report.module_name || '',
+          fmt
+        ));
+      } else if (report.action === 'grades.exported') {
+        const { exportGradesExcel } = await import('@/lib/api/modulesApi');
+        ({ blob, filename } = await exportGradesExcel(
+          report.module_id,
+          report.module_name || ''
+        ));
+      }
+
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      setError(err.message || 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const Icon = reportIcon(report.action);
+
+  return (
+    <div className="flex items-center gap-4 px-6 py-4">
+      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+        <Icon size={15} className="text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-foreground truncate">
+          {reportTitle(report)}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {formatReportDate(report.timestamp)}
+          {reportMeta(report) ? ` · ${reportMeta(report)}` : ''}
+        </div>
+        {error && <p className="text-[11px] text-red-400 mt-0.5">{error}</p>}
+      </div>
+      {canDownload && (
+        <button
+          onClick={handleDownload}
+          disabled={downloading}
+          className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Re-download this report"
+        >
+          {downloading ? (
+            <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Download size={13} />
+          )}
+          {downloading ? 'Downloading…' : 'Download'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Reports Page ─────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
@@ -499,6 +617,8 @@ export default function ReportsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [recentReports, setRecentReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(true);
 
   useEffect(() => {
     listModules()
@@ -508,6 +628,13 @@ export default function ReportsPage() {
       })
       .catch((e) => setModulesError(e.message))
       .finally(() => setLoadingModules(false));
+  }, []);
+
+  useEffect(() => {
+    listReports(5)
+      .then((data) => setRecentReports(Array.isArray(data) ? data : []))
+      .catch(() => setRecentReports([]))
+      .finally(() => setLoadingReports(false));
   }, []);
 
   const isIndividual = reportType === 'individual';
@@ -663,25 +790,19 @@ export default function ReportsPage() {
                 </h2>
               </div>
               <div className="divide-y divide-border">
-                {recentReports.map((report, i) => (
-                  <div key={i} className="flex items-center gap-4 px-6 py-4">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <FileText size={15} className="text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-foreground">
-                        {report.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {report.date} · {report.format} · {report.files} file
-                        {report.files > 1 ? 's' : ''}
-                      </div>
-                    </div>
-                    <button className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors shrink-0">
-                      <Download size={13} /> Download
-                    </button>
+                {loadingReports ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                   </div>
-                ))}
+                ) : recentReports.length === 0 ? (
+                  <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    No reports exported yet.
+                  </div>
+                ) : (
+                  recentReports.map((report) => (
+                    <RecentReportRow key={report.id} report={report} />
+                  ))
+                )}
               </div>
             </div>
           </div>
