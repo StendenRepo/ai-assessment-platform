@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
 	admin,
 	auth,
+	github,
 	health,
 	modules,
 	projects,
@@ -24,3 +25,4 @@ api_router.include_router(
     evidence_matches.router, prefix="/students", tags=["Evidence Matching"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])
+api_router.include_router(github.router, prefix="/github", tags=["GitHub"])

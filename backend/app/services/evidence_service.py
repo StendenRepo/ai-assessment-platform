@@ -62,6 +62,26 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
         )
 
 
+def _teacher_can_access_evidence(evidence: Evidence, teacher) -> bool:
+    """Return True if *teacher* may read this evidence file.
+
+    Admins can access everything. Otherwise the evidence must resolve to a
+    module owned by the teacher — either directly through its project, or
+    through any project the linked student belongs to. Mirrors the
+    teacher → module → group → student/project ownership chain used elsewhere.
+    """
+    if getattr(teacher, "is_admin", False):
+        return True
+    if evidence.project and evidence.project.module:
+        if evidence.project.module.teacher_id == teacher.id:
+            return True
+    if evidence.student:
+        for project in evidence.student.projects:
+            if project.module and project.module.teacher_id == teacher.id:
+                return True
+    return False
+
+
 def _evidence_upload_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence"
 
@@ -677,9 +697,14 @@ class EvidenceService:
     # Read the raw text content of a single evidence record
     # ------------------------------------------------------------------
     @staticmethod
-    def read_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
+    def read_content(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
@@ -717,9 +742,14 @@ class EvidenceService:
         return evidence, content
 
     @staticmethod
-    def get_raw_file(evidence_id: str, db: Session) -> tuple[Evidence, Path, str]:
+    def get_raw_file(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, Path, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",

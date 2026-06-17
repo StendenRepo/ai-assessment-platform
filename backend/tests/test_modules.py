@@ -616,3 +616,253 @@ class TestModuleDocumentTextExtraction:
             assert record.extracted_text is None
         finally:
             self._cleanup(db, module)
+
+
+class TestModuleGithubRepos:
+    def test_can_set_and_remove_student_repo(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Student")
+
+        created = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Repo User", "student_number": "3001001"},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        student_id = created.json()["id"]
+
+        set_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": "github.com/octocat/hello-world"},
+            headers=headers,
+        )
+        assert set_repo.status_code == 200, set_repo.text
+        assert set_repo.json()["github_repo_url"] == "https://github.com/octocat/hello-world"
+
+        clear_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": None},
+            headers=headers,
+        )
+        assert clear_repo.status_code == 200, clear_repo.text
+        assert clear_repo.json()["github_repo_url"] is None
+
+    def test_group_repo_syncs_all_students(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Group")
+
+        group_res = client.post(
+            f"{MODULES_URL}/{module['id']}/groups",
+            json={"name": "Group Repo"},
+            headers=headers,
+        )
+        assert group_res.status_code == 201, group_res.text
+        group_id = group_res.json()["id"]
+
+        first = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "One", "student_number": "3002001", "project_id": group_id},
+            headers=headers,
+        )
+        assert first.status_code == 201, first.text
+
+        second = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Two", "student_number": "3002002", "project_id": group_id},
+            headers=headers,
+        )
+        assert second.status_code == 201, second.text
+
+        set_group_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/groups/{group_id}",
+            json={"github_repo_url": "https://github.com/example/team-project"},
+            headers=headers,
+        )
+        assert set_group_repo.status_code == 200, set_group_repo.text
+        assert (
+            set_group_repo.json()["github_repo_url"]
+            == "https://github.com/example/team-project"
+        )
+
+        students = client.get(f"{MODULES_URL}/{module['id']}/students", headers=headers)
+        assert students.status_code == 200, students.text
+        repo_urls = {
+            s["student_number"]: s["github_repo_url"] for s in students.json() if s["project_id"] == group_id
+        }
+        assert repo_urls["3002001"] == "https://github.com/example/team-project"
+        assert repo_urls["3002002"] == "https://github.com/example/team-project"
+# ---------------------------------------------------------------------------
+# FR-03: serve module documents (rubric / module book) for in-app viewing
+# ---------------------------------------------------------------------------
+
+
+class TestServeModuleDocuments:
+    def _module(self, db, teacher, name):
+        from app.models.module import Module
+
+        module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name=name)
+        db.add(module)
+        db.commit()
+        db.refresh(module)
+        return module
+
+    def _cleanup(self, db, module):
+        from app.models.file_record import FileRecord
+        from app.models.module import Module
+
+        db.query(FileRecord).delete()
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.commit()
+
+    def test_view_rubric_pdf_returns_inline_bytes(self, client, db, teacher):
+        module = self._module(db, teacher, "View rubric pdf")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            body = b"%PDF-1.4 viewable rubric"
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.pdf", body, "application/pdf")},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 200, res.text
+            assert res.content == body
+            assert res.headers["content-type"].startswith("application/pdf")
+            assert "inline" in res.headers.get("content-disposition", "")
+        finally:
+            self._cleanup(db, module)
+
+    def test_rubric_content_returns_extracted_text(self, client, db, teacher):
+        module = self._module(db, teacher, "View rubric content")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            xlsx = _xlsx_bytes([["Criterion", "Weight"], ["database design", "40"]])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.xlsx", xlsx, _XLSX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            res = client.get(
+                f"{MODULES_URL}/{module.id}/rubric/content", headers=headers
+            )
+            assert res.status_code == 200, res.text
+            assert "database design" in res.json()["content"]
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_module_book_file_and_content(self, client, db, teacher):
+        module = self._module(db, teacher, "View module book")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            docx = _docx_bytes(["Course intro", "Assessment outline"])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("book.docx", docx, _DOCX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            file_res = client.get(
+                f"{MODULES_URL}/{module.id}/module-book/file", headers=headers
+            )
+            assert file_res.status_code == 200
+            assert file_res.content == docx
+
+            content_res = client.get(
+                f"{MODULES_URL}/{module.id}/module-book/content", headers=headers
+            )
+            assert content_res.status_code == 200
+            assert "Assessment outline" in content_res.json()["content"]
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_rubric_when_none_attached_returns_404(self, client, db, teacher):
+        module = self._module(db, teacher, "No rubric")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 404
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_other_teachers_rubric_returns_404(self, client, db, teacher):
+        """A teacher must not be able to view a rubric on a module they don't own."""
+        from app.models.module import Module
+        from app.models.teacher import Teacher
+
+        owner = Teacher(
+            id=uuid.uuid4(),
+            name="Doc Owner",
+            email=f"doc_owner_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(owner)
+        db.commit()
+        owner_module = Module(id=uuid.uuid4(), teacher_id=owner.id, name="Owner module")
+        db.add(owner_module)
+        db.commit()
+        db.refresh(owner_module)
+
+        # Owner uploads a rubric.
+        owner_headers = _auth(client, owner.email, "password123")
+        up = client.post(
+            f"{MODULES_URL}/{owner_module.id}/rubric",
+            files={"file": ("rubric.pdf", b"%PDF-1.4 private", "application/pdf")},
+            headers=owner_headers,
+        )
+        assert up.status_code == 200, up.text
+
+        try:
+            # A different teacher must get 404 (module not visible to them).
+            other_headers = _auth(client, "teacher@test.com", "password123")
+            res = client.get(
+                f"{MODULES_URL}/{owner_module.id}/rubric/file", headers=other_headers
+            )
+            assert res.status_code == 404
+        finally:
+            from app.models.file_record import FileRecord
+
+            db.query(FileRecord).delete()
+            db.query(Module).filter(Module.id == owner_module.id).delete()
+            db.query(Teacher).filter(Teacher.id == owner.id).delete()
+            db.commit()
+
+    def test_viewing_document_writes_audit_event(self, client, db, teacher):
+        from app.models.audit_event import AuditEvent
+
+        module = self._module(db, teacher, "Audited view")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.pdf", b"%PDF-1.4 audited", "application/pdf")},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            before = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .count()
+            )
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 200
+
+            events = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .all()
+            )
+            assert len(events) == before + 1
+            latest = events[-1]
+            assert latest.details_json["kind"] == "rubric"
+            assert latest.details_json["module_id"] == str(module.id)
+        finally:
+            db.query(AuditEvent).filter(
+                AuditEvent.action == "document.viewed"
+            ).delete()
+            self._cleanup(db, module)
