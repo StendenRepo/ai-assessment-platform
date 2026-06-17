@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, ClipboardList, Settings, Users } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  FileText,
+  Settings,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import Header from '@/components/layout/Header';
@@ -13,6 +19,7 @@ import { TeachersTab } from './_TeachersTab';
 import { DepartmentsTab } from './_DepartmentsTab';
 import { SettingsTab } from './_SettingsTab';
 import { AuditTab } from './_AuditTab';
+import { ReportsTab } from './_ReportsTab';
 
 export default function AdminPage() {
   const { user, ready } = useAuth();
@@ -82,6 +89,12 @@ export default function AdminPage() {
               icon={<ClipboardList size={14} />}
               label="Audit Logs"
             />
+            <TabBtn
+              active={tab === 'reports'}
+              onClick={() => setTab('reports')}
+              icon={<FileText size={14} />}
+              label="Reports"
+            />
             <div className="flex-1" />
             <TabBtn
               active={tab === 'settings'}
@@ -98,6 +111,7 @@ export default function AdminPage() {
             <DepartmentsTab onDataChange={setDepartments} />
           )}
           {tab === 'audit' && <AuditTab />}
+          {tab === 'reports' && <ReportsTab />}
           {tab === 'settings' && <SettingsTab />}
         </main>
       </div>

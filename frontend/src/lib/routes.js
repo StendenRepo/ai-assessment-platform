@@ -36,16 +36,21 @@ export const API_PATHS = {
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
   studentEvidence: (studentId) => `/students/${studentId}/evidence`,
+  studentDossierExport: (studentId) => `/students/${studentId}/export/dossier`,
+  studentEvidenceMatches: (studentId) =>
+    `/students/${studentId}/evidence-matches`,
+  studentEvidenceMatchRun: (studentId, runId) =>
+    `/students/${studentId}/evidence-matches/runs/${runId}`,
+  studentAssessmentQuestions: (studentId) =>
+    `/students/${studentId}/assessment-questions`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
+  reportsOverview: '/reports',
   moduleOverlapAnalyze: (moduleId) => `/modules/${moduleId}/overlap/analyze`,
   moduleOverlapSignals: (moduleId) => `/modules/${moduleId}/overlap/signals`,
   moduleOverlapSignal: (moduleId, signalId) =>
     `/modules/${moduleId}/overlap/signals/${signalId}`,
   moduleOverlapWarning: (moduleId) => `/modules/${moduleId}/overlap/warning`,
-  studentEvidenceMatches: (studentId) =>
-    `/students/${studentId}/evidence-matches`,
-  studentEvidenceMatchRun: (studentId, runId) =>
-    `/students/${studentId}/evidence-matches/runs/${runId}`,
   moduleStudentTemplate: '/modules/template/students',
   moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {

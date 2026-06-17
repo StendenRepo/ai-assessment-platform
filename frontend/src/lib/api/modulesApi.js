@@ -17,6 +17,12 @@ async function request(path, options = {}) {
 
 export const listModules = () => request(API_PATHS.modules);
 
+export const listReports = (limit = 50) =>
+  request(`${API_PATHS.reportsOverview}?limit=${limit}`);
+
+export const listAllReports = (limit = 100) =>
+  request(`${API_PATHS.reportsOverview}/all?limit=${limit}`);
+
 export const getProject = (projectId) => request(API_PATHS.module(projectId));
 
 export const createModule = (payload) =>
@@ -236,6 +242,45 @@ export async function exportGradesExcel(moduleId, moduleName = '') {
  * Download the student import template Excel file.
  * Returns a Blob that can be used to trigger a browser download.
  */
+
+export async function exportStudentDossier(
+  studentId,
+  studentName = '',
+  format = 'zip'
+) {
+  const url = `${API_URL}/api/v1${API_PATHS.studentDossierExport(studentId)}?format=${format}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Dossier export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const safeName = (studentName || studentId)
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const ext = format === 'tar' ? 'tar.gz' : 'zip';
+  return { blob, filename: `dossier_${safeName}.${ext}` };
+}
+
+export async function exportModuleArchive(
+  moduleId,
+  moduleName = '',
+  format = 'zip'
+) {
+  const url = `${API_URL}/api/v1${API_PATHS.moduleArchiveExport(moduleId)}?format=${format}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Archive export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const safeName = (moduleName || moduleId)
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const ext = format === 'tar' ? 'tar.gz' : 'zip';
+  return { blob, filename: `archive_${safeName}.${ext}` };
+}
+
 export async function downloadStudentTemplate() {
   const res = await fetch(
     `${API_URL}/api/v1${API_PATHS.moduleStudentTemplate}`,
