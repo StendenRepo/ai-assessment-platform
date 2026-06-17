@@ -1,9 +1,10 @@
 import io
 import json
+import mimetypes
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from app.api.deps import get_current_teacher, get_db
 from app.config import settings
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
-from app.models.enums import ProjectStatus, StudentStatus
+from app.models.enums import AuditSource, ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.project import Project
@@ -34,7 +35,13 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
-from app.services.module_service import ModuleService
+from app.services import audit_service
+from app.services.module_service import (
+    MODULE_BOOK_UPLOAD_DIR,
+    RUBRIC_UPLOAD_DIR,
+    ModuleService,
+    _module_file_path,
+)
 from app.services.overlap_service import OverlapService
 from app.services.student_import import ImportParseError, parse_student_file
 
@@ -287,9 +294,276 @@ def list_modules(
     return result
 
 
-@router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
+@router.get(
+    "/template/students",
+    summary="Download student import template",
+    response_class=StreamingResponse,
+)
+def download_student_template(
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Students"
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    # Columns: Name | Student Number
+    headers = ["Name", "Student Number"]
+    col_widths = [30, 18]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 22
+
+    # Add example rows
+    example_rows = [
+        ["Alice Smith", "1001"],
+        ["Bob Johnson", "1002"],
+        ["Charlie Brown", "1003"],
+    ]
+
+    for row_idx, row_data in enumerate(example_rows, start=2):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    # Add a few more empty rows for user input
+    for row_idx in range(5, 25):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        for col_idx in range(1, 3):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="template.downloaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "template_type": "student_import",
+        },
+        ip_address=None,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"student_import_template_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/template/rubric",
+    summary="Download rubric scoring template",
+    response_class=StreamingResponse,
+)
+def download_rubric_template(
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Rubric"
+
+    # Define styles
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Title
+    ws.merge_cells('A1:F1')
+    title_cell = ws['A1']
+    title_cell.value = "Scoring Rubric Template"
+    title_cell.font = Font(bold=True, size=14, color="FFFFFF")
+    title_cell.fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    title_cell.alignment = center
+    ws.row_dimensions[1].height = 25
+
+    # Instructions
+    ws.merge_cells('A2:F2')
+    instr_cell = ws['A2']
+    instr_cell.value = "Fill in your assessment criteria and define proficiency levels. You can add more criteria rows as needed."
+    instr_cell.font = Font(italic=True, size=9, color="64748B")
+    instr_cell.alignment = left
+    ws.row_dimensions[2].height = 18
+
+    # Column headers (row 3)
+    headers = ["Criteria", "Excellent (4)", "Good (3)", "Fair (2)", "Poor (1)", "Max Points"]
+    col_widths = [20, 15, 15, 15, 15, 12]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=3, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[3].height = 20
+
+    # Example criteria rows
+    example_data = [
+        ["Content Accuracy", "All facts accurate and well-researched", "Most facts accurate", "Some inaccuracies present", "Multiple errors", 4],
+        ["Organization", "Clear structure with logical flow", "Generally well-organized", "Somewhat disorganized", "Confusing structure", 4],
+        ["Clarity", "Very clear and easy to understand", "Mostly clear communication", "Some unclear sections", "Difficult to understand", 3],
+    ]
+
+    for row_idx, row_data in enumerate(example_data, start=4):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx > 1 else left
+            cell.border = thin_border
+        
+        ws.row_dimensions[row_idx].height = 35
+
+    # Add empty rows for user input (rows 7-15)
+    for row_idx in range(7, 16):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        for col_idx in range(1, 7):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx > 1 else left
+            cell.border = thin_border
+        
+        ws.row_dimensions[row_idx].height = 35
+
+    # Summary section (row 17)
+    ws.row_dimensions[17].height = 2  # Empty row
+
+    ws.merge_cells('A18:F18')
+    summary_header = ws['A18']
+    summary_header.value = "Scoring Summary"
+    summary_header.font = Font(bold=True, size=11, color="FFFFFF")
+    summary_header.fill = PatternFill(start_color="64748B", end_color="64748B", fill_type="solid")
+    summary_header.alignment = center
+    summary_header.border = thin_border
+    ws.row_dimensions[18].height = 18
+
+    # Total points row
+    ws.merge_cells('A19:E19')
+    total_label = ws['A19']
+    total_label.value = "Total Points Possible"
+    total_label.font = Font(bold=True, size=10)
+    total_label.alignment = Alignment(horizontal="right", vertical="center")
+    total_label.border = thin_border
+    
+    total_cell = ws['F19']
+    total_cell.value = "=SUM(F4:F15)"  # Sum of max points
+    total_cell.font = Font(bold=True, size=10, color="FFFFFF")
+    total_cell.fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    total_cell.alignment = center
+    total_cell.border = thin_border
+    ws.row_dimensions[19].height = 18
+
+    # Freeze panes
+    ws.freeze_panes = "A4"
+
+    # Save to buffer
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="template.downloaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "template_type": "rubric",
+        },
+        ip_address=None,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"rubric_template_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 def create_module(
     payload: ModuleCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -302,6 +576,23 @@ def create_module(
     db.add(module)
     db.commit()
     db.refresh(module)
+
+    audit_service.log_action(
+        db,
+        action="module.created",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "academic_year": module.academic_year,
+            "operation": "create",
+            "where": "Modules",
+            "route": "/api/v1/modules",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return _module_to_out(module, 0, 0, db)
 
 
@@ -320,6 +611,7 @@ def get_module(
 def rename_module(
     module_id: str,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -331,9 +623,27 @@ def rename_module(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="name must not be empty",
         )
+    old_name = module.name
+    old_academic_year = module.academic_year
     module.name = new_name
     if "academic_year" in payload:
         module.academic_year = payload["academic_year"]
+
+    audit_service.log_action(
+        db,
+        action="module.updated",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "old_name": old_name,
+            "new_name": module.name,
+            "old_academic_year": old_academic_year,
+            "new_academic_year": module.academic_year,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
     db.commit()
     db.refresh(module)
     project_count, student_count = _module_project_counts(db, module.id)
@@ -343,6 +653,7 @@ def rename_module(
 @router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module")
 def delete_module(
     module_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -355,6 +666,7 @@ def delete_module(
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    module_name = module.name  # Capture name before deletion
     project_ids = _module_project_ids(db, module.id)
 
     # Collect student_ids enrolled in this module
@@ -428,9 +740,28 @@ def delete_module(
             except OSError:
                 pass
 
+    deleted_module_id = str(module.id)
     db.query(Project).filter(Project.module_id == module.id).delete(synchronize_session=False)
     db.delete(module)
+
+    audit_service.log_action(
+        db,
+        action="module.deleted",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": deleted_module_id,
+            "module_name": module_name,
+            "operation": "delete",
+            "where": "Modules",
+            "route": "/api/v1/modules/{module_id}",
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
     db.commit()
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -442,10 +773,18 @@ def delete_module(
 @router.post("/{module_id}/rubric", response_model=ModuleOut)
 def upload_rubric(
     module_id: str,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_rubric = (
+        db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
+        if module_before.rubric_file_id
+        else None
+    )
+
     module = ModuleService.upload_rubric(
         module_id,
         file,
@@ -453,6 +792,30 @@ def upload_rubric(
         db,
         is_admin=current_teacher.is_admin,
     )
+
+    current_rubric = (
+        db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+        if module.rubric_file_id
+        else None
+    )
+    is_replace = previous_rubric is not None
+    audit_service.log_action(
+        db,
+        action="rubric.replaced" if is_replace else "rubric.uploaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "rubric_name": current_rubric.file_name if current_rubric else (file.filename or "rubric"),
+            "previous_rubric_name": previous_rubric.file_name if previous_rubric else None,
+            "operation": "replace" if is_replace else "upload",
+            "where": "Module > Rubric",
+            "route": "/api/v1/modules/{module_id}/rubric",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
 
@@ -460,15 +823,40 @@ def upload_rubric(
 @router.delete("/{module_id}/rubric", status_code=status.HTTP_204_NO_CONTENT)
 def delete_rubric(
     module_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_rubric = (
+        db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
+        if module_before.rubric_file_id
+        else None
+    )
+
     ModuleService.delete_rubric(
         module_id,
         current_teacher.id,
         db,
         is_admin=current_teacher.is_admin,
     )
+
+    audit_service.log_action(
+        db,
+        action="rubric.deleted",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module_before.id),
+            "module_name": module_before.name,
+            "rubric_name": previous_rubric.file_name if previous_rubric else None,
+            "operation": "delete",
+            "where": "Module > Rubric",
+            "route": "/api/v1/modules/{module_id}/rubric",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -480,10 +868,18 @@ def delete_rubric(
 @router.post("/{module_id}/module-book", response_model=ModuleOut)
 def upload_module_book(
     module_id: str,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_module_book = (
+        db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
+        if module_before.module_book_id
+        else None
+    )
+
     module = ModuleService.upload_module_book(
         module_id,
         file,
@@ -491,6 +887,36 @@ def upload_module_book(
         db,
         is_admin=current_teacher.is_admin,
     )
+
+    current_module_book = (
+        db.query(FileRecord).filter(FileRecord.id == module.module_book_id).first()
+        if module.module_book_id
+        else None
+    )
+    is_replace = previous_module_book is not None
+    audit_service.log_action(
+        db,
+        action="module_book.replaced" if is_replace else "module_book.uploaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "module_book_name": (
+                current_module_book.file_name
+                if current_module_book
+                else (file.filename or "module-book")
+            ),
+            "previous_module_book_name": (
+                previous_module_book.file_name if previous_module_book else None
+            ),
+            "operation": "replace" if is_replace else "upload",
+            "where": "Module > Module Book",
+            "route": "/api/v1/modules/{module_id}/module-book",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     project_count, student_count = _module_project_counts(db, module.id)
     return _module_to_out(module, project_count, student_count, db)
 
@@ -498,16 +924,188 @@ def upload_module_book(
 @router.delete("/{module_id}/module-book", status_code=status.HTTP_204_NO_CONTENT)
 def delete_module_book(
     module_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_module_book = (
+        db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
+        if module_before.module_book_id
+        else None
+    )
+
     ModuleService.delete_module_book(
         module_id,
         current_teacher.id,
         db,
         is_admin=current_teacher.is_admin,
     )
+
+    audit_service.log_action(
+        db,
+        action="module_book.deleted",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module_before.id),
+            "module_name": module_before.name,
+            "module_book_name": (
+                previous_module_book.file_name if previous_module_book else None
+            ),
+            "operation": "delete",
+            "where": "Module > Module Book",
+            "route": "/api/v1/modules/{module_id}/module-book",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Serve module documents (rubric / module book) for in-app viewing (FR-03)
+# ---------------------------------------------------------------------------
+
+
+def _serve_module_document(
+    db: Session,
+    *,
+    module: Module,
+    file_id,
+    base_dir,
+    kind: str,
+    missing_detail: str,
+    request: Request,
+    teacher: Teacher,
+) -> FileResponse:
+    """Return the stored module document inline, logging a 'document.viewed'
+    audit entry. Visibility has already been enforced by the caller via
+    ``_get_visible_module_or_404``."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    full_path = _module_file_path(base_dir, module.id, record.path)
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found on disk",
+        )
+
+    media_type, _ = mimetypes.guess_type(record.file_name or record.path)
+
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        details={
+            "kind": kind,
+            "module_id": str(module.id),
+            "file_id": str(record.id),
+            "file_name": record.file_name,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type or "application/octet-stream",
+        filename=record.file_name,
+        content_disposition_type="inline",
+    )
+
+
+def _module_document_content(
+    db: Session, *, file_id, missing_detail: str
+) -> dict:
+    """Return the extracted plain text for a module document (used to preview
+    .docx module books, which browsers can't render inline)."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    return {
+        "id": str(record.id),
+        "file_name": record.file_name,
+        "content": record.extracted_text or "",
+    }
+
+
+@router.get("/{module_id}/rubric/file", summary="View or download the module rubric")
+def get_rubric_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.rubric_file_id,
+        base_dir=RUBRIC_UPLOAD_DIR,
+        kind="rubric",
+        missing_detail="This module has no rubric attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get("/{module_id}/rubric/content", summary="Extracted text of the module rubric")
+def get_rubric_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.rubric_file_id,
+        missing_detail="This module has no rubric attached.",
+    )
+
+
+@router.get("/{module_id}/module-book/file", summary="View or download the module book")
+def get_module_book_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.module_book_id,
+        base_dir=MODULE_BOOK_UPLOAD_DIR,
+        kind="module_book",
+        missing_detail="This module has no module book attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get(
+    "/{module_id}/module-book/content",
+    summary="Extracted text of the module book",
+)
+def get_module_book_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.module_book_id,
+        missing_detail="This module has no module book attached.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +1171,7 @@ def list_module_groups(
 def create_module_group(
     module_id: str,
     payload: ModuleGroupCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -585,6 +1184,25 @@ def create_module_group(
     db.add(project)
     db.commit()
     db.refresh(project)
+
+    audit_service.log_action(
+        db,
+        action="group.created",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "group_id": str(project.id),
+            "group_name": project.group_name or project.name,
+            "project_name": project.name,
+            "operation": "create",
+            "where": f"Modules > {module.name} > Groups",
+            "route": "/api/v1/modules/{module_id}/groups",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return _group_to_out(project, 0)
 
 
@@ -593,6 +1211,7 @@ def update_module_group(
     module_id: str,
     group_id: str,
     payload: ModuleGroupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -607,10 +1226,30 @@ def update_module_group(
     if payload.name is None and payload.group_name is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
 
+    old_name = group.name
+    old_group_name = group.group_name
+
     if payload.name is not None:
         group.name = payload.name
     if payload.group_name is not None:
         group.group_name = payload.group_name
+
+    audit_service.log_action(
+        db,
+        action="group.updated",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "group_id": str(group.id),
+            "old_name": old_name,
+            "new_name": group.name,
+            "old_group_name": old_group_name,
+            "new_group_name": group.group_name,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
 
     db.commit()
     db.refresh(group)
@@ -639,6 +1278,7 @@ def update_module_group(
 def delete_module_group(
     module_id: str,
     group_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -655,6 +1295,8 @@ def delete_module_group(
     )
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+    group_name = group.group_name or group.name  # Capture before deletion
 
     if group.name == _DEFAULT_GROUP_NAME:
         raise HTTPException(
@@ -709,6 +1351,24 @@ def delete_module_group(
 
     db.delete(group)
     db.commit()
+
+    audit_service.log_action(
+        db,
+        action="group.deleted",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "group_id": str(group.id),
+            "group_name": group_name,
+            "operation": "delete",
+            "where": f"Modules > {module.name} > Groups",
+            "route": "/api/v1/modules/{module_id}/groups/{group_id}",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -758,6 +1418,7 @@ def list_module_students(
 def add_module_student(
     module_id: str,
     payload: StudentCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -781,6 +1442,26 @@ def add_module_student(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
+
+    audit_service.log_action(
+        db,
+        action="student.created",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "student_id": student.student_number,
+            "student_name": student.name,
+            "group_id": str(project.id),
+            "group_name": project.group_name or project.name,
+            "operation": "create",
+            "where": f"Modules > {module.name} > Students",
+            "route": "/api/v1/modules/{module_id}/students",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
     return _student_to_out(student, project_id=str(project.id))
 
 
@@ -789,6 +1470,7 @@ def move_student_to_group(
     module_id: str,
     student_id: str,
     payload: StudentGroupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -814,6 +1496,17 @@ def move_student_to_group(
         and payload.status is None
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No student updates provided")
+
+    original_name = student.name
+    original_number = student.student_number
+    current_group_row = db.execute(
+        student_projects.select().where(
+            student_projects.c.student_id == student.student_number,
+            student_projects.c.project_id.in_(project_ids),
+        )
+    ).first()
+    old_project_id = str(current_group_row.project_id) if current_group_row else None
+    target = None
 
     if payload.project_id is not None:
         target = (
@@ -857,6 +1550,34 @@ def move_student_to_group(
 
     if payload.status is not None:
         student.status = StudentStatus(payload.status)
+
+    new_project_id = str(target.id) if target is not None else old_project_id
+    old_group = (
+        db.query(Project).filter(Project.id == old_project_id).first()
+        if old_project_id
+        else None
+    )
+    audit_service.log_action(
+        db,
+        action="student.updated",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "student_id": original_number,
+            "student_name": original_name if original_name == student.name else f"{original_name} → {student.name}",
+            "old_group_name": old_group.group_name or old_group.name if old_group else None,
+            "new_group_name": target.group_name or target.name if target else None,
+            "old_student_number": original_number,
+            "new_student_number": student.student_number,
+            "old_project_id": old_project_id,
+            "new_project_id": new_project_id,
+            "new_status": student.status.value if student.status else None,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
 
     db.commit()
     db.refresh(student)
@@ -979,6 +1700,7 @@ def list_module_overlap_signals(
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)
 def analyze_module_overlap(
     module_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -986,6 +1708,21 @@ def analyze_module_overlap(
     generated = OverlapService.analyze_module_overlap(db, str(module.id))
     warning_data = OverlapService.build_warning(generated)
     student_names, evidence_names = _module_signal_context(db, module)
+
+    audit_service.log_action(
+        db,
+        action="overlap.analyzed",
+        source=AuditSource.ai,
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "signal_count": len(generated),
+            "high_risk_count": warning_data.get("high_risk_count", 0),
+            "has_overlap": warning_data.get("has_overlap", False),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
 
     return OverlapAnalysisOut(
         module_id=str(module.id),
@@ -1019,6 +1756,7 @@ def get_module_overlap_warning(
 )
 def export_grades_excel(
     module_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
@@ -1117,6 +1855,19 @@ def export_grades_excel(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="grades.exported",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "student_count": len(students),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
 
     from datetime import date
     safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in module.name).strip("_")

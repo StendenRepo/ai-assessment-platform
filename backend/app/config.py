@@ -46,6 +46,32 @@ class Settings:
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
     VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 
+    MATCH_CONFIDENCE_THRESHOLD: float = float(
+        os.getenv("MATCH_CONFIDENCE_THRESHOLD", "0.15")
+    )
+    MATCH_STRONG_THRESHOLD: float = float(
+        os.getenv("MATCH_STRONG_THRESHOLD", "0.30")
+    )
+    MATCH_CHUNK_SIZE: int = int(os.getenv("MATCH_CHUNK_SIZE", "60"))
+    MATCH_CHUNK_OVERLAP: int = int(os.getenv("MATCH_CHUNK_OVERLAP", "15"))
+    MATCH_TOP_K: int = int(os.getenv("MATCH_TOP_K", "3"))
+    MATCH_USE_AI: bool = _as_bool(os.getenv("MATCH_USE_AI"), True)
+    MATCH_CANDIDATE_POOL: int = int(os.getenv("MATCH_CANDIDATE_POOL", "5"))
+    MATCH_AI_MODEL: str = os.getenv("MATCH_AI_MODEL", "qwen2.5:3b")
+    MATCH_CANDIDATE_POOL_THOROUGH: int = int(
+        os.getenv("MATCH_CANDIDATE_POOL_THOROUGH", "8")
+    )
+    MATCH_AI_MODEL_THOROUGH: str = os.getenv(
+        "MATCH_AI_MODEL_THOROUGH", os.getenv("MATCH_AI_MODEL", "qwen2.5:3b")
+    )
+
+    GENERATION_RETENTION_DAYS: int = int(
+        os.getenv("GENERATION_RETENTION_DAYS", "90")
+    )
+    GENERATION_REMINDER_LEAD_DAYS: int = int(
+        os.getenv("GENERATION_REMINDER_LEAD_DAYS", "14")
+    )
+
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))

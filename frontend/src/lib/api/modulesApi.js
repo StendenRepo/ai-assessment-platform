@@ -146,3 +146,73 @@ export async function exportGradesExcel(moduleId, moduleName = '') {
 
   return { blob, filename };
 }
+
+/**
+ * Download the student import template Excel file.
+ * Returns a Blob that can be used to trigger a browser download.
+ */
+export async function downloadStudentTemplate() {
+  const res = await fetch(
+    `${API_URL}/api/v1${API_PATHS.moduleStudentTemplate}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Template download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const filename = `student_import_template_${today}.xlsx`;
+
+  return { blob, filename };
+}
+
+/**
+ * Download the rubric scoring template Excel file.
+ * Returns a Blob that can be used to trigger a browser download.
+ */
+export async function downloadRubricTemplate() {
+  const res = await fetch(
+    `${API_URL}/api/v1${API_PATHS.moduleRubricTemplate}`,
+    { headers: authHeaders() }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Template download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const filename = `rubric_template_${today}.xlsx`;
+
+  return { blob, filename };
+}
+async function fetchModuleBlob(path) {
+  const res = await fetch(`${API_URL}/api/v1${path}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(
+      normalizeErrorDetail(data.detail) || `Request failed (${res.status})`
+    );
+  }
+  return res.blob();
+}
+
+export const getRubricFileBlob = (moduleId) =>
+  fetchModuleBlob(API_PATHS.moduleRubricFile(moduleId));
+
+export const getRubricContent = async (moduleId) => {
+  const body = await request(API_PATHS.moduleRubricContent(moduleId));
+  return body.content ?? '';
+};
+
+export const getModuleBookFileBlob = (moduleId) =>
+  fetchModuleBlob(API_PATHS.moduleBookFile(moduleId));
+
+export const getModuleBookContent = async (moduleId) => {
+  const body = await request(API_PATHS.moduleBookContent(moduleId));
+  return body.content ?? '';
+};
