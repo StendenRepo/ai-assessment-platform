@@ -770,14 +770,11 @@ export default function ReportsPage() {
               )}
 
               <div className="flex gap-3 justify-end pt-4 border-t border-border">
-                <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                  Preview
-                </button>
                 <button
                   onClick={handleGenerate}
                   className="px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
                 >
-                  {isIndividual ? 'Export Student Report →' : isAiInsights ? 'View AI Signals →' : 'Generate Report →'}
+                  Export
                 </button>
               </div>
             </div>
