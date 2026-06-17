@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -51,6 +52,15 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=TeacherOut)
 def me(teacher: Teacher = Depends(get_current_teacher)):
     return _teacher_out(teacher)
+
+
+@router.get("/users", response_model=List[TeacherOut])
+def list_users(is_admin: Optional[bool] = None, db: Session = Depends(get_db)):
+    query = db.query(Teacher).filter(Teacher.password_hash.isnot(None))
+    if is_admin is not None:
+        query = query.filter(Teacher.is_admin == is_admin)
+    teachers = query.order_by(Teacher.name).all()
+    return [TeacherOut(id=str(t.id), name=t.name, email=t.email, is_admin=t.is_admin) for t in teachers]
 
 
 @router.post("/pin", response_model=TeacherOut)

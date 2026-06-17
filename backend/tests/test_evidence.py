@@ -405,6 +405,127 @@ class TestReadEvidenceFile:
         assert res.status_code == 401
 
 
+# ── FR-03 / NFR-02: per-teacher access control + audit on view ────────────────
+
+class TestEvidenceAccessControl:
+    def _other_teacher(self, db):
+        from app.core.security import hash_password
+        from app.models.teacher import Teacher
+
+        other = Teacher(
+            id=uuid.uuid4(),
+            name="Outsider",
+            email=f"outsider_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(other)
+        db.commit()
+        db.refresh(other)
+        return other
+
+    def test_non_owning_teacher_cannot_read_file(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        other = self._other_teacher(db)
+        try:
+            other_headers = _auth_header(client, other)
+            file_res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=other_headers
+            )
+            assert file_res.status_code == 404
+            content_res = client.get(
+                CONTENT_URL.format(evidence_id=evidence_id), headers=other_headers
+            )
+            assert content_res.status_code == 404
+        finally:
+            from app.models.teacher import Teacher
+
+            db.query(Teacher).filter(Teacher.id == other.id).delete()
+            db.commit()
+
+    def test_admin_can_read_any_evidence(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        from app.models.teacher import Teacher
+        from app.core.security import hash_password
+
+        admin = Teacher(
+            id=uuid.uuid4(),
+            name="Admin",
+            email=f"admin_view_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+            is_admin=True,
+        )
+        db.add(admin)
+        db.commit()
+        try:
+            admin_headers = _auth_header(client, admin)
+            res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=admin_headers
+            )
+            assert res.status_code == 200
+        finally:
+            db.query(Teacher).filter(Teacher.id == admin.id).delete()
+            db.commit()
+
+    def test_viewing_evidence_writes_audit_event(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        from app.models.audit_event import AuditEvent
+
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        try:
+            before = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .count()
+            )
+            res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=headers
+            )
+            assert res.status_code == 200
+
+            events = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .all()
+            )
+            assert len(events) == before + 1
+            assert events[-1].details_json["kind"] == "evidence"
+            assert events[-1].details_json["evidence_id"] == evidence_id
+        finally:
+            db.query(AuditEvent).filter(
+                AuditEvent.action == "document.viewed"
+            ).delete()
+            db.commit()
+
+
 # ── Extensibility: supported-types endpoint ───────────────────────────────────
 
 class TestSupportedTypes:

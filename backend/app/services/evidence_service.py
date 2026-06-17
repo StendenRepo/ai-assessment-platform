@@ -25,6 +25,32 @@ from app.services import notification_service
 logger = logging.getLogger(__name__)
 
 
+def _purge_generation_runs_for_student(db: Session, student_id: str) -> None:
+    from app.models.assessment import Assessment
+    from app.models.evidence_match import EvidenceMatch
+    from app.models.generation_run import GenerationRun
+    from app.models.notification import Notification
+
+    run_ids = [
+        rid
+        for (rid,) in db.query(GenerationRun.id)
+        .join(Assessment, GenerationRun.assessment_id == Assessment.id)
+        .filter(Assessment.student_id == student_id)
+        .all()
+    ]
+    if not run_ids:
+        return
+    db.query(Notification).filter(
+        Notification.generation_run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(EvidenceMatch).filter(
+        EvidenceMatch.run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(GenerationRun).filter(
+        GenerationRun.id.in_(run_ids)
+    ).delete(synchronize_session=False)
+
+
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
     """Parse *value* as a UUID, raising HTTP 422 if it is not valid."""
     try:
@@ -34,6 +60,26 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid {label}: '{value}' is not a valid UUID",
         )
+
+
+def _teacher_can_access_evidence(evidence: Evidence, teacher) -> bool:
+    """Return True if *teacher* may read this evidence file.
+
+    Admins can access everything. Otherwise the evidence must resolve to a
+    module owned by the teacher — either directly through its project, or
+    through any project the linked student belongs to. Mirrors the
+    teacher → module → group → student/project ownership chain used elsewhere.
+    """
+    if getattr(teacher, "is_admin", False):
+        return True
+    if evidence.project and evidence.project.module:
+        if evidence.project.module.teacher_id == teacher.id:
+            return True
+    if evidence.student:
+        for project in evidence.student.projects:
+            if project.module and project.module.teacher_id == teacher.id:
+                return True
+    return False
 
 
 def _evidence_upload_dir() -> Path:
@@ -643,6 +689,7 @@ class EvidenceService:
                 detail="Evidence not found",
             )
         EvidenceService._delete_evidence_artifacts(evidence)
+        _purge_generation_runs_for_student(db, evidence.student_id)
         db.delete(evidence)
         db.commit()
 
@@ -650,9 +697,14 @@ class EvidenceService:
     # Read the raw text content of a single evidence record
     # ------------------------------------------------------------------
     @staticmethod
-    def read_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
+    def read_content(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
@@ -690,9 +742,14 @@ class EvidenceService:
         return evidence, content
 
     @staticmethod
-    def get_raw_file(evidence_id: str, db: Session) -> tuple[Evidence, Path, str]:
+    def get_raw_file(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, Path, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
