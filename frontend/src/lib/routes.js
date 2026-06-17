@@ -12,6 +12,7 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  authUsers: '/auth/users',
   evidenceSupportedTypes: '/evidence/supported-types',
   evidence: (evidenceId) => `/evidence/${evidenceId}`,
   evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
