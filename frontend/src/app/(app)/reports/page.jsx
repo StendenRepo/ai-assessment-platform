@@ -7,12 +7,9 @@ import {
   Users,
   Bot,
   Archive,
-  Shield,
-  ChevronRight,
   X,
   Package,
   AlertTriangle,
-  Activity,
 } from 'lucide-react';
 import {
   listModules,
@@ -679,8 +676,8 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-5">
+        <div className="space-y-5">
+          <div>
             <div className="rounded-lg bg-card border border-border p-6 space-y-5">
               <h2 className="text-sm font-semibold text-foreground">
                 Report Configuration
@@ -803,43 +800,6 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          <div className="col-span-1 space-y-4">
-            <div className="rounded-lg bg-card border border-border p-5 space-y-4 sticky top-4">
-              <h3 className="text-sm font-semibold text-foreground">
-                Report Types
-              </h3>
-              <div className="space-y-3">
-                {reportTypes.map(({ value, label, desc, icon: Icon }) => (
-                  <button
-                    key={value}
-                    onClick={() => setReportType(value)}
-                    className="w-full flex items-start gap-3 text-left rounded-md hover:bg-secondary p-2 transition-colors"
-                  >
-                    <Icon size={14} className="text-primary mt-0.5 shrink-0" />
-                    <div>
-                      <div className="text-xs font-semibold text-foreground">
-                        {label}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
-                        {desc}
-                      </div>
-                    </div>
-                    <ChevronRight
-                      size={13}
-                      className="text-muted-foreground shrink-0 mt-0.5"
-                    />
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-lg bg-secondary border border-border p-4 flex items-start gap-3">
-              <Shield size={14} className="text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Reports may contain sensitive student data. Share only with
-                authorized personnel and handle per GDPR guidelines.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </>

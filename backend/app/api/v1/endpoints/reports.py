@@ -49,28 +49,46 @@ def _event_to_out(event: AuditEvent) -> dict:
     }
 
 
-@router.get("", summary="List recent report exports")
+@router.get("", summary="List own recent report exports")
 def list_reports(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    """Return recent export events.
-
-    - Regular teachers see only their own exports.
-    - Admins see exports from all teachers.
-    """
-    query = db.query(AuditEvent).filter(AuditEvent.action.in_(_REPORT_ACTIONS))
-
-    if not current_teacher.is_admin:
-        query = query.filter(AuditEvent.teacher_id == current_teacher.id)
-
+    """Return recent export events for the current teacher only."""
     events = (
-        query.order_by(desc(AuditEvent.timestamp), desc(AuditEvent.id))
+        db.query(AuditEvent)
+        .filter(
+            AuditEvent.action.in_(_REPORT_ACTIONS),
+            AuditEvent.teacher_id == current_teacher.id,
+        )
+        .order_by(desc(AuditEvent.timestamp), desc(AuditEvent.id))
         .offset(offset)
         .limit(limit)
         .all()
     )
+    return [_event_to_out(e) for e in events]
 
+
+@router.get("/all", summary="List all report exports (admin only)")
+def list_all_reports(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Return all export events across all teachers. Admin only."""
+    if not current_teacher.is_admin:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=403, detail="Admin access required")
+
+    events = (
+        db.query(AuditEvent)
+        .filter(AuditEvent.action.in_(_REPORT_ACTIONS))
+        .order_by(desc(AuditEvent.timestamp), desc(AuditEvent.id))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return [_event_to_out(e) for e in events]
