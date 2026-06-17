@@ -81,6 +81,56 @@ def _assessment_grade(latest: Optional[Assessment]) -> Optional[str]:
     return None
 
 
+def _collect_grade_rows(
+    db: Session,
+    module: Module,
+) -> tuple[list, dict, dict]:
+    """Return (grade_rows, student_project_map, project_name_by_id).
+
+    grade_rows is a list of dicts with keys:
+        student_number, name, group_name, grade, assessment_status
+    """
+    projects = db.query(Project).filter(Project.module_id == module.id).all()
+    project_ids = [p.id for p in projects]
+    project_name_by_id = {p.id: (p.group_name or p.name) for p in projects}
+
+    students = (
+        db.query(Student)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(student_projects.c.project_id.in_(project_ids))
+        .order_by(Student.name)
+        .all()
+    ) if project_ids else []
+
+    student_project_map = _build_student_project_map(db, project_ids) if project_ids else {}
+
+    latest_assessment: dict = {}
+    if students:
+        for a in db.query(Assessment).filter(
+            Assessment.student_id.in_([s.student_number for s in students])
+        ).all():
+            existing = latest_assessment.get(a.student_id)
+            if existing is None or a.created_at > existing.created_at:
+                latest_assessment[a.student_id] = a
+
+    rows = []
+    for student in students:
+        assessment = latest_assessment.get(student.student_number)
+        grade = _assessment_grade(assessment) or "—"
+        ast_status = _assessment_status(assessment)
+        group_pid = student_project_map.get(student.student_number)
+        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
+        rows.append({
+            "student_number": student.student_number or "—",
+            "name": student.name,
+            "group_name": group_name,
+            "grade": grade,
+            "assessment_status": ast_status,
+        })
+
+    return rows, student_project_map, project_name_by_id
+
+
 def _student_to_out(
     s: Student,
     assessment_status: str = "not-started",
@@ -1887,29 +1937,7 @@ def export_grades_excel(
         )
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-
-    projects = db.query(Project).filter(Project.module_id == module.id).all()
-    project_ids = [p.id for p in projects]
-    project_name_by_id = {p.id: p.name for p in projects}
-
-    students = (
-        db.query(Student)
-        .join(student_projects, Student.student_number == student_projects.c.student_id)
-        .filter(student_projects.c.project_id.in_(project_ids))
-        .order_by(Student.name)
-        .all()
-    ) if project_ids else []
-
-    student_project_map = _build_student_project_map(db, project_ids)
-
-    latest_assessment: dict = {}
-    if students:
-        for a in db.query(Assessment).filter(
-            Assessment.student_id.in_([s.student_number for s in students])
-        ).all():
-            existing = latest_assessment.get(a.student_id)
-            if existing is None or a.created_at > existing.created_at:
-                latest_assessment[a.student_id] = a
+    grade_rows, _, _ = _collect_grade_rows(db, module)
 
     # Build workbook
     wb = openpyxl.Workbook()
@@ -1933,18 +1961,13 @@ def export_grades_excel(
 
     ws.row_dimensions[1].height = 22
 
-    for row_idx, student in enumerate(students, start=2):
-        assessment = latest_assessment.get(student.student_number)
-        grade = _assessment_grade(assessment) or "—"
-        group_pid = student_project_map.get(student.student_number)
-        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
-
+    for row_idx, row in enumerate(grade_rows, start=2):
         row_data = [
-            student.student_number or "—",
-            student.name,
+            row["student_number"],
+            row["name"],
             module.name,
-            group_name,
-            grade,
+            row["group_name"],
+            row["grade"],
         ]
 
         row_fill = PatternFill(
@@ -1978,7 +2001,7 @@ def export_grades_excel(
         details={
             "module_id": str(module.id),
             "module_name": module.name,
-            "student_count": len(students),
+            "student_count": len(grade_rows),
         },
         ip_address=request.client.host if request.client else None,
     )
@@ -1991,5 +2014,272 @@ def export_grades_excel(
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module archive export (Group Overview Report)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{module_id}/export/archive",
+    summary="Export a complete module archive (rubric, module book, evidence, assessments, grades)",
+    response_class=StreamingResponse,
+)
+def export_module_archive(
+    module_id: str,
+    request: Request,
+    format: str = "zip",
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Return a ZIP or TAR.GZ archive that serves as a complete assessment archive:
+
+    - ``rubric/<filename>``          — original rubric file (if uploaded)
+    - ``module_book/<filename>``     — original module book (if uploaded)
+    - ``students/<name>/evidence/``  — all evidence files per student
+    - ``students/<name>/assessment.json`` — filled assessment form JSON
+    - ``grades.csv``                 — grade list for all students
+    - ``README.txt``                 — human-readable index
+
+    Use ``?format=tar`` if ZIP is blocked by school IT.
+    All entries are stored with read-only permissions (0o444).
+    """
+    import csv
+    import io as _io
+    import tarfile as _tarfile
+    import zipfile as _zipfile
+    from datetime import date
+    from pathlib import Path
+
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # ── Shared grade rows (reuses same helper as Excel export) ────────────
+    grade_rows, student_project_map, project_name_by_id = _collect_grade_rows(db, module)
+
+    # ── Collect students (needed for evidence + assessment form) ──────────
+    project_ids = _module_project_ids(db, module.id)
+    students = _students_in_projects(db, project_ids) if project_ids else []
+
+    # ── Latest assessments ────────────────────────────────────────────────
+    latest_assessment: dict = {}
+    if students:
+        for a in db.query(Assessment).filter(
+            Assessment.student_id.in_([s.student_number for s in students])
+        ).all():
+            existing = latest_assessment.get(a.student_id)
+            if existing is None or a.created_at > existing.created_at:
+                latest_assessment[a.student_id] = a
+
+    # ── Evidence per student ──────────────────────────────────────────────
+    evidence_by_student: dict = {}
+    if students:
+        for ev in db.query(Evidence).filter(
+            Evidence.student_id.in_([s.student_number for s in students])
+        ).order_by(Evidence.uploaded_at.asc()).all():
+            evidence_by_student.setdefault(ev.student_id, []).append(ev)
+
+    EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    buf = io.BytesIO()
+
+    def _safe(name: str) -> str:
+        return "".join(c if c.isalnum() or c in "_-. " else "_" for c in name).strip()
+
+    # ── Shared content builder ────────────────────────────────────────────
+    def _build_content() -> list[tuple[str, bytes]]:
+        """Return list of (arcname, data) tuples for all archive entries."""
+        entries: list[tuple[str, bytes]] = []
+
+        # Rubric
+        if module.rubric_file_id:
+            rubric_rec = db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+            if rubric_rec:
+                rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_rec.path
+                if rubric_path.exists():
+                    entries.append((f"rubric/{rubric_rec.file_name or rubric_rec.path}", rubric_path.read_bytes()))
+
+        # Module book
+        if module.module_book_id:
+            book_rec = db.query(FileRecord).filter(FileRecord.id == module.module_book_id).first()
+            if book_rec:
+                book_path = MODULE_BOOK_UPLOAD_DIR / str(module.id) / book_rec.path
+                if book_path.exists():
+                    entries.append((f"module_book/{book_rec.file_name or book_rec.path}", book_path.read_bytes()))
+
+        # Per-group / per-student folders
+        for student in students:
+            safe_name = _safe(student.name) or student.student_number
+            group_pid = student_project_map.get(student.student_number)
+            raw_group = project_name_by_id.get(group_pid, "Unknown_Group") if group_pid else "Unknown_Group"
+            safe_group = _safe(raw_group) or "Unknown_Group"
+            folder = f"groups/{safe_group}/students/{safe_name}_{student.student_number}"
+            seen_ev: set[str] = set()
+            for ev in evidence_by_student.get(student.student_number, []):
+                full_path = EVIDENCE_UPLOAD_DIR / ev.file_path
+                if not full_path.exists():
+                    continue
+                ev_safe = Path(ev.file_name).name or str(ev.id)
+                arcname = f"{folder}/evidence/{ev_safe}"
+                stem = Path(ev_safe).stem
+                suffix = Path(ev_safe).suffix
+                counter = 1
+                while arcname in seen_ev:
+                    arcname = f"{folder}/evidence/{stem}_{counter}{suffix}"
+                    counter += 1
+                seen_ev.add(arcname)
+                entries.append((arcname, full_path.read_bytes()))
+
+            assessment = latest_assessment.get(student.student_number)
+            if assessment:
+                form_data = assessment.final_form_json or assessment.draft_form_json
+                if form_data:
+                    if isinstance(form_data, str):
+                        try:
+                            form_data = json.loads(form_data)
+                        except Exception:
+                            pass
+                    # Build a human-readable plain-text assessment summary
+                    ast_lines = [
+                        "=" * 60,
+                        "ASSESSMENT SUMMARY",
+                        "=" * 60,
+                        f"Student        : {student.name}",
+                        f"Student number : {student.student_number}",
+                        f"Module         : {module.name}",
+                        f"Status         : {assessment.status.value if assessment.status else '—'}",
+                    ]
+                    if assessment.created_at:
+                        ast_lines.append(f"Created        : {assessment.created_at.strftime('%Y-%m-%d')}")
+                    if assessment.completed_at:
+                        ast_lines.append(f"Completed      : {assessment.completed_at.strftime('%Y-%m-%d')}")
+                    ast_lines.append("")
+
+                    if isinstance(form_data, dict):
+                        grade = form_data.get("grade")
+                        if grade is not None:
+                            ast_lines.append(f"Grade          : {grade}")
+                            ast_lines.append("")
+
+                        feedback = form_data.get("feedback") or form_data.get("general_feedback")
+                        if feedback:
+                            ast_lines += ["FEEDBACK", "-" * 30, str(feedback), ""]
+
+                        criteria = form_data.get("criteria") or form_data.get("scores") or form_data.get("rubric_scores")
+                        if isinstance(criteria, dict):
+                            ast_lines += ["CRITERIA SCORES", "-" * 30]
+                            for key, val in criteria.items():
+                                ast_lines.append(f"  {key}: {val}")
+                            ast_lines.append("")
+                        elif isinstance(criteria, list):
+                            ast_lines += ["CRITERIA SCORES", "-" * 30]
+                            for item in criteria:
+                                if isinstance(item, dict):
+                                    name_key = item.get("name") or item.get("criterion") or item.get("label", "")
+                                    score_key = item.get("score") or item.get("value") or item.get("points", "")
+                                    fb_key = item.get("feedback") or item.get("comment", "")
+                                    line = f"  {name_key}: {score_key}"
+                                    if fb_key:
+                                        line += f" — {fb_key}"
+                                    ast_lines.append(line)
+                                else:
+                                    ast_lines.append(f"  {item}")
+                            ast_lines.append("")
+
+                        # Dump any remaining top-level keys not already shown
+                        shown = {"grade", "feedback", "general_feedback", "criteria", "scores", "rubric_scores"}
+                        extras = {k: v for k, v in form_data.items() if k not in shown and v not in (None, "", [], {})}
+                        if extras:
+                            ast_lines += ["ADDITIONAL FIELDS", "-" * 30]
+                            for k, v in extras.items():
+                                ast_lines.append(f"  {k}: {v}")
+                            ast_lines.append("")
+
+                    ast_lines.append("=" * 60)
+                    form_bytes = ("\n".join(ast_lines) + "\n").encode("utf-8")
+                    entries.append((f"{folder}/assessment.txt", form_bytes))
+
+        # Grades CSV — built from the shared _collect_grade_rows result
+        grades_buf = _io.StringIO()
+        writer = csv.writer(grades_buf)
+        writer.writerow(["Student Number", "Student Name", "Module", "Group", "Grade"])
+        for row in grade_rows:
+            writer.writerow([
+                row["student_number"],
+                row["name"],
+                module.name,
+                row["group_name"],
+                row["grade"],
+            ])
+        entries.append(("grades.csv", grades_buf.getvalue().encode("utf-8")))
+
+        # README
+        readme_lines = [
+            "=" * 60,
+            f"MODULE ARCHIVE: {module.name}",
+            "=" * 60,
+            f"Exported : {today_str}",
+            f"Module   : {module.name}",
+            f"Year     : {module.academic_year or '—'}",
+            f"Students : {len(grade_rows)}",
+            "",
+            "CONTENTS",
+            "-" * 30,
+            "rubric/          — Original rubric file",
+            "module_book/     — Original module book",
+            "groups/          — Per-group folders, each containing per-student subfolders",
+            "  <group>/students/<student>/evidence/  — Evidence files",
+            "  <group>/students/<student>/assessment.json  — Assessment form",
+            "grades.csv       — Grade list for all students",
+            "",
+            "=" * 60,
+        ]
+        entries.append(("README.txt", "\n".join(readme_lines).encode("utf-8")))
+        return entries
+
+    entries = _build_content()
+    safe_module = _safe(module.name) or str(module.id)
+
+    if format == "tar":
+        with _tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            for arcname, data in entries:
+                ti = _tarfile.TarInfo(name=arcname)
+                ti.size = len(data)
+                ti.mode = 0o444
+                tf.addfile(ti, _io.BytesIO(data))
+        buf.seek(0)
+        filename = f"archive_{safe_module}_{today_str}.tar.gz"
+        media_type = "application/gzip"
+    else:
+        with _zipfile.ZipFile(buf, mode="w", compression=_zipfile.ZIP_DEFLATED) as zf:
+            for arcname, data in entries:
+                info = _zipfile.ZipInfo(arcname)
+                info.external_attr = 0o444 << 16
+                info.compress_type = _zipfile.ZIP_DEFLATED
+                zf.writestr(info, data)
+        buf.seek(0)
+        filename = f"archive_{safe_module}_{today_str}.zip"
+        media_type = "application/zip"
+
+    audit_service.log_action(
+        db,
+        action="module.archive_exported",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "student_count": len(students),
+            "format": format,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return StreamingResponse(
+        buf,
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

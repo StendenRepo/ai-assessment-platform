@@ -12,6 +12,7 @@ from app.api.v1.endpoints import (
  	assessment_questions,
  	students,
  	recordings,
+	reports,
 )
 
 api_router = APIRouter()
@@ -29,4 +30,5 @@ api_router.include_router(
     assessment_questions.router, prefix="/students", tags=["Assessment Questions"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])
+api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(github.router, prefix="/github", tags=["GitHub"])

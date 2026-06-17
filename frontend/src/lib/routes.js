@@ -33,6 +33,7 @@ export const API_PATHS = {
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
   studentEvidence: (studentId) => `/students/${studentId}/evidence`,
+  studentDossierExport: (studentId) => `/students/${studentId}/export/dossier`,
   studentEvidenceMatches: (studentId) =>
     `/students/${studentId}/evidence-matches`,
   studentEvidenceMatchRun: (studentId, runId) =>
@@ -40,6 +41,8 @@ export const API_PATHS = {
   studentAssessmentQuestions: (studentId) =>
     `/students/${studentId}/assessment-questions`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
+  reportsOverview: '/reports',
   moduleStudentTemplate: '/modules/template/students',
   moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
