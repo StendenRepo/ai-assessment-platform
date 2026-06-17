@@ -1,9 +1,10 @@
 import io
 import json
+import tarfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
@@ -103,18 +104,20 @@ def list_evidence(
 
 @router.get(
     "/{student_id}/export/dossier",
-    summary="Export a student dossier as a read-only ZIP file",
+    summary="Export a student dossier as ZIP or TAR",
     response_class=StreamingResponse,
 )
 def export_student_dossier(
     student_id: str,
+    format: Literal["zip", "tar"] = "zip",
     db: Session = Depends(get_db),
     _: Teacher = Depends(get_current_teacher),
 ):
-    """Return a ZIP archive containing:
+    """Return an archive containing:
     - All evidence files uploaded for the student (in an ``evidence/`` folder).
     - A ``dossier.txt`` summary file with student info and assessment details.
 
+    Use ``?format=tar`` if ZIP is blocked by school IT.
     All entries are stored with read-only permissions (0o444).
     The export runs entirely on-premise — no external services are called.
     """
@@ -202,49 +205,82 @@ def export_student_dossier(
     lines += ["", "=" * 60]
     summary_text = "\n".join(lines) + "\n"
 
-    # Build ZIP in memory
     buf = io.BytesIO()
     upload_dir = _evidence_upload_dir()
-
-    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        # Write human-readable summary
-        meta_info = zipfile.ZipInfo("dossier.txt")
-        meta_info.external_attr = 0o444 << 16  # read-only
-        zf.writestr(meta_info, summary_text.encode("utf-8"))
-
-        # Write each evidence file
-        for ev in evidence_records:
-            full_path = upload_dir / ev.file_path
-            if not full_path.exists():
-                continue
-            # Sanitise the original filename to avoid path traversal
-            safe_name = Path(ev.file_name).name or f"{ev.id}"
-            arcname = f"evidence/{safe_name}"
-
-            # Deduplicate arcnames if two files share the same original name
-            existing = {zi.filename for zi in zf.infolist()}
-            stem = Path(safe_name).stem
-            suffix = Path(safe_name).suffix
-            counter = 1
-            while arcname in existing:
-                arcname = f"evidence/{stem}_{counter}{suffix}"
-                counter += 1
-
-            info = zipfile.ZipInfo(arcname)
-            info.external_attr = 0o444 << 16  # read-only
-            info.compress_type = zipfile.ZIP_DEFLATED
-            zf.writestr(info, full_path.read_bytes())
-
-    buf.seek(0)
+    summary_bytes = summary_text.encode("utf-8")
 
     safe_student = "".join(
         c if c.isalnum() or c in "_-" else "_" for c in student.name
     ).strip("_") or student.student_number
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    filename = f"dossier_{safe_student}_{today}.zip"
+
+    if format == "tar":
+        # ── TAR (.tar.gz) ──────────────────────────────────────────────────
+        with tarfile.open(fileobj=buf, mode="w:gz") as tf:
+            # dossier.txt
+            txt_info = tarfile.TarInfo(name="dossier.txt")
+            txt_info.size = len(summary_bytes)
+            txt_info.mode = 0o444
+            tf.addfile(txt_info, io.BytesIO(summary_bytes))
+
+            # evidence files
+            seen_names: set[str] = set()
+            for ev in evidence_records:
+                full_path = upload_dir / ev.file_path
+                if not full_path.exists():
+                    continue
+                safe_name = Path(ev.file_name).name or str(ev.id)
+                arcname = f"evidence/{safe_name}"
+                stem = Path(safe_name).stem
+                suffix = Path(safe_name).suffix
+                counter = 1
+                while arcname in seen_names:
+                    arcname = f"evidence/{stem}_{counter}{suffix}"
+                    counter += 1
+                seen_names.add(arcname)
+
+                data = full_path.read_bytes()
+                ev_info = tarfile.TarInfo(name=arcname)
+                ev_info.size = len(data)
+                ev_info.mode = 0o444
+                tf.addfile(ev_info, io.BytesIO(data))
+
+        buf.seek(0)
+        filename = f"dossier_{safe_student}_{today}.tar.gz"
+        media_type = "application/gzip"
+
+    else:
+        # ── ZIP (default) ──────────────────────────────────────────────────
+        with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            meta_info = zipfile.ZipInfo("dossier.txt")
+            meta_info.external_attr = 0o444 << 16
+            zf.writestr(meta_info, summary_bytes)
+
+            for ev in evidence_records:
+                full_path = upload_dir / ev.file_path
+                if not full_path.exists():
+                    continue
+                safe_name = Path(ev.file_name).name or str(ev.id)
+                arcname = f"evidence/{safe_name}"
+                existing = {zi.filename for zi in zf.infolist()}
+                stem = Path(safe_name).stem
+                suffix = Path(safe_name).suffix
+                counter = 1
+                while arcname in existing:
+                    arcname = f"evidence/{stem}_{counter}{suffix}"
+                    counter += 1
+
+                info = zipfile.ZipInfo(arcname)
+                info.external_attr = 0o444 << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, full_path.read_bytes())
+
+        buf.seek(0)
+        filename = f"dossier_{safe_student}_{today}.zip"
+        media_type = "application/zip"
 
     return StreamingResponse(
         buf,
-        media_type="application/zip",
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
