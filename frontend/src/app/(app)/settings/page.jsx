@@ -11,6 +11,7 @@ import {
   Sun,
   Moon,
   Loader2,
+  KeyRound,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
@@ -21,6 +22,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
+  { key: 'security', label: 'Security', icon: KeyRound },
   { key: 'ai', label: 'AI Configuration', icon: Brain },
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
@@ -363,7 +365,11 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </SectionCard>
+            </>
+          )}
 
+          {activeTab === 'security' && (
+            <>
               <LoginPinSection />
             </>
           )}
