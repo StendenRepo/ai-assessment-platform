@@ -1,7 +1,7 @@
 """add GitHub repo URLs to students and projects
 
 Revision ID: q2r3s4t5u6v7
-Revises: p1q2r3s4t5u6
+Revises: m8n9o0p1q2r3
 Create Date: 2026-06-15 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "q2r3s4t5u6v7"
-down_revision: Union[str, None] = "p1q2r3s4t5u6"
+down_revision: Union[str, None] = "m8n9o0p1q2r3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
