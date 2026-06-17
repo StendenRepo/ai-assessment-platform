@@ -12,6 +12,7 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  authPin: '/auth/pin',
   authUsers: '/auth/users',
   evidenceSupportedTypes: '/evidence/supported-types',
   evidence: (evidenceId) => `/evidence/${evidenceId}`,
@@ -40,6 +41,8 @@ export const API_PATHS = {
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
   reportsOverview: '/reports',
+  moduleStudentTemplate: '/modules/template/students',
+  moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`
