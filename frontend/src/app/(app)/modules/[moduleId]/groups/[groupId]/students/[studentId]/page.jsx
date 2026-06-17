@@ -26,6 +26,7 @@ import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
+import SuggestedQuestionsPanel from '@/components/evidence/SuggestedQuestionsPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
@@ -692,6 +693,11 @@ export default function StudentAssessmentPage() {
               {currentTab === 0 && (
                 <div className="space-y-6">
                   <EvidenceMatchingPanel
+                    studentId={studentId}
+                    moduleId={moduleId}
+                  />
+
+                  <SuggestedQuestionsPanel
                     studentId={studentId}
                     moduleId={moduleId}
                   />

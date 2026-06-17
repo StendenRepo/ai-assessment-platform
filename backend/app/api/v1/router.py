@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
 	projects,
  	evidence,
  	evidence_matches,
+ 	assessment_questions,
  	students,
  	recordings,
 )
@@ -22,5 +23,8 @@ api_router.include_router(students.router, prefix="/students", tags=["Students"]
 api_router.include_router(evidence.router, prefix="/evidence", tags=["Evidence"])
 api_router.include_router(
     evidence_matches.router, prefix="/students", tags=["Evidence Matching"]
+)
+api_router.include_router(
+    assessment_questions.router, prefix="/students", tags=["Assessment Questions"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])

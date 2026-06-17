@@ -31,6 +31,8 @@ export const API_PATHS = {
     `/students/${studentId}/evidence-matches`,
   studentEvidenceMatchRun: (studentId, runId) =>
     `/students/${studentId}/evidence-matches/runs/${runId}`,
+  studentAssessmentQuestions: (studentId) =>
+    `/students/${studentId}/assessment-questions`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
