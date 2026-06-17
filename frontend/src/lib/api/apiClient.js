@@ -29,7 +29,6 @@ export function formatApiErrorDetail(detail, fallbackStatus) {
   }
   return String(detail);
 }
-
 /**
  * Shared authenticated request helper.
  */

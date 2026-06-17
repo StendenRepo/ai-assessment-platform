@@ -119,7 +119,7 @@ class TestOverlapRoutes:
     def _patch_ai(self, monkeypatch):
         from app.services.overlap_service import OverlapService
 
-        def _fake_enrich(hit):
+        def _fake_enrich(hit, **kwargs):
             return {
                 **hit,
                 "ai_verified": True,

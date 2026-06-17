@@ -60,6 +60,17 @@ function detailEntries(details, action = '') {
   const normalizedAction = String(action || '').toLowerCase();
   const hideProjectForGroupCreate = normalizedAction === 'group.created';
 
+  // Build a set of keys to skip because old and new values are the same
+  const skipKeys = new Set();
+  Object.entries(clone).forEach(([key, value]) => {
+    if (key.startsWith('new_')) {
+      const oldKey = key.replace('new_', 'old_');
+      if (clone[oldKey] !== undefined && clone[oldKey] === value) {
+        skipKeys.add(oldKey);
+        skipKeys.add(key);
+      }
+    }
+  });
   const prioritized = [];
   if (clone.where) prioritized.push(['Where', clone.where]);
   if (clone.operation) {
@@ -79,6 +90,7 @@ function detailEntries(details, action = '') {
 
   const extra = Object.entries(clone)
     .filter(([k, v]) => {
+      if (skipKeys.has(k)) return false;
       if (TECHNICAL_DETAIL_KEYS.has(k)) return false;
       if (
         k === 'where' ||
@@ -283,6 +295,153 @@ export function AuditTab() {
                     />
                   )
                 )}
+                {/* Metadata Section */}
+                <div className="space-y-3 pb-3 border-b border-border">
+                  <EventMetaRow
+                    label="When"
+                    value={
+                      selected.timestamp
+                        ? new Date(selected.timestamp).toLocaleString()
+                        : '—'
+                    }
+                  />
+                  <EventMetaRow
+                    label="By"
+                    value={selected.teacher_name || 'System'}
+                  />
+                  <EventMetaRow
+                    label="Type"
+                    value={formatAction(selected.action)}
+                  />
+                  <EventMetaRow
+                    label="Source"
+                    value={sourceLabel(selected.source)}
+                  />
+                </div>
+                {/* Main Details Sections */}
+                <div className="space-y-4">
+                  {/* Name/Identity Changes */}
+                  {detailEntries(selected.details_json, selected.action).filter(
+                    ([label]) =>
+                      label.toLowerCase().includes('name') ||
+                      label.toLowerCase().includes('student') ||
+                      label.toLowerCase().includes('module') ||
+                      label.toLowerCase().includes('group') ||
+                      label.toLowerCase().includes('project') ||
+                      label.toLowerCase().includes('rubric') ||
+                      label.toLowerCase().includes('book') ||
+                      label.toLowerCase().includes('file') ||
+                      label.toLowerCase().includes('where') ||
+                      label.toLowerCase().includes('operation')
+                  ).length > 0 && (
+                    <div className="space-y-2 pb-3 border-b border-border">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Item Details
+                      </h4>
+                      <div className="space-y-3">
+                        {detailEntries(selected.details_json, selected.action)
+                          .filter(
+                            ([label]) =>
+                              label.toLowerCase().includes('name') ||
+                              label.toLowerCase().includes('student') ||
+                              label.toLowerCase().includes('module') ||
+                              label.toLowerCase().includes('group') ||
+                              label.toLowerCase().includes('project') ||
+                              label.toLowerCase().includes('rubric') ||
+                              label.toLowerCase().includes('book') ||
+                              label.toLowerCase().includes('file') ||
+                              label.toLowerCase().includes('where') ||
+                              label.toLowerCase().includes('operation')
+                          )
+                          .map(([label, value]) => (
+                            <EventMetaRow
+                              key={label}
+                              label={label}
+                              value={String(value)}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* GitHub Related Changes */}
+                  {detailEntries(selected.details_json, selected.action).filter(
+                    ([label]) =>
+                      label.toLowerCase().includes('github') ||
+                      label.toLowerCase().includes('repo') ||
+                      label.toLowerCase().includes('branch')
+                  ).length > 0 && (
+                    <div className="space-y-2 pb-3 border-b border-border">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        GitHub Configuration
+                      </h4>
+                      <div className="space-y-3">
+                        {detailEntries(selected.details_json, selected.action)
+                          .filter(
+                            ([label]) =>
+                              label.toLowerCase().includes('github') ||
+                              label.toLowerCase().includes('repo') ||
+                              label.toLowerCase().includes('branch')
+                          )
+                          .map(([label, value]) => (
+                            <EventMetaRow
+                              key={label}
+                              label={label}
+                              value={String(value)}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Other Details */}
+                  {detailEntries(selected.details_json, selected.action).filter(
+                    ([label]) =>
+                      !label.toLowerCase().includes('name') &&
+                      !label.toLowerCase().includes('student') &&
+                      !label.toLowerCase().includes('module') &&
+                      !label.toLowerCase().includes('group') &&
+                      !label.toLowerCase().includes('project') &&
+                      !label.toLowerCase().includes('rubric') &&
+                      !label.toLowerCase().includes('book') &&
+                      !label.toLowerCase().includes('file') &&
+                      !label.toLowerCase().includes('where') &&
+                      !label.toLowerCase().includes('operation') &&
+                      !label.toLowerCase().includes('github') &&
+                      !label.toLowerCase().includes('repo') &&
+                      !label.toLowerCase().includes('branch')
+                  ).length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Additional Details
+                      </h4>
+                      <div className="space-y-3">
+                        {detailEntries(selected.details_json, selected.action)
+                          .filter(
+                            ([label]) =>
+                              !label.toLowerCase().includes('name') &&
+                              !label.toLowerCase().includes('student') &&
+                              !label.toLowerCase().includes('module') &&
+                              !label.toLowerCase().includes('group') &&
+                              !label.toLowerCase().includes('project') &&
+                              !label.toLowerCase().includes('rubric') &&
+                              !label.toLowerCase().includes('book') &&
+                              !label.toLowerCase().includes('file') &&
+                              !label.toLowerCase().includes('where') &&
+                              !label.toLowerCase().includes('operation') &&
+                              !label.toLowerCase().includes('github') &&
+                              !label.toLowerCase().includes('repo') &&
+                              !label.toLowerCase().includes('branch')
+                          )
+                          .map(([label, value]) => (
+                            <EventMetaRow
+                              key={label}
+                              label={label}
+                              value={String(value)}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>

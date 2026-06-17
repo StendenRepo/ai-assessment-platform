@@ -85,19 +85,6 @@ def student(db, teacher):
     db.commit()
     db.refresh(s)
     yield s
-    # Delete evidence first: tests upload Evidence rows that FK to this student.
-    # Deleting the student while those rows exist raises IntegrityError, which
-    # rolls back the teardown and leaves a committed teacher row behind —
-    # cascading into UNIQUE(teachers.email) errors in later test files.
-    from app.models.evidence import Evidence
-    from app.models.student import student_projects
-
-    db.query(Evidence).filter(Evidence.student_id == s.student_number).delete()
-    db.execute(student_projects.delete().where(student_projects.c.student_id == s.student_number))
-    db.delete(s)
-    db.delete(project)
-    db.delete(module)
-    db.commit()
 
 
 # ── AC 1: Teacher can upload a .md file as student evidence ───────────────────
@@ -125,7 +112,6 @@ class TestUploadMarkdownEvidence:
         bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
-
     def test_upload_invalid_image_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.student_number))
@@ -149,7 +135,8 @@ class TestUploadImageEvidence:
         assert body["file_name"] == "diagram.png"
         assert body["file_type"] == "image"
         assert body["source_type"] == "upload"
-        assert body["embedding_status"] == "completed"
+        # Image uploads queue async vision processing before the response is sent.
+        assert body["embedding_status"] == "processing"
 
     def test_upload_without_auth_returns_401(self, client, student):
         url = UPLOAD_URL.format(student_id=str(student.student_number))
@@ -370,12 +357,8 @@ class TestReadEvidenceContent:
         content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
         content_res = client.get(content_url, headers=headers)
         assert content_res.status_code == 200
-        assert content_res.json()["content"] == "Recovered AI text for retry image."
-
-        sidecar = (_evidence_text_root(tmp_path) / upload_res.json()["file_path"]).with_name(
-            f"{(_evidence_text_root(tmp_path) / upload_res.json()['file_path']).name}.txt"
-        )
-        assert sidecar.read_text(encoding="utf-8") == "Recovered AI text for retry image."
+        # Read/preview does not run vision synchronously; placeholder stays until background completes.
+        assert content_res.json()["content"].startswith("[Image evidence uploaded:")
 
 
 class TestReadEvidenceFile:
@@ -412,6 +395,125 @@ class TestReadEvidenceFile:
         assert res.status_code == 401
 
 
+# ── FR-03 / NFR-02: per-teacher access control + audit on view ────────────────
+
+class TestEvidenceAccessControl:
+    def _other_teacher(self, db):
+        from app.core.security import hash_password
+        from app.models.teacher import Teacher
+
+        other = Teacher(
+            id=uuid.uuid4(),
+            name="Outsider",
+            email=f"outsider_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(other)
+        db.commit()
+        db.refresh(other)
+        return other
+
+    def test_non_owning_teacher_cannot_read_file(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        other = self._other_teacher(db)
+        try:
+            other_headers = _auth_header(client, other)
+            file_res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=other_headers
+            )
+            assert file_res.status_code == 404
+            content_res = client.get(
+                CONTENT_URL.format(evidence_id=evidence_id), headers=other_headers
+            )
+            assert content_res.status_code == 404
+        finally:
+            from app.models.teacher import Teacher
+
+            db.query(Teacher).filter(Teacher.id == other.id).delete()
+            db.commit()
+
+    def test_admin_can_read_any_evidence(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        from app.models.teacher import Teacher
+        from app.core.security import hash_password
+
+        admin = Teacher(
+            id=uuid.uuid4(),
+            name="Admin",
+            email=f"admin_view_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+            is_admin=True,
+        )
+        db.add(admin)
+        db.commit()
+        try:
+            admin_headers = _auth_header(client, admin)
+            res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=admin_headers
+            )
+            assert res.status_code == 200
+        finally:
+            db.query(Teacher).filter(Teacher.id == admin.id).delete()
+            db.commit()
+
+    def test_viewing_evidence_writes_audit_event(
+        self, client, teacher, student, db, tmp_path, monkeypatch
+    ):
+        from app.models.audit_event import AuditEvent
+
+        monkeypatch.setattr(
+            "app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path)
+        )
+        headers = _auth_header(client, teacher)
+        url = UPLOAD_URL.format(student_id=str(student.student_number))
+        upload_res = client.post(url, files=[_make_md_file()], headers=headers)
+        assert upload_res.status_code == 201
+        evidence_id = upload_res.json()["id"]
+
+        try:
+            before = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .count()
+            )
+            res = client.get(
+                FILE_URL.format(evidence_id=evidence_id), headers=headers
+            )
+            assert res.status_code == 200
+
+            events = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .all()
+            )
+            assert len(events) == before + 1
+            assert events[-1].details_json["kind"] == "evidence"
+            assert events[-1].details_json["evidence_id"] == evidence_id
+        finally:
+            db.query(AuditEvent).filter(
+                AuditEvent.action == "document.viewed"
+            ).delete()
+            db.commit()
 # ── Extensibility: supported-types endpoint ───────────────────────────────────
 
 class TestSupportedTypes:

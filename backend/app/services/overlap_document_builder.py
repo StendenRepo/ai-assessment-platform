@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.models.evidence import Evidence
 from app.models.overlap_signal import OverlapSignal
-from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
 from app.services.overlap_highlight import (
     apply_paired_student_highlights,
     highlight_phrases_paired,
@@ -29,6 +28,8 @@ _HIGHLIGHT_MARKER_RE = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
 
 
 def read_evidence_text(evidence: Evidence) -> str:
+    from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
+
     return read_stored_evidence_text(evidence, EVIDENCE_UPLOAD_DIR)
 
 

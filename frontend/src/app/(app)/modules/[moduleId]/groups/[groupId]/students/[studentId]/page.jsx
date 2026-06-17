@@ -25,6 +25,7 @@ import RecordingPanel from '@/components/recording/RecordingPanel';
 import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
+import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
@@ -49,7 +50,7 @@ import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ─── AI Insights Panel ───────────────────────────────────────────────────────
+// â”€â”€â”€ AI Insights Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const insightConfig = {
   overlap: {
@@ -146,8 +147,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
         const signals = await listModuleOverlapSignals(moduleId);
         if (!cancelled) {
           const forStudent = (signals || []).filter(
-            (s) =>
-              s.student_a_id === studentId || s.student_b_id === studentId
+            (s) => s.student_a_id === studentId || s.student_b_id === studentId
           );
           setOverlapSignals(forStudent);
         }
@@ -198,7 +198,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
           </div>
         ) : insights.length === 0 ? (
           <div className="rounded-lg border border-border p-6 text-center">
-            <div className="text-2xl mb-2">✓</div>
+            <div className="text-2xl mb-2">âœ“</div>
             <p className="text-sm font-medium text-foreground">
               No notable findings
             </p>
@@ -275,7 +275,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
                         href={APP_PATHS.moduleOverlaps(moduleId)}
                         className="text-[11px] text-primary hover:underline inline-block"
                       >
-                        View overlap details →
+                        View overlap details â†’
                       </a>
                     )}
                   </div>
@@ -297,7 +297,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
   );
 }
 
-// ─── Evidence Upload ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Evidence Upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DEFAULT_EVIDENCE_EXTENSIONS = [
   '.md',
@@ -316,7 +316,7 @@ function EvidenceUpload({ studentId }) {
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Allowed extensions fetched from the backend — starts with a safe default
+  // Allowed extensions fetched from the backend â€” starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(
     DEFAULT_EVIDENCE_EXTENSIONS
   );
@@ -456,7 +456,7 @@ function EvidenceUpload({ studentId }) {
           return changed ? next : prev;
         });
       } catch {
-        // Silently ignore polling errors — the user can still interact
+        // Silently ignore polling errors â€” the user can still interact
       }
     }, 3000);
 
@@ -652,7 +652,7 @@ function EvidenceUpload({ studentId }) {
   );
 }
 
-// ─── Student Assessment Page ──────────────────────────────────────────────────
+// â”€â”€â”€ Student Assessment Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const contributionTypeLabel = {
   code: 'CODE',
@@ -720,9 +720,7 @@ export default function StudentAssessmentPage() {
         if (found) setStudent(found);
         else setLoadError('Student not found in this module.');
       })
-      .catch((e) =>
-        setLoadError(e?.message || 'Failed to load student data')
-      );
+      .catch((e) => setLoadError(e?.message || 'Failed to load student data'));
   }, [moduleId, studentId]);
 
   // Resolve (or lazily create) the assessment for this student so the recording
@@ -731,9 +729,10 @@ export default function StudentAssessmentPage() {
     let active = true;
     resolveAssessmentForStudent(studentId)
       .then((s) => active && setAssessmentId(s.assessment_id))
-      .catch((e) =>
-        active &&
-        setLoadError(e?.message || 'Failed to resolve assessment for student')
+      .catch(
+        (e) =>
+          active &&
+          setLoadError(e?.message || 'Failed to resolve assessment for student')
       );
     return () => {
       active = false;
@@ -753,9 +752,9 @@ export default function StudentAssessmentPage() {
   const overallScore =
     draftSnapshot?.overall_score != null
       ? Number(draftSnapshot.overall_score).toFixed(1)
-      : student.grade && student.grade !== '—'
+      : student.grade && student.grade !== 'â€”'
         ? student.grade
-        : '—';
+        : 'â€”';
   const displayGrade =
     draftSnapshot?.overall_grade?.effective ||
     (student.assessment_status === 'completed' ? student.grade : null);
@@ -830,6 +829,11 @@ export default function StudentAssessmentPage() {
             <div className="p-6">
               {currentTab === 0 && (
                 <div className="space-y-6">
+                  <EvidenceMatchingPanel
+                    studentId={studentId}
+                    moduleId={moduleId}
+                  />
+
                   <div className="space-y-3">
                     <div className="mb-4">
                       <h3 className="text-sm font-semibold text-foreground">
@@ -889,7 +893,7 @@ export default function StudentAssessmentPage() {
                                         {ev.fileName}
                                       </span>
                                       <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                                        View source →
+                                        View source â†’
                                       </button>
                                     </div>
                                     {ev.excerpt && (
@@ -960,7 +964,7 @@ export default function StudentAssessmentPage() {
               )}
               {currentTab === 1 && !assessmentId && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
-                  Resolving assessment…
+                  Resolving assessmentâ€¦
                 </div>
               )}
             </div>

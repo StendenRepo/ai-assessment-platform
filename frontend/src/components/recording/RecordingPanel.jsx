@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Square, Shield, Loader2, Plus } from 'lucide-react';
+import { Mic, Shield, Loader2, Plus } from 'lucide-react';
 import {
   getConsentState,
   setConsent as apiSetConsent,
@@ -11,6 +11,8 @@ import {
 import ConsentBadge from '@/components/recording/ConsentBadge';
 import ConsentPromptDialog from '@/components/recording/ConsentPromptDialog';
 import RecordingRow from '@/components/recording/RecordingRow';
+import RecordingModal from '@/components/recording/RecordingModal';
+import { createLiveSubtitleSession } from '@/lib/recording/liveSubtitles';
 
 /**
  * Multi-recording panel for an individual assessment (FR-06).
@@ -29,14 +31,20 @@ export default function RecordingPanel({
   const [error, setError] = useState(null);
   const [showConsent, setShowConsent] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [liveText, setLiveText] = useState(''); // transient live subtitle (FR-06)
+  const [liveHistory, setLiveHistory] = useState([]); // rolling caption history
+  const [liveActive, setLiveActive] = useState(false); // hide subtitle area on failure
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
+  const liveSeqRef = useRef(0); // monotonic id for history entries
+  const liveSessionRef = useRef(null); // live-subtitle session (additive, best-effort)
 
   async function refresh() {
     const [c, recs] = await Promise.all([
@@ -52,6 +60,7 @@ export default function RecordingPanel({
   useEffect(() => {
     if (!backendEnabled) return;
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch((e) => active && setError(e.message));
     return () => {
       active = false;
@@ -75,18 +84,19 @@ export default function RecordingPanel({
     return () => pollRef.current && clearInterval(pollRef.current);
   }, [recordings, assessmentId]);
 
-  // Recording timer.
+  // Recording timer — runs only while actively recording (paused freezes it).
   useEffect(() => {
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
     }
     return () => timerRef.current && clearInterval(timerRef.current);
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   useEffect(() => {
     return () => {
+      liveSessionRef.current?.stop();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       pollRef.current && clearInterval(pollRef.current);
     };
@@ -121,7 +131,9 @@ export default function RecordingPanel({
       mediaRecorderRef.current = recorder;
       recorder.start();
       setElapsed(0);
+      setIsPaused(false);
       setIsRecording(true);
+      startLiveSubtitles(stream);
     } catch {
       setError(
         'Microphone access denied. Please allow microphone access to record.'
@@ -129,9 +141,75 @@ export default function RecordingPanel({
     }
   }
 
+  // Live subtitles run ALONGSIDE MediaRecorder on the same stream. Entirely
+  // best-effort: any failure is swallowed so it can never affect the recording.
+  function startLiveSubtitles(stream) {
+    try {
+      setLiveText('');
+      setLiveHistory([]);
+      liveSeqRef.current = 0;
+      setLiveActive(true);
+      const session = createLiveSubtitleSession({
+        assessmentId,
+        onText: (text) => {
+          // Each message is an independent chunk, so append it to the rolling
+          // history as well as showing it as the current line.
+          setLiveText(text);
+          setLiveHistory((prev) => [
+            ...prev,
+            { id: (liveSeqRef.current += 1), text },
+          ]);
+        },
+        onClose: () => {
+          // WS error or unexpected close -> hide the caption silently. Recording
+          // is untouched and continues.
+          liveSessionRef.current = null;
+          setLiveActive(false);
+        },
+      });
+      liveSessionRef.current = session;
+      session.start(stream);
+    } catch {
+      liveSessionRef.current = null;
+      setLiveActive(false);
+    }
+  }
+
+  function stopLiveSubtitles() {
+    try {
+      liveSessionRef.current?.stop();
+    } catch {
+      /* best-effort */
+    }
+    liveSessionRef.current = null;
+    setLiveActive(false);
+    setLiveText('');
+    setLiveHistory([]);
+  }
+
+  function pauseRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === 'recording') {
+      recorder.pause();
+      liveSessionRef.current?.setPaused(true);
+      setIsPaused(true);
+    }
+  }
+
+  function resumeRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === 'paused') {
+      recorder.resume();
+      liveSessionRef.current?.setPaused(false);
+      setIsPaused(false);
+    }
+  }
+
   function stopRecording() {
+    stopLiveSubtitles();
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
+    setIsPaused(false);
   }
 
   async function handleStop() {
@@ -182,25 +260,7 @@ export default function RecordingPanel({
           />
         ))}
 
-        {isRecording ? (
-          <div className="rounded-lg bg-red-500/5 border border-red-500/20 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
-                Recording
-              </span>
-              <span className="ml-auto text-lg font-bold text-foreground font-mono">
-                {formatTime(elapsed)}
-              </span>
-            </div>
-            <button
-              onClick={stopRecording}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-foreground text-background text-sm font-semibold hover:bg-foreground/90 transition-colors"
-            >
-              <Square size={14} /> Stop &amp; Save
-            </button>
-          </div>
-        ) : uploading ? (
+        {isRecording ? null : uploading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 size={14} className="animate-spin" /> Uploading recording…
           </div>
@@ -227,6 +287,19 @@ export default function RecordingPanel({
         <ConsentPromptDialog
           onAccept={acceptConsentAndRecord}
           onDecline={declineConsent}
+        />
+      )}
+
+      {isRecording && (
+        <RecordingModal
+          elapsed={formatTime(elapsed)}
+          isPaused={isPaused}
+          liveText={liveText}
+          liveHistory={liveHistory}
+          liveActive={liveActive}
+          onPause={pauseRecording}
+          onResume={resumeRecording}
+          onStop={stopRecording}
         />
       )}
     </div>

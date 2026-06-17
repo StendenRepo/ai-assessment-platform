@@ -346,7 +346,6 @@ def build_seed_database(seed_path: str) -> None:
             )
             audit_id += 1
     session.add_all(audit_events)
-
     session.commit()
 
     print(f"Seed database created: {seed_path}")

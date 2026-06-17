@@ -6,6 +6,7 @@ import {
   ChevronRight,
   MoreVertical,
   Pencil,
+  Play,
   CalendarClock,
   Trash2,
   Loader2,
@@ -19,6 +20,7 @@ import {
   renameRecording,
   extendRecordingExpiry,
   deleteRecording,
+  getRecordingAudioBlob,
 } from '@/lib/api/recording';
 import ExtendExpiryDialog from '@/components/recording/ExtendExpiryDialog';
 
@@ -42,6 +44,8 @@ export default function RecordingRow({
   const [nameDraft, setNameDraft] = useState(recording.display_name);
   const [showExtend, setShowExtend] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [loadingAudio, setLoadingAudio] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -53,6 +57,12 @@ export default function RecordingRow({
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
+  // Release the blob URL when it changes or the row unmounts.
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
   const status =
     statusConfig[recording.transcription_status] ?? statusConfig.pending;
 
@@ -82,6 +92,24 @@ export default function RecordingRow({
     }
   }
 
+  async function handlePlay() {
+    setMenuOpen(false);
+    if (audioUrl || loadingAudio) return; // already loaded or loading
+    setLoadingAudio(true);
+    try {
+      const blob = await getRecordingAudioBlob(assessmentId, recording.id);
+      setAudioUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      onError?.(e.message);
+    } finally {
+      setLoadingAudio(false);
+    }
+  }
+
+  function closePlayer() {
+    // The cleanup effect revokes the previous URL when this state changes.
+    setAudioUrl(null);
+  }
   async function handleDelete() {
     if (
       !window.confirm(
@@ -189,6 +217,12 @@ export default function RecordingRow({
               {menuOpen && (
                 <div className="absolute right-0 mt-1 w-40 rounded-md bg-card border border-border shadow-xl z-20 overflow-hidden">
                   <button
+                    onClick={handlePlay}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-secondary text-left"
+                  >
+                    <Play size={13} /> Play
+                  </button>
+                  <button
                     onClick={() => {
                       setMenuOpen(false);
                       setRenaming(true);
@@ -222,6 +256,26 @@ export default function RecordingRow({
         )}
       </div>
 
+      {(audioUrl || loadingAudio) && (
+        <div className="border-t border-border bg-secondary/30 px-3 py-2 flex items-center gap-2">
+          {loadingAudio ? (
+            <span className="text-xs text-muted-foreground flex items-center gap-2">
+              <Loader2 size={12} className="animate-spin" /> Loading audio…
+            </span>
+          ) : (
+            <>
+              <audio src={audioUrl} controls autoPlay className="w-full h-8" />
+              <button
+                onClick={closePlayer}
+                className="p-1 text-muted-foreground hover:bg-secondary rounded shrink-0"
+                aria-label="Close player"
+              >
+                <X size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {expanded && (
         <div className="border-t border-border bg-secondary/30 px-4 py-3 rounded-b-lg">
           {detail ? (

@@ -44,3 +44,23 @@ def transcribe(
         "text": data.get("text", ""),
         "segments": data.get("segments", []),
     }
+
+
+def transcribe_chunk(audio_bytes: bytes, language: str | None = None) -> dict:
+    """Low-latency transcription of one short WAV chunk for live subtitles (FR-06).
+
+    Separate from transcribe(): hits the STT /transcribe-chunk endpoint (small
+    model) with a short timeout so a slow chunk is dropped rather than stalling
+    the transient live caption. The result is never persisted and is never the
+    official transcript. Raises on any HTTP/transport error; callers treat the
+    live path as best-effort and ignore failures.
+    """
+    response = httpx.post(
+        f"{settings.STT_URL}/transcribe-chunk",
+        files={"file": ("chunk.wav", audio_bytes, "application/octet-stream")},
+        data={"language": language} if language else None,
+        timeout=settings.STT_CHUNK_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return {"text": data.get("text", "")}

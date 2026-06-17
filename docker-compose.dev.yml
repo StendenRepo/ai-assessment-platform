@@ -55,6 +55,8 @@ services:
         environment:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+            # Live-subtitle (FR-06) model, separate from WHISPER_MODEL above.
+            WHISPER_CHUNK_MODEL: ${WHISPER_CHUNK_MODEL:-base}
         restart: unless-stopped
     ai-detector:
         build:

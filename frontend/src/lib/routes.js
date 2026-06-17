@@ -15,6 +15,8 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  authPin: '/auth/pin',
+  authUsers: '/auth/users',
   evidenceSupportedTypes: '/evidence/supported-types',
   evidence: (evidenceId) => `/evidence/${evidenceId}`,
   evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
@@ -22,7 +24,11 @@ export const API_PATHS = {
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
+  moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
+  moduleBookFile: (moduleId) => `/modules/${moduleId}/module-book/file`,
+  moduleBookContent: (moduleId) => `/modules/${moduleId}/module-book/content`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
   moduleGroup: (moduleId, groupId) => `/modules/${moduleId}/groups/${groupId}`,
   projectEvidence: (projectId) => `/projects/${projectId}/evidence`,
@@ -36,6 +42,12 @@ export const API_PATHS = {
   moduleOverlapSignal: (moduleId, signalId) =>
     `/modules/${moduleId}/overlap/signals/${signalId}`,
   moduleOverlapWarning: (moduleId) => `/modules/${moduleId}/overlap/warning`,
+  studentEvidenceMatches: (studentId) =>
+    `/students/${studentId}/evidence-matches`,
+  studentEvidenceMatchRun: (studentId, runId) =>
+    `/students/${studentId}/evidence-matches/runs/${runId}`,
+  moduleStudentTemplate: '/modules/template/students',
+  moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`
@@ -58,14 +70,20 @@ export const API_PATHS = {
   assessmentDraftRevert: (assessmentId) =>
     `/assessments/${assessmentId}/draft/revert`,
   assessmentChat: (assessmentId) => `/assessments/${assessmentId}/chat`,
-  assessmentChatRefine: (assessmentId) => `/assessments/${assessmentId}/chat/refine`,
-  assessmentChatApply: (assessmentId) => `/assessments/${assessmentId}/chat/apply`,
-  assessmentChatReject: (assessmentId) => `/assessments/${assessmentId}/chat/reject`,
-  assessmentChatUndo: (assessmentId) => `/assessments/${assessmentId}/chat/undo`,
+  assessmentChatRefine: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/refine`,
+  assessmentChatApply: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/apply`,
+  assessmentChatReject: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/reject`,
+  assessmentChatUndo: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/undo`,
   assessmentFinalize: (assessmentId) => `/assessments/${assessmentId}/finalize`,
   assessmentFinal: (assessmentId) => `/assessments/${assessmentId}/final`,
   assessmentAuditTrail: (assessmentId) =>
     `/assessments/${assessmentId}/audit-trail`,
+  assessmentRecordingAudio: (assessmentId, recordingId) =>
+    `/assessments/${assessmentId}/recordings/${recordingId}/audio`,
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,

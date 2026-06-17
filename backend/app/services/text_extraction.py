@@ -4,7 +4,7 @@
 documents where a failed parse must not block upload.
 
 ``read_stored_evidence_text`` reads an evidence file from disk and returns text
-for overlap detection, AI grounding, and content APIs — including PDF, Word,
+for overlap detection, AI grounding, and content APIs ? including PDF, Word,
 Excel, and markdown uploads.
 """
 

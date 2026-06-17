@@ -45,6 +45,9 @@ def test_detect_within_group_does_not_double_corpus():
     seen_lengths: list[int] = []
 
     class RecordingVectorizer:
+        def __init__(self, *args, **kwargs):
+            pass
+
         def fit_transform(self, texts):
             seen_lengths.append(len(texts))
             from sklearn.feature_extraction.text import TfidfVectorizer
@@ -129,11 +132,12 @@ def test_analyze_module_overlap_with_text_evidence(db, teacher, monkeypatch):
     )
     monkeypatch.setattr(
         "app.services.overlap_service.enrich_hit_with_ai",
-        lambda hit: {
+        lambda hit, **kwargs: {
             **hit,
             "ai_verified": True,
             "ai_explanation": "AI confirmed overlap.",
             "detection_method": "ai_textual",
+            "integrity_type": "student_plagiarism",
         },
     )
 
