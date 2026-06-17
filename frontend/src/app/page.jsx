@@ -22,6 +22,7 @@ export default function RootPage() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   const dropdownRef = useRef(null);
   const passwordRef = useRef(null);
@@ -164,7 +165,10 @@ export default function RootPage() {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setDropdownOpen((o) => !o)}
+                onClick={() => {
+                  setDropdownOpen((o) => !o);
+                  setHighlightedIndex(0);
+                }}
                 className={`w-full bg-secondary border rounded-md px-3 py-2.5 text-sm text-left flex items-center justify-between transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent ${
                   selectedUser
                     ? 'border-border text-foreground'
@@ -198,11 +202,23 @@ export default function RootPage() {
                         value={searchQuery}
                         onChange={(e) => {
                           setSearchQuery(e.target.value);
+                          setHighlightedIndex(0);
                           if (
                             selectedUser &&
                             e.target.value !== selectedUser.name
                           ) {
                             setSelectedUser(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && filteredUsers.length > 0) {
+                            handleSelectUser(filteredUsers[highlightedIndex]);
+                          } else if (e.key === 'ArrowDown') {
+                            setHighlightedIndex((i) =>
+                              Math.min(i + 1, filteredUsers.length - 1)
+                            );
+                          } else if (e.key === 'ArrowUp') {
+                            setHighlightedIndex((i) => Math.max(i - 1, 0));
                           }
                         }}
                         placeholder="Search by name…"
@@ -216,13 +232,13 @@ export default function RootPage() {
                         No results found
                       </li>
                     ) : (
-                      filteredUsers.map((u) => (
+                      filteredUsers.map((u, index) => (
                         <li key={u.id}>
                           <button
                             type="button"
                             onClick={() => handleSelectUser(u)}
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors ${
-                              selectedUser?.id === u.id
+                              index === highlightedIndex
                                 ? 'bg-secondary text-foreground font-medium'
                                 : 'text-foreground'
                             }`}
@@ -250,9 +266,11 @@ export default function RootPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit(e)}
+              placeholder="••••••••••••"
               required
-              className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+              disabled={!selectedUser}
+              className="w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
