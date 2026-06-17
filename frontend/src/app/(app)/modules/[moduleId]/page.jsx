@@ -5,25 +5,18 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
   Download,
-  Eye,
   FileText,
   FolderPlus,
   Search,
-  RefreshCw,
-  Trash2,
   UserCheck,
   UserPlus,
   Users,
-  Upload,
 } from 'lucide-react';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
-import EvidenceStatusIndicator from '@/components/evidence/EvidenceStatusIndicator';
+import ModuleFileCard from '@/components/modules/ModuleFileCard';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
-import {
-  getPreviewKind,
-  useDocumentPreview,
-} from '@/lib/hooks/useDocumentPreview';
+import { useDocumentPreview } from '@/lib/hooks/useDocumentPreview';
 import {
   getProject,
   listProjectGroups,
@@ -45,22 +38,6 @@ import { APP_PATHS } from '@/lib/routes';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
-
-function formatBytes(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
 
 export default function ModulePage() {
   const { moduleId } = useParams();
@@ -713,244 +690,54 @@ export default function ModulePage() {
         </div>
 
         <div className="col-span-1 space-y-6">
-          <div className="space-y-3">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <FileText size={16} />
-              Rubric File
-            </h3>
-            <div
-              className={`rounded-lg bg-card border border-border px-5 pt-5 space-y-4 ${
-                rubric ? 'pb-0' : 'pb-5'
-              }`}
-            >
-              <p className="text-xs text-muted-foreground">
+          <ModuleFileCard
+            title="Rubric File"
+            icon={FileText}
+            description={
+              <>
                 Attach a rubric so the AI knows the grading criteria for this
                 module. Only{' '}
                 <span className="font-semibold text-foreground">PDF</span> or{' '}
                 <span className="font-semibold text-foreground">Excel</span>{' '}
                 (.xlsx) files are accepted.
-              </p>
+              </>
+            }
+            accept=".pdf,.xlsx"
+            file={rubric}
+            fallbackName="rubric"
+            descriptor={rubricDescriptor}
+            inputRef={rubricInputRef}
+            uploading={uploadingRubric}
+            deleting={deletingRubric}
+            error={rubricError}
+            onFileChange={handleRubricFile}
+            onDelete={handleRubricDelete}
+            docPreview={docPreview}
+          />
 
-              {rubric ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <FileText size={16} className="text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground truncate">
-                          {rubric.file_name || 'rubric'}
-                        </span>
-                        <EvidenceStatusIndicator status="completed" size={13} />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        {rubric.file_type && (
-                          <span className="uppercase font-mono">
-                            {rubric.file_type}
-                          </span>
-                        )}
-                        {rubric.size_bytes && (
-                          <span>{formatBytes(rubric.size_bytes)}</span>
-                        )}
-                        {rubric.uploaded_at && (
-                          <span>Uploaded {formatDate(rubric.uploaded_at)}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    {getPreviewKind(rubric.file_type) && (
-                      <button
-                        type="button"
-                        onClick={() => docPreview.openPreview(rubricDescriptor)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                      >
-                        <Eye size={12} /> View
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => docPreview.download(rubricDescriptor)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                    >
-                      <Download size={12} /> Download
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => rubricInputRef.current?.click()}
-                      disabled={uploadingRubric}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
-                    >
-                      <RefreshCw size={12} /> Replace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRubricDelete}
-                      disabled={deletingRubric}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
-                    >
-                      <Trash2 size={12} />{' '}
-                      {deletingRubric ? 'Removing…' : 'Remove'}
-                    </button>
-                  </div>
-                  <input
-                    ref={rubricInputRef}
-                    type="file"
-                    accept=".pdf,.xlsx"
-                    onChange={(e) => handleRubricFile(e.target.files?.[0])}
-                    className="hidden"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <input
-                    ref={rubricInputRef}
-                    type="file"
-                    accept=".pdf,.xlsx"
-                    onChange={(e) => handleRubricFile(e.target.files?.[0])}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => rubricInputRef.current?.click()}
-                    disabled={uploadingRubric}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Upload size={15} />
-                    {uploadingRubric ? 'Uploading…' : 'Choose file'}
-                  </button>
-                </div>
-              )}
-
-              {rubricError && (
-                <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-                  {rubricError}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <BookOpen size={16} />
-              Module Book
-            </h3>
-            <div
-              className={`rounded-lg bg-card border border-border px-5 pt-5 space-y-4 ${
-                moduleBook ? 'pb-0' : 'pb-5'
-              }`}
-            >
-              <p className="text-xs text-muted-foreground">
+          <ModuleFileCard
+            title="Module Book"
+            icon={BookOpen}
+            description={
+              <>
                 Upload the module book so the AI understands the course content.
                 Only <span className="font-semibold text-foreground">PDF</span>{' '}
                 or <span className="font-semibold text-foreground">Word</span>{' '}
                 (.docx) files are accepted.
-              </p>
-
-              {moduleBook ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 rounded-lg bg-secondary border border-border px-3 py-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <BookOpen size={16} className="text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground truncate">
-                          {moduleBook.file_name || 'module book'}
-                        </span>
-                        <EvidenceStatusIndicator status="completed" size={13} />
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        {moduleBook.file_type && (
-                          <span className="uppercase font-mono">
-                            {moduleBook.file_type}
-                          </span>
-                        )}
-                        {moduleBook.size_bytes && (
-                          <span>{formatBytes(moduleBook.size_bytes)}</span>
-                        )}
-                        {moduleBook.uploaded_at && (
-                          <span>
-                            Uploaded {formatDate(moduleBook.uploaded_at)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    {getPreviewKind(moduleBook.file_type) && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          docPreview.openPreview(moduleBookDescriptor)
-                        }
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                      >
-                        <Eye size={12} /> View
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => docPreview.download(moduleBookDescriptor)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                    >
-                      <Download size={12} /> Download
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moduleBookInputRef.current?.click()}
-                      disabled={uploadingModuleBook}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all disabled:opacity-50"
-                    >
-                      <RefreshCw size={12} /> Replace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleModuleBookDelete}
-                      disabled={deletingModuleBook}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-destructive/30 text-xs font-medium text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
-                    >
-                      <Trash2 size={12} />{' '}
-                      {deletingModuleBook ? 'Removing…' : 'Remove'}
-                    </button>
-                  </div>
-                  <input
-                    ref={moduleBookInputRef}
-                    type="file"
-                    accept=".pdf,.docx"
-                    onChange={(e) => handleModuleBookFile(e.target.files?.[0])}
-                    className="hidden"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <input
-                    ref={moduleBookInputRef}
-                    type="file"
-                    accept=".pdf,.docx"
-                    onChange={(e) => handleModuleBookFile(e.target.files?.[0])}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => moduleBookInputRef.current?.click()}
-                    disabled={uploadingModuleBook}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Upload size={15} />
-                    {uploadingModuleBook ? 'Uploading…' : 'Choose file'}
-                  </button>
-                </div>
-              )}
-
-              {moduleBookError && (
-                <div className="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
-                  {moduleBookError}
-                </div>
-              )}
-            </div>
-          </div>
+              </>
+            }
+            accept=".pdf,.docx"
+            file={moduleBook}
+            fallbackName="module book"
+            descriptor={moduleBookDescriptor}
+            inputRef={moduleBookInputRef}
+            uploading={uploadingModuleBook}
+            deleting={deletingModuleBook}
+            error={moduleBookError}
+            onFileChange={handleModuleBookFile}
+            onDelete={handleModuleBookDelete}
+            docPreview={docPreview}
+          />
 
           <form
             onSubmit={handleCreateGroup}
