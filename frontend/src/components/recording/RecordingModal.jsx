@@ -15,6 +15,7 @@ export default function RecordingModal({
   elapsed,
   isPaused,
   liveText,
+  liveHistory,
   liveActive,
   onPause,
   onResume,
@@ -43,7 +44,7 @@ export default function RecordingModal({
         </p>
 
         {liveActive ? (
-          <LiveSubtitles text={liveText} />
+          <LiveSubtitles text={liveText} history={liveHistory} />
         ) : (
           <div className="rounded-md bg-secondary/60 border border-border px-3 py-2 text-center">
             <span className="text-[11px] text-muted-foreground italic">

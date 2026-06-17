@@ -35,6 +35,7 @@ export default function RecordingPanel({
   const [elapsed, setElapsed] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [liveText, setLiveText] = useState(''); // transient live subtitle (FR-06)
+  const [liveHistory, setLiveHistory] = useState([]); // rolling caption history
   const [liveActive, setLiveActive] = useState(false); // hide subtitle area on failure
 
   const mediaRecorderRef = useRef(null);
@@ -42,6 +43,7 @@ export default function RecordingPanel({
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
+  const liveSeqRef = useRef(0); // monotonic id for history entries
   const liveSessionRef = useRef(null); // live-subtitle session (additive, best-effort)
 
   async function refresh() {
@@ -144,10 +146,20 @@ export default function RecordingPanel({
   function startLiveSubtitles(stream) {
     try {
       setLiveText('');
+      setLiveHistory([]);
+      liveSeqRef.current = 0;
       setLiveActive(true);
       const session = createLiveSubtitleSession({
         assessmentId,
-        onText: (text) => setLiveText(text),
+        onText: (text) => {
+          // Each message is an independent chunk, so append it to the rolling
+          // history as well as showing it as the current line.
+          setLiveText(text);
+          setLiveHistory((prev) => [
+            ...prev,
+            { id: (liveSeqRef.current += 1), text },
+          ]);
+        },
         onClose: () => {
           // WS error or unexpected close -> hide the caption silently. Recording
           // is untouched and continues.
@@ -172,6 +184,7 @@ export default function RecordingPanel({
     liveSessionRef.current = null;
     setLiveActive(false);
     setLiveText('');
+    setLiveHistory([]);
   }
 
   function pauseRecording() {
@@ -282,6 +295,7 @@ export default function RecordingPanel({
           elapsed={formatTime(elapsed)}
           isPaused={isPaused}
           liveText={liveText}
+          liveHistory={liveHistory}
           liveActive={liveActive}
           onPause={pauseRecording}
           onResume={resumeRecording}
