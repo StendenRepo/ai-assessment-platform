@@ -57,6 +57,8 @@ export const API_PATHS = {
     `/assessments/${assessmentId}/recordings`,
   assessmentRecording: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}`,
+  assessmentRecordingAudio: (assessmentId, recordingId) =>
+    `/assessments/${assessmentId}/recordings/${recordingId}/audio`,
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,

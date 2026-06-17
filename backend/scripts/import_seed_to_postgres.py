@@ -3,8 +3,8 @@
 """Import the local SQLite seed database into the Postgres development database.
 
 This script is intended for development only. It reads the SQLite seed file at
-backend/database/database.db, truncates the matching Postgres tables, copies the
-seed rows across, and resets the audit_events identity sequence.
+backend/database/database.db, truncates the matching Postgres tables, and copies
+the seed rows across.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 
 from app.core.security import hash_password
+from app.database import Base
+from app import models as _models  # noqa: F401
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -32,8 +34,6 @@ SEED_ADMIN_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "admin")
 TABLES_IN_TRUNCATE_ORDER = [
     "audit_events",
     "chat_messages",
-    "overlap_signals",
-    "evidence",
     "recordings",
     "assessments",
     "student_projects",
@@ -42,23 +42,16 @@ TABLES_IN_TRUNCATE_ORDER = [
     "modules",
     "teachers",
     "departments",
-    "file_records",
 ]
 
 TABLES_IN_INSERT_ORDER = [
     "departments",
     "teachers",
-    "file_records",
     "modules",
     "projects",
     "students",
     "student_projects",
     "assessments",
-    "recordings",
-    "chat_messages",
-    "audit_events",
-    "evidence",
-    "overlap_signals",
 ]
 
 BOOLEAN_COLUMNS = {
@@ -96,8 +89,27 @@ def load_sqlite_rows(sqlite_conn: sqlite3.Connection, table: str):
 
 
 def truncate_postgres(engine) -> None:
-    statement = "TRUNCATE TABLE " + ", ".join(TABLES_IN_TRUNCATE_ORDER) + " RESTART IDENTITY CASCADE"
     with engine.begin() as connection:
+        existing_tables = set(
+            connection.execute(
+                text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                )
+            ).scalars()
+        )
+
+        tables_to_truncate = [
+            table for table in TABLES_IN_TRUNCATE_ORDER if table in existing_tables
+        ]
+
+        if not tables_to_truncate:
+            return
+
+        statement = (
+            "TRUNCATE TABLE "
+            + ", ".join(tables_to_truncate)
+            + " RESTART IDENTITY CASCADE"
+        )
         connection.execute(text(statement))
 
 
@@ -113,19 +125,6 @@ def insert_rows(engine, table: str, rows: list[dict]) -> None:
     with engine.begin() as connection:
         for row in rows:
             connection.execute(statement, row)
-
-
-def reset_audit_sequence(engine) -> None:
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "SELECT setval("
-                "  pg_get_serial_sequence('audit_events', 'id'),"
-                "  COALESCE((SELECT MAX(id) FROM audit_events), 1),"
-                "  true"
-                ")"
-            )
-        )
 
 
 def ensure_seed_admin(engine) -> None:
@@ -153,6 +152,11 @@ def ensure_seed_admin(engine) -> None:
         )
 
 
+def ensure_postgres_schema(engine) -> None:
+    # Development helper: create any missing tables before importing seed data.
+    Base.metadata.create_all(bind=engine)
+
+
 def main() -> None:
     if not SQLITE_DB.exists():
         raise SystemExit(f"SQLite seed database not found: {SQLITE_DB}")
@@ -161,6 +165,7 @@ def main() -> None:
     postgres_engine = create_engine(POSTGRES_URL)
 
     print(f"Importing seed DB from {SQLITE_DB}")
+    ensure_postgres_schema(postgres_engine)
     truncate_postgres(postgres_engine)
 
     for table in TABLES_IN_INSERT_ORDER:
@@ -170,8 +175,6 @@ def main() -> None:
 
     ensure_seed_admin(postgres_engine)
     print(f"Ensured protected seed admin account exists: {SEED_ADMIN_EMAIL}")
-    reset_audit_sequence(postgres_engine)
-    print("Reset audit_events sequence")
 
     sqlite_conn.close()
     print("Import complete")

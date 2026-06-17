@@ -105,6 +105,7 @@ export function createLiveSubtitleSession({
   let pending = [];
   let pendingLength = 0;
   let closed = false;
+  let paused = false;
 
   function finish() {
     if (closed) return;
@@ -177,7 +178,7 @@ export function createLiveSubtitleSession({
       const chunkSamples = TARGET_SAMPLE_RATE * CHUNK_SECONDS;
 
       processorNode.onaudioprocess = (e) => {
-        if (closed) return;
+        if (closed || paused) return;
         const input = e.inputBuffer.getChannelData(0);
         const down = downsample(input, inRate, TARGET_SAMPLE_RATE);
         // copy: the input buffer is reused by the audio engine after this call
@@ -201,5 +202,16 @@ export function createLiveSubtitleSession({
     finish();
   }
 
-  return { start, stop };
+  // Pause/resume the live capture in step with MediaRecorder. While paused we
+  // skip capturing and drop any buffered audio so a stale window isn't sent on
+  // resume. The WebSocket stays open so resume is instant.
+  function setPaused(value) {
+    paused = value;
+    if (value) {
+      pending = [];
+      pendingLength = 0;
+    }
+  }
+
+  return { start, stop, setPaused };
 }
