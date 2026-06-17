@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import patch
 
 from app.models.enums import FileType, SourceType
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
@@ -33,6 +34,30 @@ def test_tfidf_detects_similar_chunks():
     assert hits
     assert hits[0]["similarity"] >= 0.55
     assert hits[0]["status"] == "confirmed"
+
+
+def test_detect_within_group_does_not_double_corpus():
+    chunks = [
+        EvidenceChunk("s1", "Alice", "e1", "a.txt", 0, SHARED, "g1", "Group A"),
+        EvidenceChunk("s2", "Bob", "e2", "b.txt", 0, SHARED + " Extra words.", "g1", "Group A"),
+        EvidenceChunk("s3", "Cara", "e3", "c.txt", 0, "Different content entirely.", "g1", "Group A"),
+    ]
+    seen_lengths: list[int] = []
+
+    class RecordingVectorizer:
+        def fit_transform(self, texts):
+            seen_lengths.append(len(texts))
+            from sklearn.feature_extraction.text import TfidfVectorizer
+
+            return TfidfVectorizer(stop_words="english").fit_transform(texts)
+
+    with patch(
+        "app.services.overlap_text_detector.TfidfVectorizer",
+        RecordingVectorizer,
+    ):
+        detect_within_group(chunks)
+
+    assert seen_lengths == [len(chunks)]
 
 
 def test_highlight_shared_finds_mid_document_phrase():
