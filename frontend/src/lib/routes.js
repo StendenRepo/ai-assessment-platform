@@ -38,6 +38,8 @@ export const API_PATHS = {
   studentEvidenceMatchRun: (studentId, runId) =>
     `/students/${studentId}/evidence-matches/runs/${runId}`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleStudentTemplate: '/modules/template/students',
+  moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`
