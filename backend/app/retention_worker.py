@@ -31,11 +31,13 @@ def run_once() -> None:
         reminders = retention_service.create_deletion_reminders(db)
         flagged = retention_service.flag_expired_recordings(db)
         purged = retention_service.purge_expired_recordings(db)
+        gen_reminders = retention_service.create_generation_retention_reminders(db)
         logger.info(
-            "retention sweep: reminders=%d flagged=%d purged=%d",
+            "retention sweep: reminders=%d flagged=%d purged=%d gen_reminders=%d",
             reminders,
             flagged,
             purged,
+            gen_reminders,
         )
     except Exception:  # noqa: BLE001 - keep the loop alive
         logger.exception("retention sweep failed")

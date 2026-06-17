@@ -1,130 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
 import { getEvidenceContent, getEvidenceFileBlob } from '@/lib/api/evidence';
+import {
+  getPreviewKind,
+  useDocumentPreview,
+} from '@/lib/hooks/useDocumentPreview';
 
 export function getEvidencePreviewKind(evidence) {
   if (!evidence) return null;
-  if (evidence.file_type === 'image') return 'image';
-  if (evidence.file_type === 'pdf') return 'pdf';
-  if (evidence.file_type === 'markdown' || evidence.file_type === 'docx') {
-    return 'text';
-  }
-  return null;
+  return getPreviewKind(evidence.file_type);
+}
+
+function toDescriptor(evidence) {
+  return {
+    file_name: evidence.file_name,
+    file_type: evidence.file_type,
+    fetchBlob: () => getEvidenceFileBlob(evidence.id),
+    fetchContent: () => getEvidenceContent(evidence.id),
+    supportsAltText: evidence.file_type === 'image',
+  };
 }
 
 export function useEvidencePreview() {
-  const [previewEvidence, setPreviewEvidence] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewContent, setPreviewContent] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [showImageExtractedText, setShowImageExtractedText] = useState(false);
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  const releasePreviewUrl = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-    }
-  };
-
-  const resetPreviewState = () => {
-    releasePreviewUrl();
-    setPreviewContent('');
-    setShowImageExtractedText(false);
-  };
-
-  const openPreview = async (evidence) => {
-    const kind = getEvidencePreviewKind(evidence);
-    if (!kind) return;
-
-    setPreviewEvidence(evidence);
-    setPreviewLoading(true);
-    try {
-      resetPreviewState();
-
-      if (kind === 'image' || kind === 'pdf') {
-        const blob = await getEvidenceFileBlob(evidence.id);
-        setPreviewUrl(URL.createObjectURL(blob));
-      } else {
-        const content = await getEvidenceContent(evidence.id);
-        setPreviewContent(content);
-      }
-    } catch (error) {
-      setPreviewEvidence(null);
-      throw error;
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const closePreview = () => {
-    resetPreviewState();
-    setPreviewEvidence(null);
-    setPreviewLoading(false);
-  };
-
-  const toggleImageExtractedText = async () => {
-    if (!previewEvidence || previewEvidence.file_type !== 'image') return;
-
-    if (showImageExtractedText) {
-      setShowImageExtractedText(false);
-      return;
-    }
-
-    if (previewContent) {
-      setShowImageExtractedText(true);
-      return;
-    }
-
-    setPreviewLoading(true);
-    try {
-      const content = await getEvidenceContent(previewEvidence.id);
-      setPreviewContent(content);
-      setShowImageExtractedText(true);
-    } finally {
-      setPreviewLoading(false);
-    }
-  };
-
-  const basePreviewKind = getEvidencePreviewKind(previewEvidence);
-  const activePreviewKind =
-    basePreviewKind === 'image' && showImageExtractedText
-      ? 'text'
-      : basePreviewKind;
-
-  const downloadEvidence = async (evidence) => {
-    const blob = await getEvidenceFileBlob(evidence.id);
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = evidence.file_name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(blobUrl);
-  };
+  const preview = useDocumentPreview();
 
   return {
-    previewEvidence,
-    previewUrl,
-    previewContent,
-    previewLoading,
-    activePreviewKind,
-    basePreviewKind,
-    showImageExtractedText,
+    previewEvidence: preview.previewDoc,
+    previewUrl: preview.previewUrl,
+    previewContent: preview.previewContent,
+    previewLoading: preview.previewLoading,
+    activePreviewKind: preview.activePreviewKind,
+    basePreviewKind: preview.basePreviewKind,
+    showImageExtractedText: preview.showImageExtractedText,
     canPreview: (evidence) => getEvidencePreviewKind(evidence) !== null,
-    openPreview,
-    closePreview,
-    toggleImageExtractedText,
-    downloadEvidence,
+    openPreview: (evidence) => preview.openPreview(toDescriptor(evidence)),
+    closePreview: preview.closePreview,
+    toggleImageExtractedText: preview.toggleImageExtractedText,
+    downloadEvidence: (evidence) => preview.download(toDescriptor(evidence)),
   };
 }

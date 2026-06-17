@@ -20,6 +20,9 @@ class Notification(Base):
     recording_id = Column(
         UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=True
     )
+    generation_run_id = Column(
+        UUID(as_uuid=True), ForeignKey("generation_runs.id"), nullable=True
+    )
     type = Column(Enum(NotificationType), nullable=False)
     message = Column(Text, nullable=False)
     target_path = Column(String, nullable=True)
@@ -30,3 +33,4 @@ class Notification(Base):
     teacher = relationship("Teacher")
     assessment = relationship("Assessment")
     recording = relationship("Recording")
+    generation_run = relationship("GenerationRun")

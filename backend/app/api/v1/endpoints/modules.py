@@ -1,9 +1,10 @@
 import io
 import json
+import mimetypes
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,7 +36,12 @@ from app.schemas.project import (
     StudentOut,
 )
 from app.services import audit_service
-from app.services.module_service import ModuleService
+from app.services.module_service import (
+    MODULE_BOOK_UPLOAD_DIR,
+    RUBRIC_UPLOAD_DIR,
+    ModuleService,
+    _module_file_path,
+)
 from app.services.overlap_service import OverlapService
 from app.services.student_import import ImportParseError, parse_student_file
 
@@ -955,6 +961,151 @@ def delete_module_book(
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Serve module documents (rubric / module book) for in-app viewing (FR-03)
+# ---------------------------------------------------------------------------
+
+
+def _serve_module_document(
+    db: Session,
+    *,
+    module: Module,
+    file_id,
+    base_dir,
+    kind: str,
+    missing_detail: str,
+    request: Request,
+    teacher: Teacher,
+) -> FileResponse:
+    """Return the stored module document inline, logging a 'document.viewed'
+    audit entry. Visibility has already been enforced by the caller via
+    ``_get_visible_module_or_404``."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    full_path = _module_file_path(base_dir, module.id, record.path)
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found on disk",
+        )
+
+    media_type, _ = mimetypes.guess_type(record.file_name or record.path)
+
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        details={
+            "kind": kind,
+            "module_id": str(module.id),
+            "file_id": str(record.id),
+            "file_name": record.file_name,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type or "application/octet-stream",
+        filename=record.file_name,
+        content_disposition_type="inline",
+    )
+
+
+def _module_document_content(
+    db: Session, *, file_id, missing_detail: str
+) -> dict:
+    """Return the extracted plain text for a module document (used to preview
+    .docx module books, which browsers can't render inline)."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    return {
+        "id": str(record.id),
+        "file_name": record.file_name,
+        "content": record.extracted_text or "",
+    }
+
+
+@router.get("/{module_id}/rubric/file", summary="View or download the module rubric")
+def get_rubric_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.rubric_file_id,
+        base_dir=RUBRIC_UPLOAD_DIR,
+        kind="rubric",
+        missing_detail="This module has no rubric attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get("/{module_id}/rubric/content", summary="Extracted text of the module rubric")
+def get_rubric_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.rubric_file_id,
+        missing_detail="This module has no rubric attached.",
+    )
+
+
+@router.get("/{module_id}/module-book/file", summary="View or download the module book")
+def get_module_book_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.module_book_id,
+        base_dir=MODULE_BOOK_UPLOAD_DIR,
+        kind="module_book",
+        missing_detail="This module has no module book attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get(
+    "/{module_id}/module-book/content",
+    summary="Extracted text of the module book",
+)
+def get_module_book_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.module_book_id,
+        missing_detail="This module has no module book attached.",
+    )
 
 
 # ---------------------------------------------------------------------------
