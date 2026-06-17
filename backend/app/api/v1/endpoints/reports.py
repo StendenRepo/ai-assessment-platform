@@ -7,8 +7,6 @@ Returns a list of recent export events from the audit log:
 
 Teachers see only their own exports; admins see all.
 """
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session

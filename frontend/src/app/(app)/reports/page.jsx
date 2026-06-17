@@ -73,12 +73,11 @@ function formatReportDate(isoString) {
   });
 }
 
-function reportIcon(action) {
-  if (action === 'student.dossier_exported') return Package;
-  if (action === 'module.archive_exported') return Users;
-  if (action === 'grades.exported') return FileText;
-  return FileText;
-}
+const REPORT_ICONS = {
+  'student.dossier_exported': Package,
+  'module.archive_exported': Users,
+  'grades.exported': FileText,
+};
 
 function reportTitle(report) {
   if (report.action === 'student.dossier_exported') {
@@ -569,12 +568,12 @@ function RecentReportRow({ report }) {
     }
   };
 
-  const Icon = reportIcon(report.action);
+  const ReportIcon = REPORT_ICONS[report.action] ?? FileText;
 
   return (
     <div className="flex items-center gap-4 px-6 py-4">
       <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <Icon size={15} className="text-primary" />
+        <ReportIcon size={15} className="text-primary" />
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold text-foreground truncate">
