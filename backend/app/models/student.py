@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Boolean, Enum, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from app.core.encrypted_types import EncryptedString
 from app.database import Base
 from app.models.enums import StudentStatus
 
@@ -17,7 +18,7 @@ class Student(Base):
     __tablename__ = "students"
 
     student_number = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
+    name = Column(EncryptedString, nullable=False)
     status = Column(Enum(StudentStatus), default=StudentStatus.active)
     consent_given = Column(Boolean, default=False)
 

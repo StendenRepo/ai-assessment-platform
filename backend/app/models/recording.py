@@ -1,8 +1,9 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Text, Enum, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.core.encrypted_types import EncryptedText
 from app.database import Base
 from app.models.enums import TranscriptionStatus
 
@@ -23,7 +24,7 @@ class Recording(Base):
     file_id = Column(UUID(as_uuid=True), ForeignKey("file_records.id"), nullable=True)
     display_name = Column(String, nullable=False)
     sequence_number = Column(Integer, nullable=False)
-    transcript_text = Column(Text, nullable=True)
+    transcript_text = Column(EncryptedText, nullable=True)
     transcription_status = Column(
         Enum(TranscriptionStatus), default=TranscriptionStatus.pending, nullable=False
     )

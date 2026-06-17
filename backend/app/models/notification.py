@@ -1,8 +1,9 @@
 import uuid
-from sqlalchemy import Column, DateTime, Text, Enum, ForeignKey, String
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.core.encrypted_types import EncryptedText
 from app.database import Base
 from app.models.enums import NotificationType
 
@@ -24,7 +25,7 @@ class Notification(Base):
         UUID(as_uuid=True), ForeignKey("generation_runs.id"), nullable=True
     )
     type = Column(Enum(NotificationType), nullable=False)
-    message = Column(Text, nullable=False)
+    message = Column(EncryptedText, nullable=False)
     target_path = Column(String, nullable=True)
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -6,6 +6,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core import crypto
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.services.text_extraction import extract_document_text
@@ -78,7 +79,7 @@ def _set_module_file(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     unique_name = f"{_uuid.uuid4().hex}_{filename}"
-    (upload_dir / unique_name).write_bytes(raw)
+    crypto.write_encrypted_file(upload_dir / unique_name, raw)
 
     # Hold reference to the old record so we can delete it after the FK is updated.
     old_id = getattr(module, fk_attr)
