@@ -1996,10 +1996,13 @@ def export_module_archive(
                 if book_path.exists():
                     entries.append((f"module_book/{book_rec.file_name or book_rec.path}", book_path.read_bytes()))
 
-        # Per-student folders
+        # Per-group / per-student folders
         for student in students:
             safe_name = _safe(student.name) or student.student_number
-            folder = f"students/{safe_name}_{student.student_number}"
+            group_pid = student_project_map.get(student.student_number)
+            raw_group = project_name_by_id.get(group_pid, "Unknown_Group") if group_pid else "Unknown_Group"
+            safe_group = _safe(raw_group) or "Unknown_Group"
+            folder = f"groups/{safe_group}/students/{safe_name}_{student.student_number}"
             seen_ev: set[str] = set()
             for ev in evidence_by_student.get(student.student_number, []):
                 full_path = EVIDENCE_UPLOAD_DIR / ev.file_path
@@ -2025,8 +2028,65 @@ def export_module_archive(
                             form_data = json.loads(form_data)
                         except Exception:
                             pass
-                    form_bytes = json.dumps(form_data, indent=2, ensure_ascii=False).encode("utf-8")
-                    entries.append((f"{folder}/assessment.json", form_bytes))
+                    # Build a human-readable plain-text assessment summary
+                    ast_lines = [
+                        "=" * 60,
+                        "ASSESSMENT SUMMARY",
+                        "=" * 60,
+                        f"Student        : {student.name}",
+                        f"Student number : {student.student_number}",
+                        f"Module         : {module.name}",
+                        f"Status         : {assessment.status.value if assessment.status else '—'}",
+                    ]
+                    if assessment.created_at:
+                        ast_lines.append(f"Created        : {assessment.created_at.strftime('%Y-%m-%d')}")
+                    if assessment.completed_at:
+                        ast_lines.append(f"Completed      : {assessment.completed_at.strftime('%Y-%m-%d')}")
+                    ast_lines.append("")
+
+                    if isinstance(form_data, dict):
+                        grade = form_data.get("grade")
+                        if grade is not None:
+                            ast_lines.append(f"Grade          : {grade}")
+                            ast_lines.append("")
+
+                        feedback = form_data.get("feedback") or form_data.get("general_feedback")
+                        if feedback:
+                            ast_lines += ["FEEDBACK", "-" * 30, str(feedback), ""]
+
+                        criteria = form_data.get("criteria") or form_data.get("scores") or form_data.get("rubric_scores")
+                        if isinstance(criteria, dict):
+                            ast_lines += ["CRITERIA SCORES", "-" * 30]
+                            for key, val in criteria.items():
+                                ast_lines.append(f"  {key}: {val}")
+                            ast_lines.append("")
+                        elif isinstance(criteria, list):
+                            ast_lines += ["CRITERIA SCORES", "-" * 30]
+                            for item in criteria:
+                                if isinstance(item, dict):
+                                    name_key = item.get("name") or item.get("criterion") or item.get("label", "")
+                                    score_key = item.get("score") or item.get("value") or item.get("points", "")
+                                    fb_key = item.get("feedback") or item.get("comment", "")
+                                    line = f"  {name_key}: {score_key}"
+                                    if fb_key:
+                                        line += f" — {fb_key}"
+                                    ast_lines.append(line)
+                                else:
+                                    ast_lines.append(f"  {item}")
+                            ast_lines.append("")
+
+                        # Dump any remaining top-level keys not already shown
+                        shown = {"grade", "feedback", "general_feedback", "criteria", "scores", "rubric_scores"}
+                        extras = {k: v for k, v in form_data.items() if k not in shown and v not in (None, "", [], {})}
+                        if extras:
+                            ast_lines += ["ADDITIONAL FIELDS", "-" * 30]
+                            for k, v in extras.items():
+                                ast_lines.append(f"  {k}: {v}")
+                            ast_lines.append("")
+
+                    ast_lines.append("=" * 60)
+                    form_bytes = ("\n".join(ast_lines) + "\n").encode("utf-8")
+                    entries.append((f"{folder}/assessment.txt", form_bytes))
 
         # Grades CSV — built from the shared _collect_grade_rows result
         grades_buf = _io.StringIO()
@@ -2056,7 +2116,9 @@ def export_module_archive(
             "-" * 30,
             "rubric/          — Original rubric file",
             "module_book/     — Original module book",
-            "students/        — Per-student folders with evidence and assessment form",
+            "groups/          — Per-group folders, each containing per-student subfolders",
+            "  <group>/students/<student>/evidence/  — Evidence files",
+            "  <group>/students/<student>/assessment.json  — Assessment form",
             "grades.csv       — Grade list for all students",
             "",
             "=" * 60,
