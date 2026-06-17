@@ -75,6 +75,16 @@ class Settings:
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))
+    # Short timeout for live-subtitle chunks: a slow chunk is dropped, never
+    # allowed to stall the transient live caption (FR-06 additive, best-effort).
+    STT_CHUNK_TIMEOUT_SECONDS: float = float(
+        os.getenv("STT_CHUNK_TIMEOUT_SECONDS", "10")
+    )
+    # Default language for live subtitles. Short chunks frequently mis-detect the
+    # language and produce garbled text, so we force one; a client may still
+    # override it per connection via the WS ?language= query param. Empty string
+    # means auto-detect.
+    LIVE_SUBTITLE_LANGUAGE: str = os.getenv("LIVE_SUBTITLE_LANGUAGE", "en")
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.

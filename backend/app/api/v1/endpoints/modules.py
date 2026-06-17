@@ -1,9 +1,10 @@
 import io
 import json
+import mimetypes
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,7 +36,12 @@ from app.schemas.project import (
     StudentOut,
 )
 from app.services import audit_service
-from app.services.module_service import ModuleService
+from app.services.module_service import (
+    MODULE_BOOK_UPLOAD_DIR,
+    RUBRIC_UPLOAD_DIR,
+    ModuleService,
+    _module_file_path,
+)
 from app.services.overlap_service import OverlapService
 from app.services.student_import import ImportParseError, parse_student_file
 
@@ -85,6 +91,8 @@ def _student_to_out(
         id=s.student_number,
         name=s.name,
         student_number=s.student_number,
+        github_repo_url=s.github_repo_url,
+        github_branch=s.github_branch,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         assessment_status=assessment_status,
@@ -98,6 +106,8 @@ def _group_to_out(p: Project, student_count: int, file_count: int = 0) -> Projec
         id=str(p.id),
         name=p.name,
         group_name=p.group_name,
+        github_repo_url=p.github_repo_url,
+        github_branch=p.github_branch,
         module_id=str(p.module_id),
         status=p.status.value if p.status else "active",
         created_at=p.created_at,
@@ -288,7 +298,273 @@ def list_modules(
     return result
 
 
-@router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
+@router.get(
+    "/template/students",
+    summary="Download student import template",
+    response_class=StreamingResponse,
+)
+def download_student_template(
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Students"
+
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+
+    # Columns: Name | Student Number
+    headers = ["Name", "Student Number"]
+    col_widths = [30, 18]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[1].height = 22
+
+    # Add example rows
+    example_rows = [
+        ["Alice Smith", "1001"],
+        ["Bob Johnson", "1002"],
+        ["Charlie Brown", "1003"],
+    ]
+
+    for row_idx, row_data in enumerate(example_rows, start=2):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    # Add a few more empty rows for user input
+    for row_idx in range(5, 25):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        for col_idx in range(1, 3):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx == 2 else left
+        
+        ws.row_dimensions[row_idx].height = 18
+
+    ws.freeze_panes = "A2"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="template.downloaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "template_type": "student_import",
+        },
+        ip_address=None,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"student_import_template_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/template/rubric",
+    summary="Download rubric scoring template",
+    response_class=StreamingResponse,
+)
+def download_rubric_template(
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="openpyxl is not installed on the server.",
+        )
+
+    # Build workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Rubric"
+
+    # Define styles
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="top", wrap_text=True)
+    
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+
+    # Title
+    ws.merge_cells('A1:F1')
+    title_cell = ws['A1']
+    title_cell.value = "Scoring Rubric Template"
+    title_cell.font = Font(bold=True, size=14, color="FFFFFF")
+    title_cell.fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    title_cell.alignment = center
+    ws.row_dimensions[1].height = 25
+
+    # Instructions
+    ws.merge_cells('A2:F2')
+    instr_cell = ws['A2']
+    instr_cell.value = "Fill in your assessment criteria and define proficiency levels. You can add more criteria rows as needed."
+    instr_cell.font = Font(italic=True, size=9, color="64748B")
+    instr_cell.alignment = left
+    ws.row_dimensions[2].height = 18
+
+    # Column headers (row 3)
+    headers = ["Criteria", "Excellent (4)", "Good (3)", "Fair (2)", "Poor (1)", "Max Points"]
+    col_widths = [20, 15, 15, 15, 15, 12]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+        cell = ws.cell(row=3, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+        cell.border = thin_border
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[3].height = 20
+
+    # Example criteria rows
+    example_data = [
+        ["Content Accuracy", "All facts accurate and well-researched", "Most facts accurate", "Some inaccuracies present", "Multiple errors", 4],
+        ["Organization", "Clear structure with logical flow", "Generally well-organized", "Somewhat disorganized", "Confusing structure", 4],
+        ["Clarity", "Very clear and easy to understand", "Mostly clear communication", "Some unclear sections", "Difficult to understand", 3],
+    ]
+
+    for row_idx, row_data in enumerate(example_data, start=4):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx > 1 else left
+            cell.border = thin_border
+        
+        ws.row_dimensions[row_idx].height = 35
+
+    # Add empty rows for user input (rows 7-15)
+    for row_idx in range(7, 16):
+        row_fill = PatternFill(
+            start_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
+            fill_type="solid",
+        )
+        for col_idx in range(1, 7):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.alignment = center if col_idx > 1 else left
+            cell.border = thin_border
+        
+        ws.row_dimensions[row_idx].height = 35
+
+    # Summary section (row 17)
+    ws.row_dimensions[17].height = 2  # Empty row
+
+    ws.merge_cells('A18:F18')
+    summary_header = ws['A18']
+    summary_header.value = "Scoring Summary"
+    summary_header.font = Font(bold=True, size=11, color="FFFFFF")
+    summary_header.fill = PatternFill(start_color="64748B", end_color="64748B", fill_type="solid")
+    summary_header.alignment = center
+    summary_header.border = thin_border
+    ws.row_dimensions[18].height = 18
+
+    # Total points row
+    ws.merge_cells('A19:E19')
+    total_label = ws['A19']
+    total_label.value = "Total Points Possible"
+    total_label.font = Font(bold=True, size=10)
+    total_label.alignment = Alignment(horizontal="right", vertical="center")
+    total_label.border = thin_border
+    
+    total_cell = ws['F19']
+    total_cell.value = "=SUM(F4:F15)"  # Sum of max points
+    total_cell.font = Font(bold=True, size=10, color="FFFFFF")
+    total_cell.fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    total_cell.alignment = center
+    total_cell.border = thin_border
+    ws.row_dimensions[19].height = 18
+
+    # Freeze panes
+    ws.freeze_panes = "A4"
+
+    # Save to buffer
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    audit_service.log_action(
+        db,
+        action="template.downloaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "template_type": "rubric",
+        },
+        ip_address=None,
+    )
+
+    from datetime import date
+    today = date.today().strftime("%Y-%m-%d")
+    filename = f"rubric_template_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 def create_module(
     payload: ModuleCreate,
     request: Request,
@@ -692,6 +968,151 @@ def delete_module_book(
 
 
 # ---------------------------------------------------------------------------
+# Serve module documents (rubric / module book) for in-app viewing (FR-03)
+# ---------------------------------------------------------------------------
+
+
+def _serve_module_document(
+    db: Session,
+    *,
+    module: Module,
+    file_id,
+    base_dir,
+    kind: str,
+    missing_detail: str,
+    request: Request,
+    teacher: Teacher,
+) -> FileResponse:
+    """Return the stored module document inline, logging a 'document.viewed'
+    audit entry. Visibility has already been enforced by the caller via
+    ``_get_visible_module_or_404``."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    full_path = _module_file_path(base_dir, module.id, record.path)
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found on disk",
+        )
+
+    media_type, _ = mimetypes.guess_type(record.file_name or record.path)
+
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        details={
+            "kind": kind,
+            "module_id": str(module.id),
+            "file_id": str(record.id),
+            "file_name": record.file_name,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type or "application/octet-stream",
+        filename=record.file_name,
+        content_disposition_type="inline",
+    )
+
+
+def _module_document_content(
+    db: Session, *, file_id, missing_detail: str
+) -> dict:
+    """Return the extracted plain text for a module document (used to preview
+    .docx module books, which browsers can't render inline)."""
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    return {
+        "id": str(record.id),
+        "file_name": record.file_name,
+        "content": record.extracted_text or "",
+    }
+
+
+@router.get("/{module_id}/rubric/file", summary="View or download the module rubric")
+def get_rubric_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.rubric_file_id,
+        base_dir=RUBRIC_UPLOAD_DIR,
+        kind="rubric",
+        missing_detail="This module has no rubric attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get("/{module_id}/rubric/content", summary="Extracted text of the module rubric")
+def get_rubric_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.rubric_file_id,
+        missing_detail="This module has no rubric attached.",
+    )
+
+
+@router.get("/{module_id}/module-book/file", summary="View or download the module book")
+def get_module_book_file(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=module.module_book_id,
+        base_dir=MODULE_BOOK_UPLOAD_DIR,
+        kind="module_book",
+        missing_detail="This module has no module book attached.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+@router.get(
+    "/{module_id}/module-book/content",
+    summary="Extracted text of the module book",
+)
+def get_module_book_content(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return _module_document_content(
+        db,
+        file_id=module.module_book_id,
+        missing_detail="This module has no module book attached.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Groups inside a module
 # ---------------------------------------------------------------------------
 
@@ -763,6 +1184,7 @@ def create_module_group(
         module_id=module.id,
         name=payload.name,
         group_name=payload.group_name or payload.name,
+        github_repo_url=payload.github_repo_url,
     )
     db.add(project)
     db.commit()
@@ -779,6 +1201,8 @@ def create_module_group(
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
             "project_name": project.name,
+            "github_repo_url": project.github_repo_url,
+            "github_branch": project.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups",
@@ -806,17 +1230,49 @@ def update_module_group(
     )
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
-    if payload.name is None and payload.group_name is None:
+    updates = payload.model_fields_set
+    if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
 
     old_name = group.name
     old_group_name = group.group_name
+    old_github_repo_url = group.github_repo_url
+    old_github_branch = group.github_branch
 
     if payload.name is not None:
         group.name = payload.name
     if payload.group_name is not None:
         group.group_name = payload.group_name
+    if "github_repo_url" in updates:
+        group.github_repo_url = payload.github_repo_url
 
+        # Keep student-level repo references in sync whenever a group repo changes.
+        student_ids = [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id == group.id)
+            ).all()
+        ]
+        if student_ids:
+            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+                student.github_repo_url = payload.github_repo_url
+
+    if "github_branch" in updates:
+        group.github_branch = payload.github_branch
+
+        # Sync branch to all students in this group.
+        student_ids = [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id == group.id)
+            ).all()
+        ]
+        if student_ids:
+            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+                student.github_branch = payload.github_branch
+
+    repo_removed = old_github_repo_url is not None and group.github_repo_url is None
+    repo_added = old_github_repo_url is None and group.github_repo_url is not None
     audit_service.log_action(
         db,
         action="group.updated",
@@ -829,6 +1285,13 @@ def update_module_group(
             "new_name": group.name,
             "old_group_name": old_group_name,
             "new_group_name": group.group_name,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": group.github_repo_url,
+            "repo_removed": repo_removed,
+            "repo_added": repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": group.github_branch,
+            "branch_changed": old_github_branch != group.github_branch and not repo_removed and not repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -932,6 +1395,11 @@ def delete_module_group(
                     student_projects.insert().values(student_id=sid, project_id=default_group.id)
                 )
 
+        # Preserve group-level repo consistency after moving members.
+        for student in db.query(Student).filter(Student.student_number.in_(student_ids_in_group)).all():
+            student.github_repo_url = default_group.github_repo_url
+            student.github_branch = default_group.github_branch
+
     db.delete(group)
     db.commit()
 
@@ -945,6 +1413,8 @@ def delete_module_group(
             "module_name": module.name,
             "group_id": str(group.id),
             "group_name": group_name,
+            "github_repo_url": group.github_repo_url,
+            "github_branch": group.github_branch,
             "operation": "delete",
             "where": f"Modules > {module.name} > Groups",
             "route": "/api/v1/modules/{module_id}/groups/{group_id}",
@@ -1008,6 +1478,16 @@ def add_module_student(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
+    if (
+        payload.github_repo_url
+        and project.github_repo_url
+        and payload.github_repo_url != project.github_repo_url
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This group already has a GitHub repository. Use the group repository instead.",
+        )
+
     if _student_duplicate_in_module(db, _module_project_ids(db, module.id), payload.student_number):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
 
@@ -1017,6 +1497,16 @@ def add_module_student(
         student = Student(name=payload.name, student_number=payload.student_number)
         db.add(student)
         db.flush()
+
+    if payload.github_repo_url:
+        student.github_repo_url = payload.github_repo_url
+    elif project.github_repo_url:
+        student.github_repo_url = project.github_repo_url
+
+    if payload.github_branch:
+        student.github_branch = payload.github_branch
+    elif project.github_branch:
+        student.github_branch = project.github_branch
 
     student.projects.append(project)
     try:
@@ -1038,6 +1528,8 @@ def add_module_student(
             "student_name": student.name,
             "group_id": str(project.id),
             "group_name": project.group_name or project.name,
+            "github_repo_url": student.github_repo_url,
+            "github_branch": student.github_branch,
             "operation": "create",
             "where": f"Modules > {module.name} > Students",
             "route": "/api/v1/modules/{module_id}/students",
@@ -1077,11 +1569,14 @@ def move_student_to_group(
         and payload.name is None
         and payload.student_number is None
         and payload.status is None
+        and "github_repo_url" not in payload.model_fields_set
     ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No student updates provided")
 
     original_name = student.name
     original_number = student.student_number
+    old_github_repo_url = student.github_repo_url
+    old_github_branch = student.github_branch
     current_group_row = db.execute(
         student_projects.select().where(
             student_projects.c.student_id == student.student_number,
@@ -1111,6 +1606,17 @@ def move_student_to_group(
             student_projects.insert().values(student_id=student.student_number, project_id=target.id)
         )
 
+        if target.github_repo_url is not None:
+            requested_repo = payload.github_repo_url if "github_repo_url" in payload.model_fields_set else None
+            if requested_repo is not None and requested_repo != target.github_repo_url:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This group already has a GitHub repository. Use the group repository instead.",
+                )
+            student.github_repo_url = target.github_repo_url
+            if target.github_branch is not None:
+                student.github_branch = target.github_branch
+
     if payload.name is not None:
         student.name = payload.name
 
@@ -1134,12 +1640,26 @@ def move_student_to_group(
     if payload.status is not None:
         student.status = StudentStatus(payload.status)
 
+    if "github_repo_url" in payload.model_fields_set:
+        if target and target.github_repo_url is not None:
+            student.github_repo_url = target.github_repo_url
+        else:
+            student.github_repo_url = payload.github_repo_url
+
+    if "github_branch" in payload.model_fields_set:
+        if target and target.github_branch is not None:
+            student.github_branch = target.github_branch
+        else:
+            student.github_branch = payload.github_branch
+
     new_project_id = str(target.id) if target is not None else old_project_id
     old_group = (
         db.query(Project).filter(Project.id == old_project_id).first()
         if old_project_id
         else None
     )
+    student_repo_removed = old_github_repo_url is not None and student.github_repo_url is None
+    student_repo_added = old_github_repo_url is None and student.github_repo_url is not None
     audit_service.log_action(
         db,
         action="student.updated",
@@ -1157,6 +1677,13 @@ def move_student_to_group(
             "old_project_id": old_project_id,
             "new_project_id": new_project_id,
             "new_status": student.status.value if student.status else None,
+            "old_github_repo_url": old_github_repo_url,
+            "new_github_repo_url": student.github_repo_url,
+            "repo_removed": student_repo_removed,
+            "repo_added": student_repo_added,
+            "old_github_branch": old_github_branch,
+            "new_github_branch": student.github_branch,
+            "branch_changed": old_github_branch != student.github_branch and not student_repo_removed and not student_repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -1239,6 +1766,10 @@ async def import_module_students(
             student = Student(name=name, student_number=number)
             db.add(student)
             db.flush()
+        if project.github_repo_url:
+            student.github_repo_url = project.github_repo_url
+        if project.github_branch:
+            student.github_branch = project.github_branch
         student.projects.append(project)
         to_add.append(student)
 

@@ -12,6 +12,8 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  authPin: '/auth/pin',
+  authUsers: '/auth/users',
   evidenceSupportedTypes: '/evidence/supported-types',
   evidence: (evidenceId) => `/evidence/${evidenceId}`,
   evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
@@ -19,7 +21,11 @@ export const API_PATHS = {
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
+  moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
+  moduleBookFile: (moduleId) => `/modules/${moduleId}/module-book/file`,
+  moduleBookContent: (moduleId) => `/modules/${moduleId}/module-book/content`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
   moduleGroup: (moduleId, groupId) => `/modules/${moduleId}/groups/${groupId}`,
   projectEvidence: (projectId) => `/projects/${projectId}/evidence`,
@@ -34,6 +40,8 @@ export const API_PATHS = {
   studentAssessmentQuestions: (studentId) =>
     `/students/${studentId}/assessment-questions`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleStudentTemplate: '/modules/template/students',
+  moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`
@@ -48,6 +56,8 @@ export const API_PATHS = {
     `/assessments/${assessmentId}/recordings`,
   assessmentRecording: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}`,
+  assessmentRecordingAudio: (assessmentId, recordingId) =>
+    `/assessments/${assessmentId}/recordings/${recordingId}/audio`,
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,

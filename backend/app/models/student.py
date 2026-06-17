@@ -18,6 +18,8 @@ class Student(Base):
 
     student_number = Column(String, primary_key=True)
     name = Column(String, nullable=False)
+    github_repo_url = Column(String, nullable=True)
+    github_branch = Column(String, nullable=True)
     status = Column(Enum(StudentStatus), default=StudentStatus.active)
     consent_given = Column(Boolean, default=False)
 

@@ -11,17 +11,31 @@ import {
   Sun,
   Moon,
   Loader2,
+  Download,
+  FileSpreadsheet,
+  KeyRound,
 } from 'lucide-react';
+
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { useAuth } from '@/context/AuthContext';
+
+import {
+  downloadStudentTemplate,
+  downloadRubricTemplate,
+} from '@/lib/api/modulesApi';
+
+import { setPin as apiSetPin, removePin as apiRemovePin } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const tabs = [
   { key: 'general', label: 'General', icon: User },
+  { key: 'security', label: 'Security', icon: KeyRound },
   { key: 'ai', label: 'AI Configuration', icon: Brain },
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
+  { key: 'data', label: 'Data Management', icon: FileSpreadsheet },
 ];
 
 const inputClass =
@@ -64,12 +78,124 @@ function SectionCard({ title, children }) {
   );
 }
 
+function LoginPinSection() {
+  const { user, login } = useAuth();
+  const [hasPin, setHasPin] = useState(Boolean(user?.has_pin));
+  const [password, setPassword] = useState('');
+  const [pin, setPinValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const applyUpdated = (updated) => {
+    setHasPin(Boolean(updated.has_pin));
+    login(updated);
+    setPassword('');
+    setPinValue('');
+  };
+
+  const handleSet = async () => {
+    setMessage(null);
+    setLoading(true);
+    try {
+      applyUpdated(await apiSetPin(password, pin));
+      setMessage({
+        type: 'success',
+        text: 'PIN set. It will be required after your password next time you log in.',
+      });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setMessage(null);
+    setLoading(true);
+    try {
+      applyUpdated(await apiRemovePin(password));
+      setMessage({ type: 'success', text: 'PIN removed.' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Login PIN">
+      <p className="text-xs text-muted-foreground">
+        {hasPin
+          ? 'A PIN is currently required after your password when you log in.'
+          : 'Add an optional PIN for an extra step after your password at login.'}
+      </p>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">
+          Current password
+        </label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className={inputClass}
+        />
+      </div>
+      {!hasPin && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">
+            New PIN (4–6 digits)
+          </label>
+          <input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPinValue(e.target.value)}
+            placeholder="••••"
+            className={inputClass}
+          />
+        </div>
+      )}
+      {message && (
+        <p
+          className={`text-xs rounded-md px-3 py-2 ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20' : 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'}`}
+        >
+          {message.text}
+        </p>
+      )}
+      <div className="flex gap-2">
+        {hasPin ? (
+          <button
+            onClick={handleRemove}
+            disabled={loading || !password}
+            className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-red-400 hover:border-red-500/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Removing…' : 'Remove PIN'}
+          </button>
+        ) : (
+          <button
+            onClick={handleSet}
+            disabled={loading || !password || !pin}
+            className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Saving…' : 'Set PIN'}
+          </button>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
   const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
     useNotifications();
   const [integrationTestState, setIntegrationTestState] = useState({});
+  const [templateDownloading, setTemplateDownloading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
+  const [rubricDownloading, setRubricDownloading] = useState(false);
+  const [rubricError, setRubricError] = useState('');
 
   const connectedServices = [
     {
@@ -124,6 +250,46 @@ export default function SettingsPage() {
           message: err?.message || 'Connection test failed',
         },
       }));
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    setTemplateDownloading(true);
+    setTemplateError('');
+    try {
+      const { blob, filename } = await downloadStudentTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setTemplateError(err.message || 'Failed to download template');
+    } finally {
+      setTemplateDownloading(false);
+    }
+  };
+
+  const handleDownloadRubricTemplate = async () => {
+    setRubricDownloading(true);
+    setRubricError('');
+    try {
+      const { blob, filename } = await downloadRubricTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setRubricError(err.message || 'Failed to download template');
+    } finally {
+      setRubricDownloading(false);
     }
   };
 
@@ -253,6 +419,12 @@ export default function SettingsPage() {
                   ))}
                 </div>
               </SectionCard>
+            </>
+          )}
+
+          {activeTab === 'security' && (
+            <>
+              <LoginPinSection />
             </>
           )}
 
@@ -527,6 +699,81 @@ export default function SettingsPage() {
                 <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
                   + Generate New API Key
                 </button>
+              </SectionCard>
+            </>
+          )}
+
+          {activeTab === 'data' && (
+            <>
+              <SectionCard title="Student Import Template">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Download a standardized template for bulk importing students
+                  and groups. The template includes columns for Name and Student
+                  Number with example data.
+                </p>
+                <button
+                  onClick={handleDownloadTemplate}
+                  disabled={templateDownloading}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {templateDownloading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Downloading…
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download Template (Excel)
+                    </>
+                  )}
+                </button>
+                {templateError && (
+                  <p className="mt-3 text-xs text-red-400">{templateError}</p>
+                )}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Instructions:</strong> Download the template, fill
+                    in student names and numbers, then upload the file in the
+                    Module Management page to add multiple students at once.
+                  </p>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Rubric Scoring Template">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Download a standardized rubric template for creating scoring
+                  criteria and proficiency levels. The template includes example
+                  criteria and can be customized for any assessment.
+                </p>
+                <button
+                  onClick={handleDownloadRubricTemplate}
+                  disabled={rubricDownloading}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {rubricDownloading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Downloading…
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download Rubric Template (Excel)
+                    </>
+                  )}
+                </button>
+                {rubricError && (
+                  <p className="mt-3 text-xs text-red-400">{rubricError}</p>
+                )}
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    <strong>Features:</strong> Includes predefined proficiency
+                    levels (Excellent, Good, Fair, Poor), point values for each
+                    level, and space for detailed descriptors of student
+                    performance.
+                  </p>
+                </div>
               </SectionCard>
             </>
           )}
