@@ -15,7 +15,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect as sa_inspect, text
 
 from app.core.security import hash_password
 from app.database import Base
@@ -68,7 +68,6 @@ TABLES_IN_INSERT_ORDER = [
 BOOLEAN_COLUMNS = {
     "teachers": {"is_admin", "is_seed"},
     "students": {"consent_given"},
-    "assessments": {"consent_recorded"},
 }
 
 
@@ -129,14 +128,18 @@ def insert_rows(engine, table: str, rows: list[dict]) -> None:
     if not rows:
         return
 
-    columns = list(rows[0].keys())
+    pg_columns = {col["name"] for col in sa_inspect(engine).get_columns(table)}
+    columns = [col for col in rows[0].keys() if col in pg_columns]
+    if not columns:
+        return
+
     column_sql = ", ".join(columns)
-    value_sql = ", ".join(f":{column}" for column in columns)
+    value_sql = ", ".join(f":{col}" for col in columns)
     statement = text(f"INSERT INTO {table} ({column_sql}) VALUES ({value_sql})")
 
     with engine.begin() as connection:
         for row in rows:
-            connection.execute(statement, row)
+            connection.execute(statement, {col: row[col] for col in columns})
 
 
 def reset_audit_sequence(engine) -> None:

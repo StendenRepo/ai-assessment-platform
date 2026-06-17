@@ -189,6 +189,65 @@ export const deleteModule = (moduleId) =>
   request(API_PATHS.module(moduleId), { method: 'DELETE' });
 
 /**
+ * Download a student dossier as a ZIP file.
+ * Returns a Blob that can be used to trigger a browser download.
+ * @param {string} studentId
+ * @param {string} studentName  - used to build the filename client-side
+ */
+export async function exportStudentDossier(
+  studentId,
+  studentName = '',
+  format = 'zip'
+) {
+  const url = `${API_URL}/api/v1${API_PATHS.studentDossierExport(studentId)}?format=${format}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+
+  const today = new Date().toISOString().slice(0, 10);
+  const safeName = studentName
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const ext = format === 'tar' ? 'tar.gz' : 'zip';
+  const filename = safeName
+    ? `dossier_${safeName}_${today}.${ext}`
+    : `dossier_${today}.${ext}`;
+
+  return { blob, filename };
+}
+
+/**
+ * Download the complete module archive ZIP (rubric, module book, evidence, assessments, grades).
+ * @param {string} moduleId
+ * @param {string} moduleName  - used to build the filename client-side
+ */
+export async function exportModuleArchive(
+  moduleId,
+  moduleName = '',
+  format = 'zip'
+) {
+  const url = `${API_URL}/api/v1${API_PATHS.moduleArchiveExport(moduleId)}?format=${format}`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const today = new Date().toISOString().slice(0, 10);
+  const safeName = moduleName
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const ext = format === 'tar' ? 'tar.gz' : 'zip';
+  const filename = safeName
+    ? `archive_${safeName}_${today}.${ext}`
+    : `archive_${today}.${ext}`;
+  return { blob, filename };
+}
+
+/**
  * Download the grades Excel file for a module.
  * Returns a Blob that can be used to trigger a browser download.
  * @param {string} moduleId
@@ -242,45 +301,6 @@ export async function exportGradesExcel(moduleId, moduleName = '') {
  * Download the student import template Excel file.
  * Returns a Blob that can be used to trigger a browser download.
  */
-
-export async function exportStudentDossier(
-  studentId,
-  studentName = '',
-  format = 'zip'
-) {
-  const url = `${API_URL}/api/v1${API_PATHS.studentDossierExport(studentId)}?format=${format}`;
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Dossier export failed (${res.status})`);
-  }
-  const blob = await res.blob();
-  const safeName = (studentName || studentId)
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/^_+|_+$/g, '');
-  const ext = format === 'tar' ? 'tar.gz' : 'zip';
-  return { blob, filename: `dossier_${safeName}.${ext}` };
-}
-
-export async function exportModuleArchive(
-  moduleId,
-  moduleName = '',
-  format = 'zip'
-) {
-  const url = `${API_URL}/api/v1${API_PATHS.moduleArchiveExport(moduleId)}?format=${format}`;
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Archive export failed (${res.status})`);
-  }
-  const blob = await res.blob();
-  const safeName = (moduleName || moduleId)
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/^_+|_+$/g, '');
-  const ext = format === 'tar' ? 'tar.gz' : 'zip';
-  return { blob, filename: `archive_${safeName}.${ext}` };
-}
-
 export async function downloadStudentTemplate() {
   const res = await fetch(
     `${API_URL}/api/v1${API_PATHS.moduleStudentTemplate}`,
