@@ -12,6 +12,7 @@ export const APP_PATHS = {
 export const API_PATHS = {
   authLogin: '/auth/login',
   authMe: '/auth/me',
+  authUsers: '/auth/users',
   evidenceSupportedTypes: '/evidence/supported-types',
   evidence: (evidenceId) => `/evidence/${evidenceId}`,
   evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
@@ -19,14 +20,23 @@ export const API_PATHS = {
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
+  moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
+  moduleBookFile: (moduleId) => `/modules/${moduleId}/module-book/file`,
+  moduleBookContent: (moduleId) => `/modules/${moduleId}/module-book/content`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
   moduleGroup: (moduleId, groupId) => `/modules/${moduleId}/groups/${groupId}`,
+  projectEvidence: (projectId) => `/projects/${projectId}/evidence`,
   moduleStudents: (moduleId) => `/modules/${moduleId}/students`,
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
   studentEvidence: (studentId) => `/students/${studentId}/evidence`,
   studentDossierExport: (studentId) => `/students/${studentId}/export/dossier`,
+  studentEvidenceMatches: (studentId) =>
+    `/students/${studentId}/evidence-matches`,
+  studentEvidenceMatchRun: (studentId, runId) =>
+    `/students/${studentId}/evidence-matches/runs/${runId}`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId

@@ -5,6 +5,7 @@ import io
 import logging
 import mimetypes
 import uuid as _uuid
+from datetime import datetime
 from pathlib import Path
 
 from docx import Document as DocxDocument
@@ -14,12 +15,40 @@ from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.enums import EmbeddingStatus, FileType, SourceType
+from app.models.enums import EmbeddingStatus, FileType, NotificationType, SourceType
 from app.models.evidence import Evidence
+from app.models.project import Project
 from app.models.student import Student
+from app.services import notification_service
 
 
 logger = logging.getLogger(__name__)
+
+
+def _purge_generation_runs_for_student(db: Session, student_id: str) -> None:
+    from app.models.assessment import Assessment
+    from app.models.evidence_match import EvidenceMatch
+    from app.models.generation_run import GenerationRun
+    from app.models.notification import Notification
+
+    run_ids = [
+        rid
+        for (rid,) in db.query(GenerationRun.id)
+        .join(Assessment, GenerationRun.assessment_id == Assessment.id)
+        .filter(Assessment.student_id == student_id)
+        .all()
+    ]
+    if not run_ids:
+        return
+    db.query(Notification).filter(
+        Notification.generation_run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(EvidenceMatch).filter(
+        EvidenceMatch.run_id.in_(run_ids)
+    ).delete(synchronize_session=False)
+    db.query(GenerationRun).filter(
+        GenerationRun.id.in_(run_ids)
+    ).delete(synchronize_session=False)
 
 
 def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
@@ -31,6 +60,26 @@ def _parse_uuid(value: str, label: str = "id") -> _uuid.UUID:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid {label}: '{value}' is not a valid UUID",
         )
+
+
+def _teacher_can_access_evidence(evidence: Evidence, teacher) -> bool:
+    """Return True if *teacher* may read this evidence file.
+
+    Admins can access everything. Otherwise the evidence must resolve to a
+    module owned by the teacher — either directly through its project, or
+    through any project the linked student belongs to. Mirrors the
+    teacher → module → group → student/project ownership chain used elsewhere.
+    """
+    if getattr(teacher, "is_admin", False):
+        return True
+    if evidence.project and evidence.project.module:
+        if evidence.project.module.teacher_id == teacher.id:
+            return True
+    if evidence.student:
+        for project in evidence.student.projects:
+            if project.module and project.module.teacher_id == teacher.id:
+                return True
+    return False
 
 
 def _evidence_upload_dir() -> Path:
@@ -75,6 +124,15 @@ def _student_storage_key(student_id: str) -> str:
         hashlib.sha256,
     ).hexdigest()
     return f"s_{digest[:24]}"
+
+
+def _project_storage_key(project_id: str) -> str:
+    digest = hmac.new(
+        settings.EVIDENCE_PATH_SALT.encode("utf-8"),
+        str(project_id).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"p_{digest[:24]}"
 
 # ---------------------------------------------------------------------------
 # Supported file types — extend this dict when new user stories are added.
@@ -213,7 +271,125 @@ def _extract_image_text_with_vision(raw: bytes, filename: str) -> str:
 
 
 
-def run_vision_background(evidence_id: str) -> None:
+def _create_ai_processing_complete_notification(
+    db: Session,
+    *,
+    evidence: Evidence,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
+    teacher_uuid = None
+    if teacher_id:
+        try:
+            teacher_uuid = _uuid.UUID(str(teacher_id))
+        except (ValueError, TypeError, AttributeError):
+            teacher_uuid = None
+
+    if teacher_uuid is None and evidence.project and evidence.project.module:
+        teacher_uuid = evidence.project.module.teacher_id
+
+    if teacher_uuid is None and evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module:
+            teacher_uuid = first_project.module.teacher_id
+
+    if teacher_uuid is None:
+        return
+
+    if subject_label:
+        subject = subject_label
+    elif evidence.student and evidence.student.name:
+        subject = f"student {evidence.student.name}"
+    elif evidence.project and evidence.project.name:
+        subject = f"project {evidence.project.name}"
+    else:
+        subject = "your upload"
+
+    target_path = None
+    if evidence.project and evidence.project.module_id:
+        target_path = (
+            f"/modules/{evidence.project.module_id}/groups/{evidence.project.id}"
+        )
+    elif evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module_id:
+            target_path = (
+                f"/modules/{first_project.module_id}/groups/{first_project.id}"
+                f"/students/{evidence.student.student_number}"
+            )
+
+    notification_service.create_notification(
+        db,
+        teacher_id=teacher_uuid,
+        type=NotificationType.ai_processing_complete,
+        message=f"AI finished processing '{evidence.file_name}' for {subject}.",
+        target_path=target_path,
+        commit=False,
+    )
+
+
+def _create_ai_processing_failed_notification(
+    db: Session,
+    *,
+    evidence: Evidence,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
+    teacher_uuid = None
+    if teacher_id:
+        try:
+            teacher_uuid = _uuid.UUID(str(teacher_id))
+        except (ValueError, TypeError, AttributeError):
+            teacher_uuid = None
+
+    if teacher_uuid is None and evidence.project and evidence.project.module:
+        teacher_uuid = evidence.project.module.teacher_id
+
+    if teacher_uuid is None and evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module:
+            teacher_uuid = first_project.module.teacher_id
+
+    if teacher_uuid is None:
+        return
+
+    if subject_label:
+        subject = subject_label
+    elif evidence.student and evidence.student.name:
+        subject = f"student {evidence.student.name}"
+    elif evidence.project and evidence.project.name:
+        subject = f"project {evidence.project.name}"
+    else:
+        subject = "your upload"
+
+    target_path = None
+    if evidence.project and evidence.project.module_id:
+        target_path = (
+            f"/modules/{evidence.project.module_id}/groups/{evidence.project.id}"
+        )
+    elif evidence.student and evidence.student.projects:
+        first_project = evidence.student.projects[0]
+        if first_project and first_project.module_id:
+            target_path = (
+                f"/modules/{first_project.module_id}/groups/{first_project.id}"
+                f"/students/{evidence.student.student_number}"
+            )
+
+    notification_service.create_notification(
+        db,
+        teacher_id=teacher_uuid,
+        type=NotificationType.ai_processing_failed,
+        message=f"AI failed to process '{evidence.file_name}' for {subject}.",
+        target_path=target_path,
+        commit=False,
+    )
+
+
+def run_vision_background(
+    evidence_id: str,
+    teacher_id: str | None = None,
+    subject_label: str | None = None,
+) -> None:
     """FastAPI background task: run vision AI on an image evidence record.
 
     Creates its own DB session so it executes outside the original request
@@ -228,10 +404,18 @@ def run_vision_background(evidence_id: str) -> None:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
             return
+        if evidence.embedding_status == EmbeddingStatus.completed:
+            return
 
         full_path = _full_path_for(evidence.file_path)
         if not full_path.exists():
             evidence.embedding_status = EmbeddingStatus.failed
+            _create_ai_processing_failed_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
             db.add(evidence)
             db.commit()
             return
@@ -252,8 +436,20 @@ def run_vision_background(evidence_id: str) -> None:
                 "Vision returned no content for '%s'; keeping placeholder and marking failed",
                 evidence.file_name,
             )
+            _create_ai_processing_failed_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
         else:
             evidence.embedding_status = EmbeddingStatus.completed
+            _create_ai_processing_complete_notification(
+                db,
+                evidence=evidence,
+                teacher_id=teacher_id,
+                subject_label=subject_label,
+            )
         db.add(evidence)
         db.commit()
     except Exception:
@@ -262,6 +458,12 @@ def run_vision_background(evidence_id: str) -> None:
             ev = db.query(Evidence).filter(Evidence.id == evidence_id).first()
             if ev:
                 ev.embedding_status = EmbeddingStatus.failed
+                _create_ai_processing_failed_notification(
+                    db,
+                    evidence=ev,
+                    teacher_id=teacher_id,
+                    subject_label=subject_label,
+                )
                 db.add(ev)
                 db.commit()
         except Exception:
@@ -271,6 +473,23 @@ def run_vision_background(evidence_id: str) -> None:
 
 
 class EvidenceService:
+    @staticmethod
+    def _delete_evidence_artifacts(evidence: Evidence) -> None:
+        full_path = _full_path_for(evidence.file_path)
+        text_path = _text_path_for(full_path)
+        try:
+            if full_path.exists():
+                full_path.unlink()
+            if text_path.exists():
+                text_path.unlink()
+        except OSError:
+            pass
+
+    @staticmethod
+    def _delete_evidence_rows(evidence_items: list[Evidence], db: Session) -> None:
+        for evidence in evidence_items:
+            db.delete(evidence)
+
     @staticmethod
     def _mark_completed_if_ready(evidence: Evidence, db: Session) -> bool:
         if evidence.embedding_status != EmbeddingStatus.pending:
@@ -300,24 +519,59 @@ class EvidenceService:
         file: UploadFile,
         db: Session,
     ) -> Evidence:
-        student = db.get(Student, student_id)
-        if not student:
+        return EvidenceService._upload_file(
+            student_id=student_id,
+            project_id=None,
+            file=file,
+            db=db,
+        )
+
+    @staticmethod
+    def upload_file_for_project(
+        project_id: str,
+        file: UploadFile,
+        db: Session,
+    ) -> Evidence:
+        return EvidenceService._upload_file(
+            student_id=None,
+            project_id=project_id,
+            file=file,
+            db=db,
+        )
+
+    @staticmethod
+    def _upload_file(
+        *,
+        student_id: str | None,
+        project_id: str | None,
+        file: UploadFile,
+        db: Session,
+    ) -> Evidence:
+        if bool(student_id) == bool(project_id):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Student not found",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Provide exactly one evidence scope",
             )
 
-        # Resolve & validate file type
+        if student_id:
+            student = db.get(Student, student_id)
+            if not student:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Student not found",
+                )
+        else:
+            project = db.get(Project, project_id)
+            if not project:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Project not found",
+                )
+
         filename = file.filename or ""
         file_type = _resolve_file_type(filename)
-
-        # Read raw bytes
         raw = file.file.read()
 
-        # For images: validate bytes immediately (catches corrupt uploads early)
-        # but defer the slow vision AI call to a background task so the HTTP
-        # response is returned right away with status=processing.
-        # For all other file types extract text synchronously as before.
         if file_type == FileType.image:
             _validate_image(raw, filename)
             initial_status = EmbeddingStatus.processing
@@ -326,8 +580,12 @@ class EvidenceService:
             sidecar_content = _extract_text(raw, file_type, filename)
             initial_status = EmbeddingStatus.completed
 
-        # Persist to disk
-        upload_dir = _evidence_upload_dir() / _student_storage_key(student_id)
+        storage_key = (
+            _student_storage_key(student_id)
+            if student_id
+            else _project_storage_key(project_id)
+        )
+        upload_dir = _evidence_upload_dir() / storage_key
         upload_dir.mkdir(parents=True, exist_ok=True)
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
@@ -338,12 +596,10 @@ class EvidenceService:
             text_path.parent.mkdir(parents=True, exist_ok=True)
             text_path.write_text(sidecar_content, encoding="utf-8")
 
-        # Store path relative to the evidence upload root so the record stays
-        # portable when the base upload directory changes.
         relative_path = str(file_path.relative_to(_evidence_upload_dir()))
-
         evidence = Evidence(
             student_id=student_id,
+            project_id=project_id,
             file_name=filename,
             file_type=file_type,
             file_path=relative_path,
@@ -366,9 +622,35 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Student not found",
             )
+        project_ids = [project.id for project in student.projects]
+        evidence_list = db.query(Evidence).filter(Evidence.student_id == student_id).all()
+        if project_ids:
+            evidence_list.extend(
+                db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).all()
+            )
+        evidence_list = sorted(
+            {e.id: e for e in evidence_list}.values(),
+            key=lambda evidence: evidence.uploaded_at or datetime.min,
+            reverse=True,
+        )
+        changed = False
+        for evidence in evidence_list:
+            changed = EvidenceService._mark_completed_if_ready(evidence, db) or changed
+        if changed:
+            db.commit()
+        return evidence_list
+
+    @staticmethod
+    def list_for_project(project_id: str, db: Session) -> list[Evidence]:
+        project = db.get(Project, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found",
+            )
         evidence_list = (
             db.query(Evidence)
-            .filter(Evidence.student_id == student_id)
+            .filter(Evidence.project_id == project_id)
             .order_by(Evidence.uploaded_at.desc())
             .all()
         )
@@ -378,6 +660,22 @@ class EvidenceService:
         if changed:
             db.commit()
         return evidence_list
+
+    @staticmethod
+    def delete_for_student(student_id: str, db: Session) -> None:
+        evidence_items = db.query(Evidence).filter(Evidence.student_id == student_id).all()
+        EvidenceService._delete_evidence_rows(evidence_items, db)
+        db.commit()
+        for evidence in evidence_items:
+            EvidenceService._delete_evidence_artifacts(evidence)
+
+    @staticmethod
+    def delete_for_project(project_id: str, db: Session) -> None:
+        evidence_items = db.query(Evidence).filter(Evidence.project_id == project_id).all()
+        EvidenceService._delete_evidence_rows(evidence_items, db)
+        db.commit()
+        for evidence in evidence_items:
+            EvidenceService._delete_evidence_artifacts(evidence)
 
     # ------------------------------------------------------------------
     # Delete an evidence record (DB + file on disk)
@@ -390,19 +688,8 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
-        # Reconstruct full path from the stored relative path
-        full_path = _full_path_for(evidence.file_path)
-        text_path = _text_path_for(full_path)
-
-        # Remove evidence artifacts from disk (ignore if already gone)
-        try:
-            if full_path.exists():
-                full_path.unlink()
-            if text_path.exists():
-                text_path.unlink()
-        except OSError:
-            pass  # Log in production; don't block the DB delete
-
+        EvidenceService._delete_evidence_artifacts(evidence)
+        _purge_generation_runs_for_student(db, evidence.student_id)
         db.delete(evidence)
         db.commit()
 
@@ -410,9 +697,14 @@ class EvidenceService:
     # Read the raw text content of a single evidence record
     # ------------------------------------------------------------------
     @staticmethod
-    def read_content(evidence_id: str, db: Session) -> tuple[Evidence, str]:
+    def read_content(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
@@ -450,9 +742,14 @@ class EvidenceService:
         return evidence, content
 
     @staticmethod
-    def get_raw_file(evidence_id: str, db: Session) -> tuple[Evidence, Path, str]:
+    def get_raw_file(evidence_id: str, db: Session, teacher=None) -> tuple[Evidence, Path, str]:
         evidence = db.query(Evidence).filter(Evidence.id == evidence_id).first()
         if not evidence:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evidence not found",
+            )
+        if teacher is not None and not _teacher_can_access_evidence(evidence, teacher):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",

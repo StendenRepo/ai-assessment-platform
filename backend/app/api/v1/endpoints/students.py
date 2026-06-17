@@ -5,10 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
-
+from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_teacher, get_db
 from app.models.assessment import Assessment
 from app.models.enums import EmbeddingStatus
@@ -16,6 +15,7 @@ from app.models.evidence import Evidence
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.schemas.evidence import EvidenceOut
+from app.services import audit_service
 from app.services.evidence_service import EvidenceService, run_vision_background, _evidence_upload_dir
 
 router = APIRouter()
@@ -52,14 +52,39 @@ def get_student(
 )
 def upload_evidence(
     student_id: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    student = db.get(Student, student_id)
+    subject_label = f"student {student.name}" if student and student.name else "this student"
     evidence = EvidenceService.upload_file(student_id, file, db)
+    audit_service.log_action(
+        db,
+        action="evidence.uploaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "evidence_id": str(evidence.id),
+            "student_id": student_id,
+            "file_name": evidence.file_name,
+            "file_type": evidence.file_type.value if evidence.file_type else None,
+            "source_type": evidence.source_type.value if evidence.source_type else None,
+            "embedding_status": (
+                evidence.embedding_status.value if evidence.embedding_status else None
+            ),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
     if evidence.embedding_status == EmbeddingStatus.processing:
-        background_tasks.add_task(run_vision_background, str(evidence.id))
+        background_tasks.add_task(
+            run_vision_background,
+            str(evidence.id),
+            str(current_teacher.id),
+            subject_label,
+        )
     return evidence
 
 

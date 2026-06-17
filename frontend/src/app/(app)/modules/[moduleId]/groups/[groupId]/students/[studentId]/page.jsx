@@ -13,6 +13,7 @@ import {
   Upload,
   CheckCircle2,
   XCircle,
+  Mail,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -21,11 +22,12 @@ import {
 } from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
-import EvidenceListItem from '@/components/evidence/EvidenceListItem';
+import EvidenceListSections from '@/components/evidence/EvidenceListSections';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
+import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
-import { useEvidencePreview } from '@/components/evidence/useEvidencePreview';
+import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
@@ -37,7 +39,8 @@ import {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-import { listProjectStudents } from '@/lib/api/modulesApi';
+import { listProjectStudents, getProject } from '@/lib/api/modulesApi';
+import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -479,45 +482,47 @@ function EvidenceUpload({ studentId }) {
         </div>
       )}
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="p-5 space-y-2">
-          {/* localItems are in-flight (context survives navigation); allEvidence is fetched */}
-          {(() => {
-            const displayedEvidence = [...localItems, ...allEvidence];
-            return (
-              <>
-                <p className="text-xs font-semibold text-foreground uppercase tracking-wide">
-                  Evidence ({displayedEvidence.length})
-                </p>
-                {evidenceLoading ? (
-                  <div className="flex justify-center py-4">
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  </div>
-                ) : displayedEvidence.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">
-                    No evidence uploaded yet.
-                  </p>
-                ) : (
-                  displayedEvidence.map((ev) => (
-                    <EvidenceListItem
-                      key={ev.id}
-                      evidence={ev}
-                      canPreview={
-                        !ev.__localProcessing &&
-                        ev.embedding_status !== 'processing' &&
-                        canPreview(ev)
-                      }
-                      onPreview={handlePreview}
-                      onDownload={handleDownload}
-                      onDelete={handleDelete}
-                    />
-                  ))
-                )}
-              </>
-            );
-          })()}
-        </div>
-      </div>
+      {(() => {
+        const displayedEvidence = [...localItems, ...allEvidence];
+        const studentEvidence = displayedEvidence.filter(
+          (ev) => !ev.project_id
+        );
+        const groupEvidence = displayedEvidence.filter((ev) =>
+          Boolean(ev.project_id)
+        );
+
+        return (
+          <EvidenceListSections
+            evidenceLoading={evidenceLoading}
+            allCount={displayedEvidence.length}
+            sections={[
+              {
+                key: 'student-evidence',
+                title: 'Student evidence',
+                items: studentEvidence,
+                emptyText: 'No student-specific evidence yet.',
+                dividerTop: false,
+              },
+              {
+                key: 'group-evidence',
+                title: 'Group shared evidence',
+                items: groupEvidence,
+                emptyText: 'No group shared evidence attached.',
+                dividerTop: true,
+              },
+            ]}
+            getItemCanPreview={(evidence) =>
+              !evidence.__localProcessing &&
+              evidence.embedding_status !== 'processing' &&
+              canPreview(evidence)
+            }
+            onPreview={handlePreview}
+            onDownload={handleDownload}
+            onDelete={handleDelete}
+            emptyText="No evidence uploaded yet."
+          />
+        );
+      })()}
 
       <EvidencePreviewDialog
         evidence={previewEvidence}
@@ -572,6 +577,15 @@ export default function StudentAssessmentPage() {
   const [scores, setScores] = useState({});
   const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
+  const [moduleName, setModuleName] = useState('');
+  const [emailDraftOpen, setEmailDraftOpen] = useState(false);
+
+  useEffect(() => {
+    getProject(moduleId)
+      .then((m) => setModuleName(m?.name || ''))
+      .catch(() => {});
+  }, [moduleId]);
+
   useEffect(() => {
     listProjectStudents(moduleId)
       .then((students) => {
@@ -614,6 +628,14 @@ export default function StudentAssessmentPage() {
 
   return (
     <div className="space-y-6">
+      {emailDraftOpen && (
+        <EmailDraftModal
+          student={student}
+          moduleName={moduleName}
+          onClose={() => setEmailDraftOpen(false)}
+        />
+      )}
+
       <div className="rounded-lg bg-card border border-border p-6">
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary shrink-0">
@@ -630,12 +652,22 @@ export default function StudentAssessmentPage() {
               {student.student_number}
             </p>
           </div>
-          <div className="text-center border-l border-border pl-6 shrink-0">
-            <div className="text-xs text-muted-foreground mb-1">
-              Current Score
-            </div>
-            <div className="text-3xl font-bold text-foreground font-mono">
-              {overallScore}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setEmailDraftOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+            >
+              <Mail size={14} />
+              Email Draft
+            </button>
+            <div className="text-center border-l border-border pl-6 shrink-0">
+              <div className="text-xs text-muted-foreground mb-1">
+                Current Score
+              </div>
+              <div className="text-3xl font-bold text-foreground font-mono">
+                {overallScore}
+              </div>
             </div>
           </div>
         </div>
@@ -659,6 +691,11 @@ export default function StudentAssessmentPage() {
             <div className="p-6">
               {currentTab === 0 && (
                 <div className="space-y-6">
+                  <EvidenceMatchingPanel
+                    studentId={studentId}
+                    moduleId={moduleId}
+                  />
+
                   <div className="space-y-3">
                     <div className="mb-4">
                       <h3 className="text-sm font-semibold text-foreground">

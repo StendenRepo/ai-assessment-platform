@@ -15,8 +15,10 @@ def create_notification(
     teacher_id: UUID,
     type: NotificationType,
     message: str,
+    target_path: Optional[str] = None,
     assessment_id: Optional[UUID] = None,
     recording_id: Optional[UUID] = None,
+    generation_run_id: Optional[UUID] = None,
     due_date: Optional[datetime] = None,
     commit: bool = True,
 ) -> Notification:
@@ -24,8 +26,10 @@ def create_notification(
         teacher_id=teacher_id,
         assessment_id=assessment_id,
         recording_id=recording_id,
+        generation_run_id=generation_run_id,
         type=type,
         message=message,
+        target_path=target_path,
         due_date=due_date,
     )
     db.add(notification)
@@ -60,6 +64,19 @@ def reminder_exists(db: Session, *, recording_id: UUID) -> bool:
         db.query(Notification)
         .filter(
             Notification.recording_id == recording_id,
+            Notification.type == NotificationType.deletion_reminder,
+        )
+        .first()
+        is not None
+    )
+
+
+def generation_reminder_exists(db: Session, *, generation_run_id: UUID) -> bool:
+    """Whether a retention reminder was already created for this AI run."""
+    return (
+        db.query(Notification)
+        .filter(
+            Notification.generation_run_id == generation_run_id,
             Notification.type == NotificationType.deletion_reminder,
         )
         .first()

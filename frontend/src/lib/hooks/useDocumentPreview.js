@@ -2,20 +2,36 @@
 
 import { useEffect, useState } from 'react';
 
-import { getEvidenceContent, getEvidenceFileBlob } from '@/lib/api/evidence';
-
-export function getEvidencePreviewKind(evidence) {
-  if (!evidence) return null;
-  if (evidence.file_type === 'image') return 'image';
-  if (evidence.file_type === 'pdf') return 'pdf';
-  if (evidence.file_type === 'markdown' || evidence.file_type === 'docx') {
-    return 'text';
-  }
+/**
+ * Map a stored file type to how it should be rendered inline.
+ *
+ * Accepts both the evidence `FileType` enum values ('image', 'pdf',
+ * 'markdown', 'docx') and the raw extensions stored on module documents
+ * ('pdf', 'docx', 'xlsx', ...). Anything we can't render inline (e.g. xlsx
+ * rubrics) returns null so callers fall back to download-only.
+ */
+export function getPreviewKind(fileType) {
+  const type = (fileType || '').toLowerCase();
+  if (['image', 'png', 'jpg', 'jpeg'].includes(type)) return 'image';
+  if (type === 'pdf') return 'pdf';
+  if (['markdown', 'md', 'docx'].includes(type)) return 'text';
   return null;
 }
 
-export function useEvidencePreview() {
-  const [previewEvidence, setPreviewEvidence] = useState(null);
+/**
+ * Source-agnostic document preview state machine, shared by the evidence and
+ * module-document viewers. Callers drive it with a descriptor:
+ *
+ *   {
+ *     file_name,        // shown in the dialog header
+ *     file_type,        // drives getPreviewKind
+ *     fetchBlob,        // () => Promise<Blob>  (image/pdf)
+ *     fetchContent,     // () => Promise<string> (text, and image alt-text)
+ *     supportsAltText,  // images: allow toggling to extracted text
+ *   }
+ */
+export function useDocumentPreview() {
+  const [previewDoc, setPreviewDoc] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewContent, setPreviewContent] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -42,24 +58,24 @@ export function useEvidencePreview() {
     setShowImageExtractedText(false);
   };
 
-  const openPreview = async (evidence) => {
-    const kind = getEvidencePreviewKind(evidence);
+  const openPreview = async (doc) => {
+    const kind = getPreviewKind(doc?.file_type);
     if (!kind) return;
 
-    setPreviewEvidence(evidence);
+    setPreviewDoc(doc);
     setPreviewLoading(true);
     try {
       resetPreviewState();
 
       if (kind === 'image' || kind === 'pdf') {
-        const blob = await getEvidenceFileBlob(evidence.id);
+        const blob = await doc.fetchBlob();
         setPreviewUrl(URL.createObjectURL(blob));
       } else {
-        const content = await getEvidenceContent(evidence.id);
+        const content = await doc.fetchContent();
         setPreviewContent(content);
       }
     } catch (error) {
-      setPreviewEvidence(null);
+      setPreviewDoc(null);
       throw error;
     } finally {
       setPreviewLoading(false);
@@ -68,12 +84,12 @@ export function useEvidencePreview() {
 
   const closePreview = () => {
     resetPreviewState();
-    setPreviewEvidence(null);
+    setPreviewDoc(null);
     setPreviewLoading(false);
   };
 
   const toggleImageExtractedText = async () => {
-    if (!previewEvidence || previewEvidence.file_type !== 'image') return;
+    if (!previewDoc?.supportsAltText) return;
 
     if (showImageExtractedText) {
       setShowImageExtractedText(false);
@@ -87,7 +103,7 @@ export function useEvidencePreview() {
 
     setPreviewLoading(true);
     try {
-      const content = await getEvidenceContent(previewEvidence.id);
+      const content = await previewDoc.fetchContent();
       setPreviewContent(content);
       setShowImageExtractedText(true);
     } finally {
@@ -95,18 +111,18 @@ export function useEvidencePreview() {
     }
   };
 
-  const basePreviewKind = getEvidencePreviewKind(previewEvidence);
+  const basePreviewKind = getPreviewKind(previewDoc?.file_type);
   const activePreviewKind =
     basePreviewKind === 'image' && showImageExtractedText
       ? 'text'
       : basePreviewKind;
 
-  const downloadEvidence = async (evidence) => {
-    const blob = await getEvidenceFileBlob(evidence.id);
+  const download = async (doc) => {
+    const blob = await doc.fetchBlob();
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = evidence.file_name;
+    link.download = doc.file_name;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -114,17 +130,17 @@ export function useEvidencePreview() {
   };
 
   return {
-    previewEvidence,
+    previewDoc,
     previewUrl,
     previewContent,
     previewLoading,
     activePreviewKind,
     basePreviewKind,
     showImageExtractedText,
-    canPreview: (evidence) => getEvidencePreviewKind(evidence) !== null,
+    canPreview: (fileType) => getPreviewKind(fileType) !== null,
     openPreview,
     closePreview,
     toggleImageExtractedText,
-    downloadEvidence,
+    download,
   };
 }
