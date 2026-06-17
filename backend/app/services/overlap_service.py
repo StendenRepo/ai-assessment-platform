@@ -1,27 +1,18 @@
 import itertools
-import json
 import re
 import uuid as uuid_mod
 from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.orm import Session
 
 from app.services import ollama_client
-from app.services.overlap_highlight import (
-    apply_paired_student_highlights,
-    highlight_phrases_paired,
-)
 from app.services.overlap_integrity_detector import (
     IntegrityFlag,
     IntegrityResult,
-    apply_flags_to_document,
     attach_integrity_metrics,
     build_ai_only_hit,
     combine_ai_results,
-    dedupe_student_flag_dicts,
     detect_ai_segments,
     enrich_hit_with_ai,
     merge_integrity_results,
@@ -32,13 +23,22 @@ from app.models.overlap_signal import OverlapSignal
 from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
-from app.services.text_extraction import read_stored_evidence_text
+from app.services.overlap_document_builder import (
+    build_highlighted_documents,
+    read_evidence_text,
+    shared_phrases_between_documents,
+)
+from app.services.overlap_repository import (
+    clear_module_signals,
+    filter_signals,
+    get_module_signals as repository_get_module_signals,
+    get_signal as repository_get_signal,
+)
+from app.services.overlap_signal_codec import encode_text_snippet, parse_signal_detail
 from app.services.overlap_text_detector import (
     EvidenceChunk,
-    POSSIBLE_MIN,
     detect_cross_group,
     detect_within_group,
-    highlight_shared,
 )
 from app.services.text_chunker import chunk_text
 
@@ -47,7 +47,6 @@ _MAX_SIGNALS_PER_RUN = 100
 _MAX_AI_VERIFY_PER_RUN = 20
 _MAX_AI_DOC_SCANS_PER_RUN = 20
 _MAX_PAIR_VERIFY_CHUNK_PAIRS = 3
-_SNIPPET_JSON_PREFIX = "{"
 
 
 def _normalize_filename(value: str) -> str:
@@ -73,179 +72,20 @@ def _ordered_pair(a, b):
 
 
 def _render_signal_line(signal: OverlapSignal) -> str:
+    detail = parse_signal_detail(signal.snippet)
+    reason = detail.get("ai_explanation") or detail.get("metrics_summary")
+    if not reason and detail.get("passage_a"):
+        reason = "Shared text overlap detected"
     return (
         f"- confidence={signal.confidence:.2f}; type={signal.overlap_type.value}; "
-        f"reason={signal.snippet or 'Possible overlap detected'}"
+        f"reason={reason or 'Possible overlap detected'}"
     )
-
-
-def parse_signal_detail(snippet: Optional[str]) -> dict:
-    if not snippet or not snippet.strip().startswith(_SNIPPET_JSON_PREFIX):
-        return {}
-    try:
-        return json.loads(snippet)
-    except json.JSONDecodeError:
-        return {}
-
-
-def encode_text_snippet(hit: dict) -> str:
-    return json.dumps(
-        {
-            "scope": hit.get("scope"),
-            "status": hit.get("status"),
-            "passage_a": hit.get("passage_a"),
-            "passage_b": hit.get("passage_b"),
-            "file_a": hit.get("file_a"),
-            "file_b": hit.get("file_b"),
-            "group_a_id": hit.get("group_a_id"),
-            "group_b_id": hit.get("group_b_id"),
-            "group_a_name": hit.get("group_a_name"),
-            "group_b_name": hit.get("group_b_name"),
-            "ai_verified": hit.get("ai_verified"),
-            "ai_explanation": hit.get("ai_explanation"),
-            "ai_shared_excerpt": hit.get("ai_shared_excerpt"),
-            "detection_method": hit.get("detection_method"),
-            "integrity_type": hit.get("integrity_type"),
-            "flags": dedupe_student_flag_dicts(hit.get("flags") or []),
-            "ai_content_percent": hit.get("ai_content_percent"),
-            "peak_ai_section_percent": hit.get("peak_ai_section_percent"),
-            "student_match_count": hit.get("student_match_count"),
-            "overlap_confidence_percent": hit.get("overlap_confidence_percent"),
-            "detection_confidence_percent": hit.get("detection_confidence_percent"),
-            "metrics_summary": hit.get("metrics_summary"),
-        }
-    )
-
-
-_HIGHLIGHT_MARKER_RE = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
-
-
-def extract_highlight_phrase(passage: Optional[str]) -> Optional[str]:
-    if not passage:
-        return None
-    match = _HIGHLIGHT_MARKER_RE.search(passage)
-    if match:
-        return match.group(1).strip()
-    # Fallback for passages without explicit [[...]] markers.
-    return passage.strip()
-
-
-def _dedupe_phrases(phrases: Iterable[str]) -> list[str]:
-    ordered = sorted({p.strip() for p in phrases if p and p.strip()}, key=len, reverse=True)
-    kept: list[str] = []
-    for phrase in ordered:
-        lower = phrase.lower()
-        if any(lower in existing.lower() or existing.lower() in lower for existing in kept):
-            continue
-        kept.append(phrase)
-    return kept
-
-
-def shared_phrases_between_documents(
-    full_a: str,
-    full_b: str,
-    *,
-    min_similarity: float = POSSIBLE_MIN,
-) -> list[str]:
-    """Collect shared phrases from chunk and paragraph pairs between two documents."""
-    phrases: list[str] = []
-
-    def _collect_from_pairs(left_chunks: list[str], right_chunks: list[str]) -> None:
-        if not left_chunks or not right_chunks:
-            return
-        combined = left_chunks + right_chunks
-        matrix = TfidfVectorizer(stop_words="english").fit_transform(combined)
-        sim = cosine_similarity(matrix)
-        offset = len(left_chunks)
-        for i, chunk_a in enumerate(left_chunks):
-            for j, chunk_b in enumerate(right_chunks):
-                if float(sim[i, offset + j]) < min_similarity:
-                    continue
-                marked_a, marked_b = highlight_shared(chunk_a, chunk_b)
-                for marked in (marked_a, marked_b):
-                    for match in _HIGHLIGHT_MARKER_RE.finditer(marked):
-                        phrase = match.group(1).strip()
-                        if len(phrase.split()) >= 8:
-                            phrases.append(phrase)
-
-    _collect_from_pairs(chunk_text(full_a), chunk_text(full_b))
-
-    paragraphs_a = [p.strip() for p in re.split(r"\n\s*\n", full_a) if p.strip()]
-    paragraphs_b = [p.strip() for p in re.split(r"\n\s*\n", full_b) if p.strip()]
-    _collect_from_pairs(paragraphs_a, paragraphs_b)
-
-    return _dedupe_phrases(phrases)
-
-
-def build_highlighted_documents(
-    db: Session,
-    signal: OverlapSignal,
-    *,
-    detail: Optional[dict] = None,
-) -> Tuple[Optional[str], Optional[str], list[dict]]:
-    detail = detail if detail is not None else parse_signal_detail(signal.snippet)
-    integrity_type = detail.get("integrity_type") or "student_plagiarism"
-    flags = dedupe_student_flag_dicts(detail.get("flags") or [])
-    effective_flags = flags
-
-    evidence_a = db.query(Evidence).filter(Evidence.id == signal.evidence_a_id).first()
-    if not evidence_a:
-        return None, None
-
-    full_a = OverlapService._read_evidence_text(evidence_a)
-    if not full_a:
-        return None, None
-
-    ai_flags = [f for f in flags if f.get("type") == "ai"]
-    student_flags = [f for f in flags if f.get("type") == "student"]
-
-    if integrity_type == "ai":
-        document_a = apply_flags_to_document(full_a, flags, side="a")
-        return document_a, None, effective_flags
-
-    evidence_b = db.query(Evidence).filter(Evidence.id == signal.evidence_b_id).first()
-    if not evidence_b:
-        document_a = apply_flags_to_document(full_a, flags, side="a")
-        return document_a, None, effective_flags
-
-    full_b = OverlapService._read_evidence_text(evidence_b)
-    if not full_b:
-        return apply_flags_to_document(full_a, flags, side="a"), None, effective_flags
-
-    if student_flags:
-        document_a, document_b, effective_flags = apply_paired_student_highlights(
-            full_a,
-            full_b,
-            flags,
-        )
-    else:
-        document_a, document_b = full_a, full_b
-
-    if ai_flags:
-        document_a = apply_flags_to_document(document_a, ai_flags, side="a")
-        document_b = apply_flags_to_document(document_b, ai_flags, side="b")
-
-    if student_flags:
-        return document_a, document_b, effective_flags
-
-    phrases = shared_phrases_between_documents(full_a, full_b)
-    if not phrases:
-        fallback = extract_highlight_phrase(detail.get("passage_a")) or extract_highlight_phrase(
-            detail.get("passage_b")
-        )
-        if fallback:
-            phrases = [fallback]
-    ai_excerpt = (detail.get("ai_shared_excerpt") or "").strip()
-    if ai_excerpt:
-        phrases = _dedupe_phrases([*phrases, ai_excerpt])
-
-    return (*highlight_phrases_paired(full_a, full_b, phrases), effective_flags)
 
 
 class OverlapService:
     @staticmethod
     def _read_evidence_text(evidence: Evidence) -> str:
-        return read_stored_evidence_text(evidence, EVIDENCE_UPLOAD_DIR)
+        return read_evidence_text(evidence)
 
     @staticmethod
     def _build_chunks_for_module(db: Session, module_id: str) -> tuple[list[EvidenceChunk], dict]:
@@ -640,38 +480,13 @@ class OverlapService:
         scope: Optional[str] = None,
         group_id: Optional[str] = None,
     ) -> List[OverlapSignal]:
-        signals = (
-            db.query(OverlapSignal)
-            .join(Student, OverlapSignal.student_a_id == Student.student_number)
-            .join(student_projects, Student.student_number == student_projects.c.student_id)
-            .join(Project, student_projects.c.project_id == Project.id)
-            .filter(Project.module_id == module_id)
-            .order_by(OverlapSignal.confidence.desc(), OverlapSignal.detected_at.desc())
-            .all()
+        return repository_get_module_signals(
+            db, module_id, status=status, scope=scope, group_id=group_id
         )
-        return OverlapService._filter_signals(signals, status=status, scope=scope, group_id=group_id)
 
     @staticmethod
     def get_signal(db: Session, module_id: str, signal_id: str) -> Optional[OverlapSignal]:
-        students = (
-            db.query(Student)
-            .join(student_projects, Student.student_number == student_projects.c.student_id)
-            .join(Project, student_projects.c.project_id == Project.id)
-            .filter(Project.module_id == module_id)
-            .all()
-        )
-        if not students:
-            return None
-        student_ids = [s.student_number for s in students]
-        return (
-            db.query(OverlapSignal)
-            .filter(
-                OverlapSignal.id == signal_id,
-                OverlapSignal.student_a_id.in_(student_ids),
-                OverlapSignal.student_b_id.in_(student_ids),
-            )
-            .first()
-        )
+        return repository_get_signal(db, module_id, signal_id)
 
     @staticmethod
     def get_signals_for_student(
@@ -693,28 +508,7 @@ class OverlapService:
         scope: Optional[str],
         group_id: Optional[str],
     ) -> List[OverlapSignal]:
-        rows = list(signals)
-        if not status and not scope and not group_id:
-            return rows
-
-        filtered: List[OverlapSignal] = []
-        for signal in rows:
-            detail = parse_signal_detail(signal.snippet)
-            row_status = detail.get("status")
-            if not row_status:
-                row_status = "confirmed" if (signal.confidence or 0) >= 0.68 else "possible"
-            row_scope = detail.get("scope") or "within_group"
-
-            if status and row_status != status:
-                continue
-            if scope and row_scope != scope:
-                continue
-            if group_id:
-                gid = str(group_id)
-                if gid not in {detail.get("group_a_id"), detail.get("group_b_id")}:
-                    continue
-            filtered.append(signal)
-        return filtered
+        return filter_signals(signals, status=status, scope=scope, group_id=group_id)
 
     @staticmethod
     def build_warning(signals: Iterable[OverlapSignal]) -> Dict[str, object]:
@@ -754,16 +548,7 @@ class OverlapService:
 
     @staticmethod
     def _clear_module_signals(db: Session, student_ids: List[object]) -> None:
-        if not student_ids:
-            return
-        (
-            db.query(OverlapSignal)
-            .filter(
-                OverlapSignal.student_a_id.in_(student_ids),
-                OverlapSignal.student_b_id.in_(student_ids),
-            )
-            .delete(synchronize_session=False)
-        )
+        clear_module_signals(db, student_ids)
 
     @staticmethod
     def _generate_ollama_warning(prompt: str) -> Optional[str]:
@@ -772,3 +557,12 @@ class OverlapService:
             temperature=0.3,
             **ollama_client.assessment_llm_options(),
         )
+
+
+__all__ = [
+    "OverlapService",
+    "build_highlighted_documents",
+    "parse_signal_detail",
+    "shared_phrases_between_documents",
+    "EVIDENCE_UPLOAD_DIR",
+]
