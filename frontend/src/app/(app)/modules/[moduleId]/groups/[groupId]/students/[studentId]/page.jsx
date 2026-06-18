@@ -753,7 +753,7 @@ export default function StudentAssessmentPage() {
   const overallScore =
     draftSnapshot?.overall_score != null
       ? Number(draftSnapshot.overall_score).toFixed(1)
-      : student.grade && student.grade !== '-”'
+      : student.grade && student.grade !== '-'
         ? student.grade
         : '-”';
   const displayGrade =
@@ -970,7 +970,7 @@ export default function StudentAssessmentPage() {
               )}
               {currentTab === 1 && !assessmentId && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
-                  Resolving assessment...¦
+                  Resolving assessment...
                 </div>
               )}
             </div>
