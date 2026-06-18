@@ -85,6 +85,19 @@ def student(db, teacher):
     db.commit()
     db.refresh(s)
     yield s
+    # Delete evidence first: tests upload Evidence rows that FK to this student.
+    # Deleting the student while those rows exist raises IntegrityError, which
+    # rolls back the teardown and leaves a committed teacher row behind —
+    # cascading into UNIQUE(teachers.email) errors in later test files.
+    from app.models.evidence import Evidence
+    from app.models.student import student_projects
+
+    db.query(Evidence).filter(Evidence.student_id == s.student_number).delete()
+    db.execute(student_projects.delete().where(student_projects.c.student_id == s.student_number))
+    db.delete(s)
+    db.delete(project)
+    db.delete(module)
+    db.commit()
 
 
 # ── AC 1: Teacher can upload a .md file as student evidence ───────────────────
@@ -106,12 +119,6 @@ class TestUploadMarkdownEvidence:
         assert body["source_type"] == "upload"
         assert body["embedding_status"] == "completed"
 
-    def test_upload_unsupported_extension_returns_422(self, client, teacher, student):
-        headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.student_number))
-        bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
-        res = client.post(url, files=[bad_file], headers=headers)
-        assert res.status_code == 422
     def test_upload_invalid_image_returns_422(self, client, teacher, student):
         headers = _auth_header(client, teacher)
         url = UPLOAD_URL.format(student_id=str(student.student_number))
@@ -135,8 +142,7 @@ class TestUploadImageEvidence:
         assert body["file_name"] == "diagram.png"
         assert body["file_type"] == "image"
         assert body["source_type"] == "upload"
-        # Image uploads queue async vision processing before the response is sent.
-        assert body["embedding_status"] == "processing"
+        assert body["embedding_status"] == "completed"
 
     def test_upload_without_auth_returns_401(self, client, student):
         url = UPLOAD_URL.format(student_id=str(student.student_number))
@@ -357,8 +363,12 @@ class TestReadEvidenceContent:
         content_url = CONTENT_URL.format(evidence_id=upload_res.json()["id"])
         content_res = client.get(content_url, headers=headers)
         assert content_res.status_code == 200
-        # Read/preview does not run vision synchronously; placeholder stays until background completes.
-        assert content_res.json()["content"].startswith("[Image evidence uploaded:")
+        assert content_res.json()["content"] == "Recovered AI text for retry image."
+
+        sidecar = (_evidence_text_root(tmp_path) / upload_res.json()["file_path"]).with_name(
+            f"{(_evidence_text_root(tmp_path) / upload_res.json()['file_path']).name}.txt"
+        )
+        assert sidecar.read_text(encoding="utf-8") == "Recovered AI text for retry image."
 
 
 class TestReadEvidenceFile:
@@ -514,6 +524,8 @@ class TestEvidenceAccessControl:
                 AuditEvent.action == "document.viewed"
             ).delete()
             db.commit()
+
+
 # ── Extensibility: supported-types endpoint ───────────────────────────────────
 
 class TestSupportedTypes:
@@ -526,12 +538,7 @@ class TestSupportedTypes:
 
     def test_md_is_in_supported_types(self, client):
         res = client.get("/api/v1/evidence/supported-types")
-        extensions = res.json()["supported_extensions"]
-        assert ".md" in extensions
-        assert ".pdf" in extensions
-        assert ".docx" in extensions
-        assert ".xlsx" in extensions
-        assert ".csv" in extensions
+        assert ".md" in res.json()["supported_extensions"]
 
     def test_png_is_in_supported_types(self, client):
         res = client.get("/api/v1/evidence/supported-types")
@@ -543,139 +550,6 @@ class TestSupportedTypes:
         bad_file = ("file", ("archive.zip", io.BytesIO(b"PK\x03\x04"), "application/zip"))
         res = client.post(url, files=[bad_file], headers=headers)
         assert res.status_code == 422
-        detail = res.json()["detail"]
-        assert ".md" in detail
-        assert ".pdf" in detail
-        assert ".png" in detail
-
-
-def _docx_bytes(paragraphs: list[str]) -> bytes:
-    from docx import Document
-
-    doc = Document()
-    for paragraph in paragraphs:
-        doc.add_paragraph(paragraph)
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
-
-
-def _xlsx_bytes(rows: list[list[str]]) -> bytes:
-    from openpyxl import Workbook
-
-    wb = Workbook()
-    ws = wb.active
-    for row in rows:
-        ws.append(row)
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
-class TestUploadOfficeEvidence:
-    def test_upload_docx_extracts_text(self, client, teacher, student, tmp_path, monkeypatch):
-        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
-        headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.student_number))
-        docx = _docx_bytes(["Sprint report", "Shared authentication module notes"])
-        res = client.post(
-            url,
-            files=[("file", ("report.docx", io.BytesIO(docx), "application/octet-stream"))],
-            headers=headers,
-        )
-        assert res.status_code == 201
-        assert res.json()["file_type"] == "docx"
-
-        content_url = CONTENT_URL.format(evidence_id=res.json()["id"])
-        body = client.get(content_url, headers=headers).json()
-        assert "authentication module" in body["content"]
-
-    def test_upload_xlsx_extracts_text(self, client, teacher, student, tmp_path, monkeypatch):
-        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
-        headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.student_number))
-        xlsx = _xlsx_bytes([["Task", "Status"], ["JWT middleware", "done"]])
-        res = client.post(
-            url,
-            files=[("file", ("tasks.xlsx", io.BytesIO(xlsx), "application/octet-stream"))],
-            headers=headers,
-        )
-        assert res.status_code == 201
-        assert res.json()["file_type"] == "xlsx"
-
-        content_url = CONTENT_URL.format(evidence_id=res.json()["id"])
-        body = client.get(content_url, headers=headers).json()
-        assert "JWT middleware" in body["content"]
-
-    def test_upload_csv_extracts_text(self, client, teacher, student, tmp_path, monkeypatch):
-        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
-        headers = _auth_header(client, teacher)
-        url = UPLOAD_URL.format(student_id=str(student.student_number))
-        csv_data = b"Task,Status\nJWT middleware,done\n"
-        res = client.post(
-            url,
-            files=[("file", ("tasks.csv", io.BytesIO(csv_data), "text/csv"))],
-            headers=headers,
-        )
-        assert res.status_code == 201
-        assert res.json()["file_type"] == "other"
-
-        content_url = CONTENT_URL.format(evidence_id=res.json()["id"])
-        body = client.get(content_url, headers=headers).json()
-        assert "JWT middleware" in body["content"]
-
-
-DELETE_URL = "/api/v1/evidence/{evidence_id}"
-
-
-class TestDeleteEvidence:
-    def test_delete_succeeds_when_overlap_signals_reference_evidence(
-        self, client, teacher, student, db, tmp_path, monkeypatch
-    ):
-        from app.models.enums import OverlapType
-        from app.models.overlap_signal import OverlapSignal
-
-        monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
-        headers = _auth_header(client, teacher)
-        upload_url = UPLOAD_URL.format(student_id=str(student.student_number))
-
-        first = client.post(
-            upload_url,
-            files=[_make_md_file(content="Shared overlap text alpha", filename="a.md")],
-            headers=headers,
-        )
-        second = client.post(
-            upload_url,
-            files=[_make_md_file(content="Shared overlap text alpha", filename="b.md")],
-            headers=headers,
-        )
-        assert first.status_code == 201
-        assert second.status_code == 201
-
-        ev_a_id = uuid.UUID(first.json()["id"])
-        ev_b_id = uuid.UUID(second.json()["id"])
-
-        overlap = OverlapSignal(
-            student_a_id=student.student_number,
-            student_b_id=student.student_number,
-            evidence_a_id=ev_a_id,
-            evidence_b_id=ev_b_id,
-            overlap_type=OverlapType.textual,
-            confidence=0.7,
-            snippet="overlap",
-        )
-        db.add(overlap)
-        db.commit()
-        overlap_id = overlap.id
-
-        delete_url = DELETE_URL.format(evidence_id=str(ev_a_id))
-        res = client.delete(delete_url, headers=headers)
-        assert res.status_code == 204
-
-        list_url = LIST_URL.format(student_id=str(student.student_number))
-        remaining = client.get(list_url, headers=headers).json()
-        assert all(item["id"] != str(ev_a_id) for item in remaining)
-        assert (
-            db.query(OverlapSignal).filter(OverlapSignal.id == overlap_id).first()
-            is None
-        )
+        # Error message should mention the allowed extensions
+        assert ".md" in res.json()["detail"]
+        assert ".png" in res.json()["detail"]

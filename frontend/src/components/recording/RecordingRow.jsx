@@ -63,6 +63,7 @@ export default function RecordingRow({
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
   const status =
     statusConfig[recording.transcription_status] ?? statusConfig.pending;
 
@@ -110,6 +111,7 @@ export default function RecordingRow({
     // The cleanup effect revokes the previous URL when this state changes.
     setAudioUrl(null);
   }
+
   async function handleDelete() {
     if (
       !window.confirm(
@@ -276,6 +278,7 @@ export default function RecordingRow({
           )}
         </div>
       )}
+
       {expanded && (
         <div className="border-t border-border bg-secondary/30 px-4 py-3 rounded-b-lg">
           {detail ? (

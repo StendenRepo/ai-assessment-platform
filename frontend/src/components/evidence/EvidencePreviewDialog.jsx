@@ -38,7 +38,10 @@ function HighlightedText({ content, quote }) {
     body = (
       <>
         {text.slice(0, start)}
-        <mark ref={markRef} className="rounded bg-primary/25 text-foreground">
+        <mark
+          ref={markRef}
+          className="rounded bg-primary/25 text-foreground"
+        >
           {text.slice(start, end)}
         </mark>
         {text.slice(end)}

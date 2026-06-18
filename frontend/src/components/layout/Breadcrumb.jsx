@@ -7,7 +7,7 @@ import { APP_PATHS } from '@/lib/routes';
 
 function buildCrumbs(pathname, params, fromModule) {
   const crumbs = [{ label: 'Dashboard', href: APP_PATHS.dashboard }];
-  const { moduleId, groupId, studentId, signalId } = params || {};
+  const { moduleId, groupId, studentId } = params || {};
 
   if (pathname.startsWith(APP_PATHS.moduleNew)) {
     crumbs.push({ label: 'Modules', href: APP_PATHS.modules });
@@ -21,14 +21,6 @@ function buildCrumbs(pathname, params, fromModule) {
       });
     if (pathname.includes('/manage')) {
       crumbs.push({ label: 'Manage Roster', href: null });
-    } else if (pathname.includes('/overlaps/') && signalId) {
-      crumbs.push({
-        label: 'Overlaps',
-        href: `${APP_PATHS.modules}/${moduleId}/overlaps`,
-      });
-      crumbs.push({ label: 'Detail', href: null });
-    } else if (pathname.includes('/overlaps')) {
-      crumbs.push({ label: 'Overlaps', href: null });
     }
     if (groupId && !fromModule)
       crumbs.push({

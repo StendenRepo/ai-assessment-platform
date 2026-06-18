@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import {
   ArrowRight,
   CheckCircle2,
@@ -10,7 +9,6 @@ import {
   Clock,
   Github,
   GitBranch,
-  ScanSearch,
   Users,
 } from 'lucide-react';
 import {
@@ -46,7 +44,7 @@ const assessmentStatusConfig = {
 };
 
 function formatAsDdMmYyyy(value) {
-  if (!value) return 'â€”';
+  if (!value) return '—';
   const parts = String(value).split('-');
   if (parts.length !== 3) return value;
   const [year, month, day] = parts;
@@ -222,18 +220,9 @@ export default function GroupDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
-        </div>
-        <Link
-          href={`${APP_PATHS.moduleOverlaps(moduleId)}?group_id=${groupId}`}
-          className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary shrink-0"
-        >
-          <ScanSearch size={14} />
-          Group overlaps
-        </Link>
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -242,10 +231,7 @@ export default function GroupDetailPage() {
             <div className="grid grid-cols-3 divide-x divide-border">
               {[
                 { label: 'Module', value: module.name },
-                {
-                  label: 'Academic Year',
-                  value: module.academic_year || 'â€”',
-                },
+                { label: 'Academic Year', value: module.academic_year || '—' },
                 { label: 'Deadline', value: formatAsDdMmYyyy(module.deadline) },
               ].map((item) => (
                 <div key={item.label} className="px-6 py-4">
@@ -409,7 +395,7 @@ export default function GroupDetailPage() {
                     disabled={repoSaving}
                     className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {repoSaving ? 'Removingâ€¦' : 'Remove'}
+                    {repoSaving ? 'Removing…' : 'Remove'}
                   </button>
                 </div>
               </div>
@@ -470,7 +456,7 @@ export default function GroupDetailPage() {
                     {verifying ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Verifyingâ€¦
+                        Verifying…
                       </span>
                     ) : (
                       'Verify Repository'
@@ -510,7 +496,7 @@ export default function GroupDetailPage() {
                   disabled={repoSaving || !verified}
                   className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {repoSaving ? 'Savingâ€¦' : 'Save Repo'}
+                  {repoSaving ? 'Saving…' : 'Save Repo'}
                 </button>
               </form>
             )}

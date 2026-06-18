@@ -62,7 +62,6 @@ frontend/out/
 backend/venv/
 backend/**/__pycache__/
 backend/.pytest_cache/
-backend/.coverage
 backend/.env
 backend/database/
 
@@ -72,5 +71,3 @@ backend/data/
 # SQLite databases (never track)
 *.db
 *.log
-
-.venv-test/

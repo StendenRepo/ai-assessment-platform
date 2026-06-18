@@ -1,19 +1,18 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
-    admin,
-    assessment_questions,
-    assessments,
-    auth,
-    evidence,
-    evidence_matches,
-    github,
-    health,
-    modules,
-    projects,
-    recordings,
-    reports,
-    students,
+	admin,
+	auth,
+	github,
+	health,
+	modules,
+	projects,
+ 	evidence,
+ 	evidence_matches,
+ 	assessment_questions,
+ 	students,
+ 	recordings,
+	reports,
 )
 
 api_router = APIRouter()
@@ -31,6 +30,5 @@ api_router.include_router(
     assessment_questions.router, prefix="/students", tags=["Assessment Questions"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])
-api_router.include_router(assessments.router, tags=["Assessment"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(github.router, prefix="/github", tags=["GitHub"])

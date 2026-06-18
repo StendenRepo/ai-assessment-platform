@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -14,7 +14,6 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)  # "teacher" or "assistant"
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    metadata_json = Column(JSONB, nullable=True)
 
     # Relationships
     assessment = relationship("Assessment", back_populates="chat_messages")

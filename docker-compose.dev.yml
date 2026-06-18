@@ -32,8 +32,6 @@ services:
                 condition: service_healthy
             ollama:
                 condition: service_started
-            ai-detector:
-                condition: service_started
         volumes:
             - ./backend:/app
             - ./backend/data:/app/data
@@ -57,20 +55,6 @@ services:
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
             # Live-subtitle (FR-06) model, separate from WHISPER_MODEL above.
             WHISPER_CHUNK_MODEL: ${WHISPER_CHUNK_MODEL:-base}
-        restart: unless-stopped
-    ai-detector:
-        build:
-            context: ./ai-detector
-            target: dev
-        container_name: ai-detector
-        volumes:
-            - ./ai-detector:/app
-            - ai_detector_cache:/root/.cache
-        ports:
-            - '9001:9001'
-        environment:
-            AI_DETECTOR_MODEL: ${AI_DETECTOR_MODEL:-Hello-SimpleAI/chatgpt-detector-roberta}
-            AI_DETECTOR_DEVICE: ${AI_DETECTOR_DEVICE:-cpu}
         restart: unless-stopped
     retention-worker:
         build:
@@ -113,8 +97,6 @@ services:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
             OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
             OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
-            ASSESSMENT_OLLAMA_MODEL: ${ASSESSMENT_OLLAMA_MODEL:-qwen2.5:7b}
-            ASSESSMENT_OLLAMA_MODEL_BACKUP: ${ASSESSMENT_OLLAMA_MODEL_BACKUP:-llama3.1:8b}
             VISION_MODEL: ${VISION_MODEL:-llava:7b}
         depends_on:
             ollama:
@@ -125,12 +107,17 @@ services:
             set -e;
             echo 'Waiting for Ollama API...';
             until ollama list >/dev/null 2>&1; do sleep 2; done;
-            for m in \"${OLLAMA_MODEL}\" \"${OLLAMA_MODEL_BACKUP}\" \"${ASSESSMENT_OLLAMA_MODEL}\" \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" \"${VISION_MODEL}\"; do
-              [ -z \"$$m\" ] && continue;
-              echo \"Pulling $$m\";
-              ollama pull \"$$m\" || true;
-            done;
-            echo 'Models ready';
+                        echo 'Pulling primary model: ${OLLAMA_MODEL}';
+            ollama pull ${OLLAMA_MODEL};
+                        if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
+                            echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
+                            ollama pull ${OLLAMA_MODEL_BACKUP};
+                        fi;
+                        if [ -n "${VISION_MODEL}" ]; then
+                            echo 'Pulling vision model: ${VISION_MODEL}';
+                            ollama pull ${VISION_MODEL};
+                        fi;
+                        echo 'Models ready';
             "
         restart: 'no'
     postgres:
@@ -171,5 +158,4 @@ volumes:
     frontend_node_modules:
     frontend_next_cache:
     stt_cache:
-    ai_detector_cache:
     pgadmin_data:
