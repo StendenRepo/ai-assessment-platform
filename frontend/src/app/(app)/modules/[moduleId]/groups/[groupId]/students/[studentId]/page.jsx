@@ -51,7 +51,7 @@ import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// â”€â”€â”€ AI Insights Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// AI Insights Panel
 
 const insightConfig = {
   overlap: {
@@ -199,7 +199,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
           </div>
         ) : insights.length === 0 ? (
           <div className="rounded-lg border border-border p-6 text-center">
-            <div className="text-2xl mb-2">âœ“</div>
+            <div className="text-2xl mb-2">✓</div>
             <p className="text-sm font-medium text-foreground">
               No notable findings
             </p>
@@ -298,7 +298,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
   );
 }
 
-// â”€â”€â”€ Evidence Upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Evidence Upload
 
 const DEFAULT_EVIDENCE_EXTENSIONS = [
   '.md',
@@ -317,7 +317,7 @@ function EvidenceUpload({ studentId }) {
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Allowed extensions fetched from the backend â€” starts with a safe default
+  // Allowed extensions fetched from the backend - starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(
     DEFAULT_EVIDENCE_EXTENSIONS
   );
@@ -457,7 +457,7 @@ function EvidenceUpload({ studentId }) {
           return changed ? next : prev;
         });
       } catch {
-        // Silently ignore polling errors â€” the user can still interact
+        // Silently ignore polling errors - the user can still interact
       }
     }, 3000);
 
@@ -653,7 +653,7 @@ function EvidenceUpload({ studentId }) {
   );
 }
 
-// â”€â”€â”€ Student Assessment Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Student Assessment Page
 
 const contributionTypeLabel = {
   code: 'CODE',
@@ -753,9 +753,9 @@ export default function StudentAssessmentPage() {
   const overallScore =
     draftSnapshot?.overall_score != null
       ? Number(draftSnapshot.overall_score).toFixed(1)
-      : student.grade && student.grade !== 'â€”'
+      : student.grade && student.grade !== '-”'
         ? student.grade
-        : 'â€”';
+        : '-”';
   const displayGrade =
     draftSnapshot?.overall_grade?.effective ||
     (student.assessment_status === 'completed' ? student.grade : null);
@@ -970,7 +970,7 @@ export default function StudentAssessmentPage() {
               )}
               {currentTab === 1 && !assessmentId && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
-                  Resolving assessmentâ€¦
+                  Resolving assessment...¦
                 </div>
               )}
             </div>
