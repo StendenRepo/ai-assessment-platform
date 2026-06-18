@@ -3,6 +3,7 @@ import { authHeaders } from '@/lib/auth';
 import { API_PATHS } from '@/lib/routes';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 // ── Consent gate ──────────────────────────────────────────────────────────────
 
 // Resolve (or lazily create) the current teacher's assessment for a student.
@@ -84,6 +85,7 @@ export async function getRecordingAudioBlob(assessmentId, recordingId) {
   }
   return res.blob();
 }
+
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 export function listNotifications(unreadOnly = false) {

@@ -146,6 +146,7 @@ export async function verifyGithubRepo(repoUrl) {
     branches: branches.length ? branches : [defaultBranch],
   };
 }
+
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
   formData.append('file', file);
@@ -194,11 +195,7 @@ export const deleteModule = (moduleId) =>
  * @param {string} studentId
  * @param {string} studentName  - used to build the filename client-side
  */
-export async function exportStudentDossier(
-  studentId,
-  studentName = '',
-  format = 'zip'
-) {
+export async function exportStudentDossier(studentId, studentName = '', format = 'zip') {
   const url = `${API_URL}/api/v1${API_PATHS.studentDossierExport(studentId)}?format=${format}`;
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
@@ -224,11 +221,7 @@ export async function exportStudentDossier(
  * @param {string} moduleId
  * @param {string} moduleName  - used to build the filename client-side
  */
-export async function exportModuleArchive(
-  moduleId,
-  moduleName = '',
-  format = 'zip'
-) {
+export async function exportModuleArchive(moduleId, moduleName = '', format = 'zip') {
   const url = `${API_URL}/api/v1${API_PATHS.moduleArchiveExport(moduleId)}?format=${format}`;
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
@@ -253,26 +246,6 @@ export async function exportModuleArchive(
  * @param {string} moduleId
  * @param {string} moduleName  - used to build the filename client-side
  */
-export const analyzeModuleOverlap = (moduleId) =>
-  request(API_PATHS.moduleOverlapAnalyze(moduleId), { method: 'POST' });
-
-export const listModuleOverlapSignals = (moduleId, params = {}) => {
-  const sp = new URLSearchParams();
-  if (params.status) sp.set('status', params.status);
-  if (params.scope) sp.set('scope', params.scope);
-  if (params.group_id) sp.set('group_id', params.group_id);
-  const qs = sp.toString();
-  const path = qs
-    ? `${API_PATHS.moduleOverlapSignals(moduleId)}?${qs}`
-    : API_PATHS.moduleOverlapSignals(moduleId);
-  return request(path);
-};
-
-export const getModuleOverlapSignal = (moduleId, signalId) =>
-  request(API_PATHS.moduleOverlapSignal(moduleId, signalId));
-
-export const getModuleOverlapWarning = (moduleId) =>
-  request(API_PATHS.moduleOverlapWarning(moduleId));
 export async function exportGradesExcel(moduleId, moduleName = '') {
   const res = await fetch(
     `${API_URL}/api/v1${API_PATHS.moduleGradesExport(moduleId)}`,

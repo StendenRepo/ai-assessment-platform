@@ -42,17 +42,7 @@ class Settings:
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
     OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
     OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
-    OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
-    OLLAMA_NUM_CTX: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
-
-    ASSESSMENT_OLLAMA_MODEL: str = os.getenv("ASSESSMENT_OLLAMA_MODEL", "qwen2.5:7b")
-    ASSESSMENT_OLLAMA_MODEL_BACKUP: str = os.getenv(
-        "ASSESSMENT_OLLAMA_MODEL_BACKUP", "llama3.1:8b"
-    )
-    ASSESSMENT_OLLAMA_TIMEOUT_SECONDS: float = float(
-        os.getenv("ASSESSMENT_OLLAMA_TIMEOUT_SECONDS", "120")
-    )
-
+    # Vision model for image evidence description (must support images via Ollama API)
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
     VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 
@@ -85,15 +75,16 @@ class Settings:
     # Speech-to-text container (on-premise faster-whisper service)
     STT_URL: str = os.getenv("STT_URL", "http://stt:9000")
     STT_TIMEOUT_SECONDS: int = int(os.getenv("STT_TIMEOUT_SECONDS", "600"))
+    # Short timeout for live-subtitle chunks: a slow chunk is dropped, never
+    # allowed to stall the transient live caption (FR-06 additive, best-effort).
     STT_CHUNK_TIMEOUT_SECONDS: float = float(
         os.getenv("STT_CHUNK_TIMEOUT_SECONDS", "10")
     )
+    # Default language for live subtitles. Short chunks frequently mis-detect the
+    # language and produce garbled text, so we force one; a client may still
+    # override it per connection via the WS ?language= query param. Empty string
+    # means auto-detect.
     LIVE_SUBTITLE_LANGUAGE: str = os.getenv("LIVE_SUBTITLE_LANGUAGE", "en")
-
-    # Dedicated AI-text classifier (on-premise RoBERTa — not a generic LLM)
-    AI_DETECTOR_URL: str = os.getenv("AI_DETECTOR_URL", "http://ai-detector:9001")
-    AI_DETECTOR_TIMEOUT_SECONDS: int = int(os.getenv("AI_DETECTOR_TIMEOUT_SECONDS", "120"))
-    AI_DETECTOR_MODEL: str = os.getenv("AI_DETECTOR_MODEL", "Hello-SimpleAI/chatgpt-detector-roberta")
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.
@@ -101,6 +92,8 @@ class Settings:
     RECORDING_REMINDER_LEAD_DAYS: int = int(
         os.getenv("RECORDING_REMINDER_LEAD_DAYS", "14")
     )
+    # GDPR extension cap: a recording's expiry may be extended at most this many
+    # times, by at most this many days each.
     RECORDING_MAX_EXTENSIONS: int = int(os.getenv("RECORDING_MAX_EXTENSIONS", "2"))
     RECORDING_MAX_EXTENSION_DAYS: int = int(
         os.getenv("RECORDING_MAX_EXTENSION_DAYS", "90")

@@ -60,7 +60,8 @@ export default function SuggestedQuestionsPanel({ studentId, moduleId }) {
 
   const updateText = (id, text) =>
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, text } : it)));
-  const dismiss = (id) => setItems((prev) => prev.filter((it) => it.id !== id));
+  const dismiss = (id) =>
+    setItems((prev) => prev.filter((it) => it.id !== id));
   const copy = async (item) => {
     try {
       await navigator.clipboard.writeText(item.text);

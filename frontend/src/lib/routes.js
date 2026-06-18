@@ -5,9 +5,6 @@ export const APP_PATHS = {
   modules: '/modules',
   moduleNew: '/modules/new',
   moduleManage: (moduleId) => `/modules/${moduleId}/manage`,
-  moduleOverlaps: (moduleId) => `/modules/${moduleId}/overlaps`,
-  moduleOverlapDetail: (moduleId, signalId) =>
-    `/modules/${moduleId}/overlaps/${signalId}`,
   reports: '/reports',
   settings: '/settings',
 };
@@ -46,11 +43,6 @@ export const API_PATHS = {
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
   reportsOverview: '/reports',
-  moduleOverlapAnalyze: (moduleId) => `/modules/${moduleId}/overlap/analyze`,
-  moduleOverlapSignals: (moduleId) => `/modules/${moduleId}/overlap/signals`,
-  moduleOverlapSignal: (moduleId, signalId) =>
-    `/modules/${moduleId}/overlap/signals/${signalId}`,
-  moduleOverlapWarning: (moduleId) => `/modules/${moduleId}/overlap/warning`,
   moduleStudentTemplate: '/modules/template/students',
   moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
@@ -67,26 +59,6 @@ export const API_PATHS = {
     `/assessments/${assessmentId}/recordings`,
   assessmentRecording: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}`,
-  assessmentDraft: (assessmentId) => `/assessments/${assessmentId}/draft`,
-  assessmentDraftGenerate: (assessmentId) =>
-    `/assessments/${assessmentId}/draft/generate`,
-  assessmentDraftOverrides: (assessmentId) =>
-    `/assessments/${assessmentId}/draft/overrides`,
-  assessmentDraftRevert: (assessmentId) =>
-    `/assessments/${assessmentId}/draft/revert`,
-  assessmentChat: (assessmentId) => `/assessments/${assessmentId}/chat`,
-  assessmentChatRefine: (assessmentId) =>
-    `/assessments/${assessmentId}/chat/refine`,
-  assessmentChatApply: (assessmentId) =>
-    `/assessments/${assessmentId}/chat/apply`,
-  assessmentChatReject: (assessmentId) =>
-    `/assessments/${assessmentId}/chat/reject`,
-  assessmentChatUndo: (assessmentId) =>
-    `/assessments/${assessmentId}/chat/undo`,
-  assessmentFinalize: (assessmentId) => `/assessments/${assessmentId}/finalize`,
-  assessmentFinal: (assessmentId) => `/assessments/${assessmentId}/final`,
-  assessmentAuditTrail: (assessmentId) =>
-    `/assessments/${assessmentId}/audit-trail`,
   assessmentRecordingAudio: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}/audio`,
   notifications: (unreadOnly = false) =>
