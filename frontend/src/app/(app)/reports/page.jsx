@@ -25,7 +25,8 @@ async function fetchOverlapSignals(moduleId) {
   return apiRequest(`/modules/${moduleId}/overlap/signals`, {
     basePath: '/api/v1',
     onUnauthorized: false,
-    errorMessage: (data, res) => data.detail || `Request failed (${res.status})`,
+    errorMessage: (data, res) =>
+      data.detail || `Request failed (${res.status})`,
   });
 }
 
@@ -98,8 +99,10 @@ function reportTitle(report) {
 function reportMeta(report) {
   const parts = [];
   if (report.format) parts.push(report.format.toUpperCase());
-  if (report.student_count != null) parts.push(`${report.student_count} students`);
-  if (report.evidence_count != null) parts.push(`${report.evidence_count} files`);
+  if (report.student_count != null)
+    parts.push(`${report.student_count} students`);
+  if (report.evidence_count != null)
+    parts.push(`${report.evidence_count} files`);
   if (report.teacher_name) parts.push(`by ${report.teacher_name}`);
   return parts.join(' · ');
 }
@@ -173,8 +176,12 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
               <Package size={15} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Individual Student Report</h2>
-              <p className="text-xs text-muted-foreground truncate max-w-[220px]">{moduleName || 'Select a student to export'}</p>
+              <h2 className="text-sm font-semibold text-foreground">
+                Individual Student Report
+              </h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[220px]">
+                {moduleName || 'Select a student to export'}
+              </p>
             </div>
           </div>
           <button
@@ -190,13 +197,17 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
           {/* No module selected warning */}
           {!moduleId && (
             <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
-              <p className="text-xs text-amber-400">Please select a module on the report page first.</p>
+              <p className="text-xs text-amber-400">
+                Please select a module on the report page first.
+              </p>
             </div>
           )}
 
           {/* Student */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Student *</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Student *
+            </label>
             <select
               value={selectedStudentId}
               onChange={(e) => setSelectedStudentId(e.target.value)}
@@ -207,14 +218,15 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
                 {!moduleId
                   ? '— Select a module first —'
                   : loadingStudents
-                  ? 'Loading students…'
-                  : students.length === 0
-                  ? 'No students found'
-                  : '— Choose a student —'}
+                    ? 'Loading students…'
+                    : students.length === 0
+                      ? 'No students found'
+                      : '— Choose a student —'}
               </option>
               {students.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name}{s.student_number ? ` (${s.student_number})` : ''}
+                  {s.name}
+                  {s.student_number ? ` (${s.student_number})` : ''}
                 </option>
               ))}
             </select>
@@ -222,11 +234,21 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
 
           {/* Archive format */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Archive Format *</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Archive Format *
+            </label>
             <div className="flex gap-2">
               {[
-                { value: 'zip', label: 'ZIP', hint: 'Standard — works on all systems' },
-                { value: 'tar', label: 'TAR.GZ', hint: 'Use if ZIP is blocked by school IT' },
+                {
+                  value: 'zip',
+                  label: 'ZIP',
+                  hint: 'Standard — works on all systems',
+                },
+                {
+                  value: 'tar',
+                  label: 'TAR.GZ',
+                  hint: 'Use if ZIP is blocked by school IT',
+                },
               ].map((fmt) => (
                 <button
                   key={fmt.value}
@@ -238,7 +260,9 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
                   }`}
                 >
                   <div>{fmt.label}</div>
-                  <div className={`text-[10px] font-normal mt-0.5 ${exportFormat === fmt.value ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                  <div
+                    className={`text-[10px] font-normal mt-0.5 ${exportFormat === fmt.value ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}
+                  >
                     {fmt.hint}
                   </div>
                 </button>
@@ -250,9 +274,7 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
             Contains all evidence files and a plain-text summary (dossier.txt).
           </p>
 
-          {exportError && (
-            <p className="text-xs text-red-400">{exportError}</p>
-          )}
+          {exportError && <p className="text-xs text-red-400">{exportError}</p>}
         </div>
 
         {/* Footer */}
@@ -273,7 +295,9 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
             ) : (
               <Download size={14} />
             )}
-            {exporting ? 'Exporting…' : `Download ${exportFormat === 'tar' ? 'TAR.GZ' : 'ZIP'}`}
+            {exporting
+              ? 'Exporting…'
+              : `Download ${exportFormat === 'tar' ? 'TAR.GZ' : 'ZIP'}`}
           </button>
         </div>
       </div>
@@ -300,7 +324,11 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
     setExporting(true);
     setExportError('');
     try {
-      const { blob, filename } = await exportModuleArchive(moduleId, moduleName, exportFormat);
+      const { blob, filename } = await exportModuleArchive(
+        moduleId,
+        moduleName,
+        exportFormat
+      );
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -318,7 +346,10 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative z-10 w-full max-w-md rounded-xl bg-card border border-border shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -327,11 +358,18 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
               <Users size={15} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Group Overview Report</h2>
-              <p className="text-xs text-muted-foreground truncate max-w-[220px]">{moduleName || '—'}</p>
+              <h2 className="text-sm font-semibold text-foreground">
+                Group Overview Report
+              </h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[220px]">
+                {moduleName || '—'}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary">
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary"
+          >
             <X size={16} />
           </button>
         </div>
@@ -340,17 +378,29 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
         <div className="px-6 py-5 space-y-4">
           {!moduleId && (
             <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
-              <p className="text-xs text-amber-400">Please select a module on the report page first.</p>
+              <p className="text-xs text-amber-400">
+                Please select a module on the report page first.
+              </p>
             </div>
           )}
 
           {/* Archive format */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Archive Format *</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              Archive Format *
+            </label>
             <div className="flex gap-2">
               {[
-                { value: 'zip', label: 'ZIP', hint: 'Standard — works on all systems' },
-                { value: 'tar', label: 'TAR.GZ', hint: 'Use if ZIP is blocked by school IT' },
+                {
+                  value: 'zip',
+                  label: 'ZIP',
+                  hint: 'Standard — works on all systems',
+                },
+                {
+                  value: 'tar',
+                  label: 'TAR.GZ',
+                  hint: 'Use if ZIP is blocked by school IT',
+                },
               ].map((fmt) => (
                 <button
                   key={fmt.value}
@@ -362,7 +412,9 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
                   }`}
                 >
                   <div>{fmt.label}</div>
-                  <div className={`text-[10px] font-normal mt-0.5 ${exportFormat === fmt.value ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                  <div
+                    className={`text-[10px] font-normal mt-0.5 ${exportFormat === fmt.value ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}
+                  >
                     {fmt.hint}
                   </div>
                 </button>
@@ -371,7 +423,8 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
           </div>
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Contains rubric, module book, all student evidence, assessment forms, and a grade list.
+            Contains rubric, module book, all student evidence, assessment
+            forms, and a grade list.
           </p>
 
           {exportError && <p className="text-xs text-red-400">{exportError}</p>}
@@ -379,7 +432,10 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
 
         {/* Footer */}
         <div className="flex gap-3 justify-end px-6 py-4 border-t border-border">
-          <button onClick={onClose} className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          >
             Cancel
           </button>
           <button
@@ -392,7 +448,9 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
             ) : (
               <Download size={14} />
             )}
-            {exporting ? 'Exporting…' : `Download ${exportFormat === 'tar' ? 'TAR.GZ' : 'ZIP'}`}
+            {exporting
+              ? 'Exporting…'
+              : `Download ${exportFormat === 'tar' ? 'TAR.GZ' : 'ZIP'}`}
           </button>
         </div>
       </div>
@@ -428,7 +486,10 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative z-10 w-full max-w-2xl rounded-xl bg-card border border-border shadow-2xl flex flex-col max-h-[80vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
@@ -437,11 +498,18 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
               <Bot size={15} className="text-primary" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">AI Analysis — Overlap Signals</h2>
-              <p className="text-xs text-muted-foreground truncate max-w-[300px]">{moduleName || '—'} · Internal view only</p>
+              <h2 className="text-sm font-semibold text-foreground">
+                AI Analysis — Overlap Signals
+              </h2>
+              <p className="text-xs text-muted-foreground truncate max-w-[300px]">
+                {moduleName || '—'} · Internal view only
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary">
+          <button
+            onClick={onClose}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-secondary"
+          >
             <X size={16} />
           </button>
         </div>
@@ -450,7 +518,9 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
         <div className="px-6 py-4 overflow-y-auto flex-1">
           {!moduleId ? (
             <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2.5">
-              <p className="text-xs text-amber-400">Please select a module on the report page first.</p>
+              <p className="text-xs text-amber-400">
+                Please select a module on the report page first.
+              </p>
             </div>
           ) : loading ? (
             <div className="flex justify-center py-10">
@@ -461,30 +531,54 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
           ) : signals.length === 0 ? (
             <div className="text-center py-10">
               <div className="text-2xl mb-2">✓</div>
-              <p className="text-sm font-medium text-foreground">No overlap signals detected</p>
-              <p className="text-xs text-muted-foreground mt-1">No suspicious patterns found for this module.</p>
+              <p className="text-sm font-medium text-foreground">
+                No overlap signals detected
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                No suspicious patterns found for this module.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
               {signals.map((sig) => (
-                <div key={sig.id} className="rounded-lg border border-border p-4 space-y-2">
+                <div
+                  key={sig.id}
+                  className="rounded-lg border border-border p-4 space-y-2"
+                >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <AlertTriangle size={13} className="text-amber-400 shrink-0" />
-                      <span className="text-xs font-semibold text-foreground capitalize">{sig.overlap_type} overlap</span>
+                      <AlertTriangle
+                        size={13}
+                        className="text-amber-400 shrink-0"
+                      />
+                      <span className="text-xs font-semibold text-foreground capitalize">
+                        {sig.overlap_type} overlap
+                      </span>
                     </div>
-                    <span className={`text-xs font-bold font-mono ${confidenceColor(sig.confidence)}`}>
+                    <span
+                      className={`text-xs font-bold font-mono ${confidenceColor(sig.confidence)}`}
+                    >
                       {Math.round(sig.confidence * 100)}% confidence
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                     <div>
-                      <span className="font-medium text-foreground">Student A:</span> {sig.student_a_name}
-                      <div className="text-[11px] font-mono truncate">{sig.evidence_a_name}</div>
+                      <span className="font-medium text-foreground">
+                        Student A:
+                      </span>{' '}
+                      {sig.student_a_name}
+                      <div className="text-[11px] font-mono truncate">
+                        {sig.evidence_a_name}
+                      </div>
                     </div>
                     <div>
-                      <span className="font-medium text-foreground">Student B:</span> {sig.student_b_name}
-                      <div className="text-[11px] font-mono truncate">{sig.evidence_b_name}</div>
+                      <span className="font-medium text-foreground">
+                        Student B:
+                      </span>{' '}
+                      {sig.student_b_name}
+                      <div className="text-[11px] font-mono truncate">
+                        {sig.evidence_b_name}
+                      </div>
                     </div>
                   </div>
                   {sig.snippet && (
@@ -493,7 +587,10 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
                     </div>
                   )}
                   <div className="text-[10px] text-muted-foreground">
-                    Detected: {sig.detected_at ? new Date(sig.detected_at).toLocaleDateString('nl-NL') : '—'}
+                    Detected:{' '}
+                    {sig.detected_at
+                      ? new Date(sig.detected_at).toLocaleDateString('nl-NL')
+                      : '—'}
                   </div>
                 </div>
               ))}
@@ -503,7 +600,10 @@ function AIAnalysisModal({ open, onClose, moduleId, moduleName }) {
 
         {/* Footer */}
         <div className="flex justify-end px-6 py-4 border-t border-border shrink-0">
-          <button onClick={onClose} className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+          >
             Close
           </button>
         </div>
@@ -670,7 +770,9 @@ export default function ReportsPage() {
 
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Reports & Export</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            Reports & Export
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Generate and export assessment reports
           </p>
@@ -799,7 +901,6 @@ export default function ReportsPage() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </>

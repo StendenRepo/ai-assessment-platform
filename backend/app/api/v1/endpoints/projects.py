@@ -204,7 +204,6 @@ def add_project_student(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This group already has a GitHub repository. Use the group repository instead.",
         )
-
     # Check if this student is already linked to this project
     existing = db.query(Student).filter(Student.student_number == payload.student_number).first()
     if existing:
@@ -364,7 +363,6 @@ async def import_project_students(
             "total_rows": len(rows),
         },
     )
-
     return StudentImportResult(
         imported_count=len(to_add),
         error_count=len(errors),

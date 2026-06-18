@@ -8,6 +8,7 @@ import {
   FileText,
   FolderPlus,
   Github,
+  ScanSearch,
   Search,
   UserCheck,
   UserPlus,
@@ -474,12 +475,20 @@ export default function ModulePage() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
+              onClick={() => router.push(APP_PATHS.moduleOverlaps(moduleId))}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary transition-all"
+            >
+              <ScanSearch size={14} />
+              Review overlaps
+            </button>
+            <button
+              type="button"
               onClick={handleExportGrades}
               disabled={exporting}
               className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download size={14} />
-              {exporting ? 'Exporting…' : 'Export Grades'}
+              {exporting ? 'Exportingâ€¦' : 'Export Grades'}
             </button>
             <button
               type="button"
@@ -696,7 +705,7 @@ export default function ModulePage() {
                           Grade
                         </div>
                         <div className="text-sm font-semibold text-foreground">
-                          {student.grade || '—'}
+                          {student.grade || 'â€”'}
                         </div>
                       </div>
                       <span
@@ -793,7 +802,7 @@ export default function ModulePage() {
               disabled={groupSubmitting}
               className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              {groupSubmitting ? 'Creating…' : 'Create Group'}
+              {groupSubmitting ? 'Creatingâ€¦' : 'Create Group'}
             </button>
           </form>
           <form
@@ -849,7 +858,7 @@ export default function ModulePage() {
               disabled={submitting}
               className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              {submitting ? 'Adding…' : 'Add Student'}
+              {submitting ? 'Addingâ€¦' : 'Add Student'}
             </button>
           </form>
 
@@ -871,7 +880,7 @@ export default function ModulePage() {
                   onChange={(e) => setAssignStudentId(e.target.value)}
                   className={`${inputClass} cursor-pointer`}
                 >
-                  <option value="">— Select student —</option>
+                  <option value="">â€” Select student â€”</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.student_number})
@@ -888,7 +897,7 @@ export default function ModulePage() {
                   onChange={(e) => setAssignGroupId(e.target.value)}
                   className={`${inputClass} cursor-pointer`}
                 >
-                  <option value="">— Select group —</option>
+                  <option value="">â€” Select group â€”</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -904,7 +913,7 @@ export default function ModulePage() {
                 disabled={assigning}
                 className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
-                {assigning ? 'Assigning…' : 'Assign'}
+                {assigning ? 'Assigningâ€¦' : 'Assign'}
               </button>
             </form>
           )}

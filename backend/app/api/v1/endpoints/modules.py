@@ -3,7 +3,17 @@ import json
 import mimetypes
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -42,7 +52,13 @@ from app.services.module_service import (
     ModuleService,
     _module_file_path,
 )
-from app.services.overlap_service import OverlapService
+from app.services.overlap_integrity_detector import derive_signal_metrics
+from app.services.overlap_service import (
+    OverlapService,
+    build_highlighted_documents,
+    parse_signal_detail,
+)
+from app.services.overlap_integrity_detector import dedupe_student_flag_dicts
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -178,13 +194,17 @@ def _rubric_file_out(record: Optional[FileRecord]) -> Optional[RubricFileOut]:
     )
 
 
-def _module_to_out(m: Module, project_count: int, student_count: int, db: Session) -> ModuleOut:
+def _module_to_out(
+    m: Module, project_count: int, student_count: int, db: Session
+) -> ModuleOut:
     rubric = None
     if m.rubric_file_id:
         rubric = db.query(FileRecord).filter(FileRecord.id == m.rubric_file_id).first()
     module_book = None
     if m.module_book_id:
-        module_book = db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
+        module_book = (
+            db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
+        )
     return ModuleOut(
         id=str(m.id),
         name=m.name,
@@ -208,8 +228,74 @@ def _visible_modules_query(db: Session, teacher: Teacher):
 def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
     module = _visible_modules_query(db, teacher).filter(Module.id == module_id).first()
     if not module:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Module not found"
+        )
     return module
+
+
+def _serve_module_document(
+    db: Session,
+    *,
+    module: Module,
+    file_id,
+    base_dir,
+    kind: str,
+    missing_detail: str,
+    request: Request,
+    teacher: Teacher,
+) -> FileResponse:
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+
+    full_path = _module_file_path(base_dir, module.id, record.path)
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file not found on disk",
+        )
+
+    media_type, _ = mimetypes.guess_type(record.file_name or record.path)
+
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=teacher.id,
+        teacher_name=teacher.name,
+        details={
+            "kind": kind,
+            "module_id": str(module.id),
+            "file_id": str(record.id),
+            "file_name": record.file_name,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return FileResponse(
+        path=str(full_path),
+        media_type=media_type or "application/octet-stream",
+        filename=record.file_name or full_path.name,
+        content_disposition_type="inline",
+    )
+
+
+def _module_document_content(
+    db: Session, *, file_id, missing_detail: str
+) -> dict:
+    if not file_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
+    return {
+        "id": str(record.id),
+        "file_name": record.file_name,
+        "content": record.extracted_text or "",
+    }
 
 
 def _module_project_ids(db: Session, module_id: str) -> list[str]:
@@ -250,7 +336,31 @@ def _build_student_project_map(db: Session, project_ids: list) -> dict:
     return {row.student_id: row.project_id for row in rows}
 
 
-def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+def _signal_to_out(
+    signal,
+    student_names: dict,
+    evidence_names: dict,
+    *,
+    db: Session | None = None,
+    include_documents: bool = False,
+) -> OverlapSignalOut:
+    detail = parse_signal_detail(signal.snippet)
+    confidence = round(float(signal.confidence or 0.0), 2)
+    status = detail.get("status")
+    if not status:
+        status = "confirmed" if confidence >= 0.68 else "possible"
+    integrity_type = detail.get("integrity_type") or "student_plagiarism"
+    if integrity_type == "ai":
+        view_mode = "single"
+    else:
+        view_mode = "side_by_side"
+    document_a = document_b = None
+    effective_flags = dedupe_student_flag_dicts(detail.get("flags") or [])
+    if include_documents and db is not None:
+        document_a, document_b, effective_flags = build_highlighted_documents(
+            db, signal, detail=detail
+        )
+    metrics = derive_signal_metrics(detail, confidence, integrity_type)
     return OverlapSignalOut(
         id=str(signal.id),
         student_a_id=str(signal.student_a_id),
@@ -262,14 +372,40 @@ def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> Overlap
         evidence_b_id=str(signal.evidence_b_id),
         evidence_b_name=evidence_names.get(signal.evidence_b_id, "Unknown evidence"),
         overlap_type=signal.overlap_type.value if signal.overlap_type else "textual",
-        confidence=round(float(signal.confidence or 0.0), 2),
-        snippet=signal.snippet,
+        confidence=confidence,
+        snippet=signal.snippet
+        if not detail
+        else detail.get("passage_a") or signal.snippet,
         detected_at=signal.detected_at,
+        status=status,
+        scope=detail.get("scope"),
+        passage_a=detail.get("passage_a"),
+        passage_b=detail.get("passage_b"),
+        document_a=document_a,
+        document_b=document_b,
+        group_a_id=detail.get("group_a_id"),
+        group_b_id=detail.get("group_b_id"),
+        group_a_name=detail.get("group_a_name"),
+        group_b_name=detail.get("group_b_name"),
+        ai_verified=detail.get("ai_verified"),
+        ai_explanation=detail.get("ai_explanation"),
+        detection_method=detail.get("detection_method"),
+        integrity_type=integrity_type,
+        flags=effective_flags or None,
+        view_mode=view_mode,
+        ai_content_percent=metrics.get("ai_content_percent"),
+        peak_ai_section_percent=metrics.get("peak_ai_section_percent"),
+        student_match_count=metrics.get("student_match_count"),
+        overlap_confidence_percent=metrics.get("overlap_confidence_percent"),
+        detection_confidence_percent=metrics.get("detection_confidence_percent"),
+        metrics_summary=metrics.get("metrics_summary"),
     )
 
 
 def _module_signal_context(db: Session, module: Module):
-    project_ids = [p.id for p in db.query(Project).filter(Project.module_id == module.id).all()]
+    project_ids = [
+        p.id for p in db.query(Project).filter(Project.module_id == module.id).all()
+    ]
     if not project_ids:
         return {}, {}
 
@@ -311,12 +447,16 @@ def _resolve_group_for_module(
     if project_id:
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project or project.module_id != module.id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+            )
         return project
     return _get_or_create_default_group(db, module)
 
 
-def _student_duplicate_in_module(db: Session, project_ids: list[str], student_number: str) -> bool:
+def _student_duplicate_in_module(
+    db: Session, project_ids: list[str], student_number: str
+) -> bool:
     if not project_ids:
         return False
     return (
@@ -340,7 +480,11 @@ def list_modules(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    modules = _visible_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
+    modules = (
+        _visible_modules_query(db, current_teacher)
+        .order_by(Module.created_at.desc())
+        .all()
+    )
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
@@ -372,7 +516,9 @@ def download_student_template(
     ws = wb.active
     ws.title = "Students"
 
-    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="1E293B", end_color="1E293B", fill_type="solid"
+    )
     header_font = Font(bold=True, color="FFFFFF", size=11)
     center = Alignment(horizontal="center", vertical="center")
     left = Alignment(horizontal="left", vertical="center")
@@ -403,12 +549,12 @@ def download_student_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     # Add a few more empty rows for user input
@@ -422,7 +568,7 @@ def download_student_template(
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     ws.freeze_panes = "A2"
@@ -443,6 +589,7 @@ def download_student_template(
     )
 
     from datetime import date
+
     today = date.today().strftime("%Y-%m-%d")
     filename = f"student_import_template_{today}.xlsx"
 
@@ -478,38 +625,49 @@ def download_rubric_template(
     ws.title = "Rubric"
 
     # Define styles
-    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="1E293B", end_color="1E293B", fill_type="solid"
+    )
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    
+
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    
+
     thin_border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
     )
 
     # Title
-    ws.merge_cells('A1:F1')
-    title_cell = ws['A1']
+    ws.merge_cells("A1:F1")
+    title_cell = ws["A1"]
     title_cell.value = "Scoring Rubric Template"
     title_cell.font = Font(bold=True, size=14, color="FFFFFF")
-    title_cell.fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    title_cell.fill = PatternFill(
+        start_color="0F172A", end_color="0F172A", fill_type="solid"
+    )
     title_cell.alignment = center
     ws.row_dimensions[1].height = 25
 
     # Instructions
-    ws.merge_cells('A2:F2')
-    instr_cell = ws['A2']
+    ws.merge_cells("A2:F2")
+    instr_cell = ws["A2"]
     instr_cell.value = "Fill in your assessment criteria and define proficiency levels. You can add more criteria rows as needed."
     instr_cell.font = Font(italic=True, size=9, color="64748B")
     instr_cell.alignment = left
     ws.row_dimensions[2].height = 18
 
     # Column headers (row 3)
-    headers = ["Criteria", "Excellent (4)", "Good (3)", "Fair (2)", "Poor (1)", "Max Points"]
+    headers = [
+        "Criteria",
+        "Excellent (4)",
+        "Good (3)",
+        "Fair (2)",
+        "Poor (1)",
+        "Max Points",
+    ]
     col_widths = [20, 15, 15, 15, 15, 12]
 
     for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
@@ -524,9 +682,30 @@ def download_rubric_template(
 
     # Example criteria rows
     example_data = [
-        ["Content Accuracy", "All facts accurate and well-researched", "Most facts accurate", "Some inaccuracies present", "Multiple errors", 4],
-        ["Organization", "Clear structure with logical flow", "Generally well-organized", "Somewhat disorganized", "Confusing structure", 4],
-        ["Clarity", "Very clear and easy to understand", "Mostly clear communication", "Some unclear sections", "Difficult to understand", 3],
+        [
+            "Content Accuracy",
+            "All facts accurate and well-researched",
+            "Most facts accurate",
+            "Some inaccuracies present",
+            "Multiple errors",
+            4,
+        ],
+        [
+            "Organization",
+            "Clear structure with logical flow",
+            "Generally well-organized",
+            "Somewhat disorganized",
+            "Confusing structure",
+            4,
+        ],
+        [
+            "Clarity",
+            "Very clear and easy to understand",
+            "Mostly clear communication",
+            "Some unclear sections",
+            "Difficult to understand",
+            3,
+        ],
     ]
 
     for row_idx, row_data in enumerate(example_data, start=4):
@@ -535,13 +714,13 @@ def download_rubric_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Add empty rows for user input (rows 7-15)
@@ -556,33 +735,37 @@ def download_rubric_template(
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Summary section (row 17)
     ws.row_dimensions[17].height = 2  # Empty row
 
-    ws.merge_cells('A18:F18')
-    summary_header = ws['A18']
+    ws.merge_cells("A18:F18")
+    summary_header = ws["A18"]
     summary_header.value = "Scoring Summary"
     summary_header.font = Font(bold=True, size=11, color="FFFFFF")
-    summary_header.fill = PatternFill(start_color="64748B", end_color="64748B", fill_type="solid")
+    summary_header.fill = PatternFill(
+        start_color="64748B", end_color="64748B", fill_type="solid"
+    )
     summary_header.alignment = center
     summary_header.border = thin_border
     ws.row_dimensions[18].height = 18
 
     # Total points row
-    ws.merge_cells('A19:E19')
-    total_label = ws['A19']
+    ws.merge_cells("A19:E19")
+    total_label = ws["A19"]
     total_label.value = "Total Points Possible"
     total_label.font = Font(bold=True, size=10)
     total_label.alignment = Alignment(horizontal="right", vertical="center")
     total_label.border = thin_border
-    
-    total_cell = ws['F19']
+
+    total_cell = ws["F19"]
     total_cell.value = "=SUM(F4:F15)"  # Sum of max points
     total_cell.font = Font(bold=True, size=10, color="FFFFFF")
-    total_cell.fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    total_cell.fill = PatternFill(
+        start_color="1E293B", end_color="1E293B", fill_type="solid"
+    )
     total_cell.alignment = center
     total_cell.border = thin_border
     ws.row_dimensions[19].height = 18
@@ -607,6 +790,7 @@ def download_rubric_template(
     )
 
     from datetime import date
+
     today = date.today().strftime("%Y-%m-%d")
     filename = f"rubric_template_{today}.xlsx"
 
@@ -615,6 +799,9 @@ def download_rubric_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
 def create_module(
     payload: ModuleCreate,
     request: Request,
@@ -704,7 +891,9 @@ def rename_module(
     return _module_to_out(module, project_count, student_count, db)
 
 
-@router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module")
+@router.delete(
+    "/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module"
+)
 def delete_module(
     module_id: str,
     request: Request,
@@ -714,7 +903,6 @@ def delete_module(
     """Permanently delete a module and all its groups. Students who belong only
     to this module (and no other) are also deleted along with their evidence."""
     from pathlib import Path
-    from app.services.module_service import RUBRIC_UPLOAD_DIR
 
     EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
@@ -724,12 +912,18 @@ def delete_module(
     project_ids = _module_project_ids(db, module.id)
 
     # Collect student_ids enrolled in this module
-    student_ids = [
-        row.student_id
-        for row in db.execute(
-            student_projects.select().where(student_projects.c.project_id.in_(project_ids))
-        ).all()
-    ] if project_ids else []
+    student_ids = (
+        [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(
+                    student_projects.c.project_id.in_(project_ids)
+                )
+            ).all()
+        ]
+        if project_ids
+        else []
+    )
 
     # Remove student_projects associations for this module's projects
     if project_ids:
@@ -741,7 +935,8 @@ def delete_module(
 
     # Find students who are now orphaned (no remaining project associations)
     orphaned_ids = [
-        sid for sid in student_ids
+        sid
+        for sid in student_ids
         if not db.execute(
             student_projects.select().where(student_projects.c.student_id == sid)
         ).first()
@@ -782,7 +977,9 @@ def delete_module(
 
     # Delete rubric file on disk
     if module.rubric_file_id:
-        rubric_record = db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+        rubric_record = (
+            db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+        )
         if rubric_record:
             try:
                 rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_record.path
@@ -795,7 +992,9 @@ def delete_module(
                 pass
 
     deleted_module_id = str(module.id)
-    db.query(Project).filter(Project.module_id == module.id).delete(synchronize_session=False)
+    db.query(Project).filter(Project.module_id == module.id).delete(
+        synchronize_session=False
+    )
     db.delete(module)
 
     audit_service.log_action(
@@ -834,7 +1033,9 @@ def upload_rubric(
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
     previous_rubric = (
-        db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
+        db.query(FileRecord)
+        .filter(FileRecord.id == module_before.rubric_file_id)
+        .first()
         if module_before.rubric_file_id
         else None
     )
@@ -861,8 +1062,12 @@ def upload_rubric(
         details={
             "module_id": str(module.id),
             "module_name": module.name,
-            "rubric_name": current_rubric.file_name if current_rubric else (file.filename or "rubric"),
-            "previous_rubric_name": previous_rubric.file_name if previous_rubric else None,
+            "rubric_name": current_rubric.file_name
+            if current_rubric
+            else (file.filename or "rubric"),
+            "previous_rubric_name": previous_rubric.file_name
+            if previous_rubric
+            else None,
             "operation": "replace" if is_replace else "upload",
             "where": "Module > Rubric",
             "route": "/api/v1/modules/{module_id}/rubric",
@@ -883,7 +1088,9 @@ def delete_rubric(
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
     previous_rubric = (
-        db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
+        db.query(FileRecord)
+        .filter(FileRecord.id == module_before.rubric_file_id)
+        .first()
         if module_before.rubric_file_id
         else None
     )
@@ -912,183 +1119,6 @@ def delete_rubric(
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# ---------------------------------------------------------------------------
-# Module book upload
-# ---------------------------------------------------------------------------
-
-
-@router.post("/{module_id}/module-book", response_model=ModuleOut)
-def upload_module_book(
-    module_id: str,
-    request: Request,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_teacher: Teacher = Depends(get_current_teacher),
-):
-    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
-    previous_module_book = (
-        db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
-        if module_before.module_book_id
-        else None
-    )
-
-    module = ModuleService.upload_module_book(
-        module_id,
-        file,
-        current_teacher.id,
-        db,
-        is_admin=current_teacher.is_admin,
-    )
-
-    current_module_book = (
-        db.query(FileRecord).filter(FileRecord.id == module.module_book_id).first()
-        if module.module_book_id
-        else None
-    )
-    is_replace = previous_module_book is not None
-    audit_service.log_action(
-        db,
-        action="module_book.replaced" if is_replace else "module_book.uploaded",
-        teacher_id=current_teacher.id,
-        teacher_name=current_teacher.name,
-        details={
-            "module_id": str(module.id),
-            "module_name": module.name,
-            "module_book_name": (
-                current_module_book.file_name
-                if current_module_book
-                else (file.filename or "module-book")
-            ),
-            "previous_module_book_name": (
-                previous_module_book.file_name if previous_module_book else None
-            ),
-            "operation": "replace" if is_replace else "upload",
-            "where": "Module > Module Book",
-            "route": "/api/v1/modules/{module_id}/module-book",
-        },
-        ip_address=request.client.host if request.client else None,
-    )
-
-    project_count, student_count = _module_project_counts(db, module.id)
-    return _module_to_out(module, project_count, student_count, db)
-
-
-@router.delete("/{module_id}/module-book", status_code=status.HTTP_204_NO_CONTENT)
-def delete_module_book(
-    module_id: str,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_teacher: Teacher = Depends(get_current_teacher),
-):
-    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
-    previous_module_book = (
-        db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
-        if module_before.module_book_id
-        else None
-    )
-
-    ModuleService.delete_module_book(
-        module_id,
-        current_teacher.id,
-        db,
-        is_admin=current_teacher.is_admin,
-    )
-
-    audit_service.log_action(
-        db,
-        action="module_book.deleted",
-        teacher_id=current_teacher.id,
-        teacher_name=current_teacher.name,
-        details={
-            "module_id": str(module_before.id),
-            "module_name": module_before.name,
-            "module_book_name": (
-                previous_module_book.file_name if previous_module_book else None
-            ),
-            "operation": "delete",
-            "where": "Module > Module Book",
-            "route": "/api/v1/modules/{module_id}/module-book",
-        },
-        ip_address=request.client.host if request.client else None,
-    )
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# ---------------------------------------------------------------------------
-# Serve module documents (rubric / module book) for in-app viewing (FR-03)
-# ---------------------------------------------------------------------------
-
-
-def _serve_module_document(
-    db: Session,
-    *,
-    module: Module,
-    file_id,
-    base_dir,
-    kind: str,
-    missing_detail: str,
-    request: Request,
-    teacher: Teacher,
-) -> FileResponse:
-    """Return the stored module document inline, logging a 'document.viewed'
-    audit entry. Visibility has already been enforced by the caller via
-    ``_get_visible_module_or_404``."""
-    if not file_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
-
-    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
-    if not record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
-
-    full_path = _module_file_path(base_dir, module.id, record.path)
-    if not full_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Document file not found on disk",
-        )
-
-    media_type, _ = mimetypes.guess_type(record.file_name or record.path)
-
-    audit_service.log_action(
-        db,
-        action="document.viewed",
-        teacher_id=teacher.id,
-        teacher_name=teacher.name,
-        details={
-            "kind": kind,
-            "module_id": str(module.id),
-            "file_id": str(record.id),
-            "file_name": record.file_name,
-        },
-        ip_address=request.client.host if request.client else None,
-    )
-
-    return FileResponse(
-        path=str(full_path),
-        media_type=media_type or "application/octet-stream",
-        filename=record.file_name,
-        content_disposition_type="inline",
-    )
-
-
-def _module_document_content(
-    db: Session, *, file_id, missing_detail: str
-) -> dict:
-    """Return the extracted plain text for a module document (used to preview
-    .docx module books, which browsers can't render inline)."""
-    if not file_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
-    record = db.query(FileRecord).filter(FileRecord.id == file_id).first()
-    if not record:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
-    return {
-        "id": str(record.id),
-        "file_name": record.file_name,
-        "content": record.extracted_text or "",
-    }
 
 
 @router.get("/{module_id}/rubric/file", summary="View or download the module rubric")
@@ -1163,6 +1193,113 @@ def get_module_book_content(
 
 
 # ---------------------------------------------------------------------------
+# Module book upload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{module_id}/module-book", response_model=ModuleOut)
+def upload_module_book(
+    module_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_module_book = (
+        db.query(FileRecord)
+        .filter(FileRecord.id == module_before.module_book_id)
+        .first()
+        if module_before.module_book_id
+        else None
+    )
+
+    module = ModuleService.upload_module_book(
+        module_id,
+        file,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
+
+    current_module_book = (
+        db.query(FileRecord).filter(FileRecord.id == module.module_book_id).first()
+        if module.module_book_id
+        else None
+    )
+    is_replace = previous_module_book is not None
+    audit_service.log_action(
+        db,
+        action="module_book.replaced" if is_replace else "module_book.uploaded",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "module_book_name": (
+                current_module_book.file_name
+                if current_module_book
+                else (file.filename or "module-book")
+            ),
+            "previous_module_book_name": (
+                previous_module_book.file_name if previous_module_book else None
+            ),
+            "operation": "replace" if is_replace else "upload",
+            "where": "Module > Module Book",
+            "route": "/api/v1/modules/{module_id}/module-book",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.delete("/{module_id}/module-book", status_code=status.HTTP_204_NO_CONTENT)
+def delete_module_book(
+    module_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    previous_module_book = (
+        db.query(FileRecord)
+        .filter(FileRecord.id == module_before.module_book_id)
+        .first()
+        if module_before.module_book_id
+        else None
+    )
+
+    ModuleService.delete_module_book(
+        module_id,
+        current_teacher.id,
+        db,
+        is_admin=current_teacher.is_admin,
+    )
+
+    audit_service.log_action(
+        db,
+        action="module_book.deleted",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module_before.id),
+            "module_name": module_before.name,
+            "module_book_name": (
+                previous_module_book.file_name if previous_module_book else None
+            ),
+            "operation": "delete",
+            "where": "Module > Module Book",
+            "route": "/api/v1/modules/{module_id}/module-book",
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
 # Groups inside a module
 # ---------------------------------------------------------------------------
 
@@ -1189,7 +1326,9 @@ def list_module_groups(
     # Group student counts by project
     student_count_by_project: dict = {}
     for project_id in student_project_map.values():
-        student_count_by_project[project_id] = student_count_by_project.get(project_id, 0) + 1
+        student_count_by_project[project_id] = (
+            student_count_by_project.get(project_id, 0) + 1
+        )
 
     # Count evidence files per project via student membership and shared project evidence.
     student_ids_by_project: dict = {}
@@ -1199,16 +1338,22 @@ def list_module_groups(
     all_student_ids = list(student_project_map.keys())
     file_counts: dict = {}
     if all_student_ids:
-        for sid, cnt in db.query(Evidence.student_id, func.count(Evidence.id)).filter(
-            Evidence.student_id.in_(all_student_ids)
-        ).group_by(Evidence.student_id).all():
+        for sid, cnt in (
+            db.query(Evidence.student_id, func.count(Evidence.id))
+            .filter(Evidence.student_id.in_(all_student_ids))
+            .group_by(Evidence.student_id)
+            .all()
+        ):
             pid = student_project_map.get(sid)
             if pid is not None:
                 file_counts[pid] = file_counts.get(pid, 0) + cnt
 
-    for pid, cnt in db.query(Evidence.project_id, func.count(Evidence.id)).filter(
-        Evidence.project_id.in_(project_ids)
-    ).group_by(Evidence.project_id).all():
+    for pid, cnt in (
+        db.query(Evidence.project_id, func.count(Evidence.id))
+        .filter(Evidence.project_id.in_(project_ids))
+        .group_by(Evidence.project_id)
+        .all()
+    ):
         file_counts[pid] = file_counts.get(pid, 0) + cnt
 
     return [
@@ -1221,7 +1366,11 @@ def list_module_groups(
     ]
 
 
-@router.post("/{module_id}/groups", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{module_id}/groups",
+    response_model=ProjectOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_module_group(
     module_id: str,
     payload: ModuleGroupCreate,
@@ -1279,10 +1428,14 @@ def update_module_group(
         .first()
     )
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
     updates = payload.model_fields_set
     if not updates:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No group updates provided"
+        )
 
     old_name = group.name
     old_group_name = group.group_name
@@ -1300,11 +1453,15 @@ def update_module_group(
         student_ids = [
             row.student_id
             for row in db.execute(
-                student_projects.select().where(student_projects.c.project_id == group.id)
+                student_projects.select().where(
+                    student_projects.c.project_id == group.id
+                )
             ).all()
         ]
         if student_ids:
-            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+            for student in (
+                db.query(Student).filter(Student.student_number.in_(student_ids)).all()
+            ):
                 student.github_repo_url = payload.github_repo_url
 
     if "github_branch" in updates:
@@ -1314,11 +1471,15 @@ def update_module_group(
         student_ids = [
             row.student_id
             for row in db.execute(
-                student_projects.select().where(student_projects.c.project_id == group.id)
+                student_projects.select().where(
+                    student_projects.c.project_id == group.id
+                )
             ).all()
         ]
         if student_ids:
-            for student in db.query(Student).filter(Student.student_number.in_(student_ids)).all():
+            for student in (
+                db.query(Student).filter(Student.student_number.in_(student_ids)).all()
+            ):
                 student.github_branch = payload.github_branch
 
     repo_removed = old_github_repo_url is not None and group.github_repo_url is None
@@ -1341,7 +1502,9 @@ def update_module_group(
             "repo_added": repo_added,
             "old_github_branch": old_github_branch,
             "new_github_branch": group.github_branch,
-            "branch_changed": old_github_branch != group.github_branch and not repo_removed and not repo_added,
+            "branch_changed": old_github_branch != group.github_branch
+            and not repo_removed
+            and not repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -1350,9 +1513,11 @@ def update_module_group(
     db.commit()
     db.refresh(group)
 
-    student_count = db.query(student_projects).filter(
-        student_projects.c.project_id == group.id
-    ).count()
+    student_count = (
+        db.query(student_projects)
+        .filter(student_projects.c.project_id == group.id)
+        .count()
+    )
     student_ids = [
         row.student_id
         for row in db.execute(
@@ -1390,7 +1555,9 @@ def delete_module_group(
         .first()
     )
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     group_name = group.group_name or group.name  # Capture before deletion
 
@@ -1402,7 +1569,9 @@ def delete_module_group(
 
     default_group = _get_or_create_default_group(db, module)
 
-    project_evidence_records = db.query(Evidence).filter(Evidence.project_id == group.id).all()
+    project_evidence_records = (
+        db.query(Evidence).filter(Evidence.project_id == group.id).all()
+    )
     for ev in project_evidence_records:
         try:
             file_path = EVIDENCE_UPLOAD_DIR / ev.file_path
@@ -1428,25 +1597,30 @@ def delete_module_group(
     if student_ids_in_group:
         # Remove existing associations with the deleted group
         db.execute(
-            student_projects.delete().where(
-                student_projects.c.project_id == group.id
-            )
+            student_projects.delete().where(student_projects.c.project_id == group.id)
         )
         # Add associations to the default group (skip if already there)
         already_in_default = {
             row.student_id
             for row in db.execute(
-                student_projects.select().where(student_projects.c.project_id == default_group.id)
+                student_projects.select().where(
+                    student_projects.c.project_id == default_group.id
+                )
             ).all()
         }
         for sid in student_ids_in_group:
             if sid not in already_in_default:
                 db.execute(
-                    student_projects.insert().values(student_id=sid, project_id=default_group.id)
+                    student_projects.insert().values(
+                        student_id=sid, project_id=default_group.id
+                    )
                 )
 
-        # Preserve group-level repo consistency after moving members.
-        for student in db.query(Student).filter(Student.student_number.in_(student_ids_in_group)).all():
+        for student in (
+            db.query(Student)
+            .filter(Student.student_number.in_(student_ids_in_group))
+            .all()
+        ):
             student.github_repo_url = default_group.github_repo_url
             student.github_branch = default_group.github_branch
 
@@ -1489,20 +1663,29 @@ def list_module_students(
     module = _get_visible_module_or_404(db, module_id, current_teacher)
     project_ids = _module_project_ids(db, module.id)
     students = (
-        db.query(Student)
-        .join(student_projects, Student.student_number == student_projects.c.student_id)
-        .filter(student_projects.c.project_id.in_(project_ids))
-        .order_by(Student.name)
-        .all()
-    ) if project_ids else []
+        (
+            db.query(Student)
+            .join(
+                student_projects,
+                Student.student_number == student_projects.c.student_id,
+            )
+            .filter(student_projects.c.project_id.in_(project_ids))
+            .order_by(Student.name)
+            .all()
+        )
+        if project_ids
+        else []
+    )
 
     student_project_map = _build_student_project_map(db, project_ids)
 
     latest_assessment: dict = {}
     if students:
-        for a in db.query(Assessment).filter(
-            Assessment.student_id.in_([s.student_number for s in students])
-        ).all():
+        for a in (
+            db.query(Assessment)
+            .filter(Assessment.student_id.in_([s.student_number for s in students]))
+            .all()
+        ):
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
@@ -1511,13 +1694,19 @@ def list_module_students(
             s,
             _assessment_status(latest_assessment.get(s.student_number)),
             _assessment_grade(latest_assessment.get(s.student_number)),
-            project_id=str(student_project_map[s.student_number]) if s.student_number in student_project_map else None,
+            project_id=str(student_project_map[s.student_number])
+            if s.student_number in student_project_map
+            else None,
         )
         for s in students
     ]
 
 
-@router.post("/{module_id}/students", response_model=StudentOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{module_id}/students",
+    response_model=StudentOut,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_module_student(
     module_id: str,
     payload: StudentCreate,
@@ -1538,11 +1727,19 @@ def add_module_student(
             detail="This group already has a GitHub repository. Use the group repository instead.",
         )
 
-    if _student_duplicate_in_module(db, _module_project_ids(db, module.id), payload.student_number):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+    if _student_duplicate_in_module(
+        db, _module_project_ids(db, module.id), payload.student_number
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL
+        )
 
     # Reuse existing student record if one with this number already exists
-    student = db.query(Student).filter(Student.student_number == payload.student_number).first()
+    student = (
+        db.query(Student)
+        .filter(Student.student_number == payload.student_number)
+        .first()
+    )
     if student is None:
         student = Student(name=payload.name, student_number=payload.student_number)
         db.add(student)
@@ -1563,7 +1760,9 @@ def add_module_student(
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL
+        )
     db.refresh(student)
 
     audit_service.log_action(
@@ -1612,7 +1811,10 @@ def move_student_to_group(
         .first()
     )
     if not student:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found in this module")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found in this module",
+        )
 
     if (
         payload.project_id is None
@@ -1621,7 +1823,10 @@ def move_student_to_group(
         and payload.status is None
         and "github_repo_url" not in payload.model_fields_set
     ):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No student updates provided")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No student updates provided",
+        )
 
     original_name = student.name
     original_number = student.student_number
@@ -1643,7 +1848,10 @@ def move_student_to_group(
             .first()
         )
         if not target:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found in this module")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Group not found in this module",
+            )
 
         # Move student from current group(s) in this module to the target group
         db.execute(
@@ -1653,11 +1861,17 @@ def move_student_to_group(
             )
         )
         db.execute(
-            student_projects.insert().values(student_id=student.student_number, project_id=target.id)
+            student_projects.insert().values(
+                student_id=student.student_number, project_id=target.id
+            )
         )
 
         if target.github_repo_url is not None:
-            requested_repo = payload.github_repo_url if "github_repo_url" in payload.model_fields_set else None
+            requested_repo = (
+                payload.github_repo_url
+                if "github_repo_url" in payload.model_fields_set
+                else None
+            )
             if requested_repo is not None and requested_repo != target.github_repo_url:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -1674,17 +1888,21 @@ def move_student_to_group(
         if _student_duplicate_in_module(db, project_ids, payload.student_number):
             existing = (
                 db.query(Student)
-                .join(student_projects, Student.student_number == student_projects.c.student_id)
+                .join(
+                    student_projects,
+                    Student.student_number == student_projects.c.student_id,
+                )
                 .filter(
                     student_projects.c.project_id.in_(project_ids),
                     Student.student_number == payload.student_number,
                     Student.student_number != student.student_number,
                 )
-
                 .first()
             )
             if existing:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL
+                )
         student.student_number = payload.student_number
 
     if payload.status is not None:
@@ -1708,8 +1926,12 @@ def move_student_to_group(
         if old_project_id
         else None
     )
-    student_repo_removed = old_github_repo_url is not None and student.github_repo_url is None
-    student_repo_added = old_github_repo_url is None and student.github_repo_url is not None
+    student_repo_removed = (
+        old_github_repo_url is not None and student.github_repo_url is None
+    )
+    student_repo_added = (
+        old_github_repo_url is None and student.github_repo_url is not None
+    )
     audit_service.log_action(
         db,
         action="student.updated",
@@ -1719,8 +1941,12 @@ def move_student_to_group(
             "module_id": str(module.id),
             "module_name": module.name,
             "student_id": original_number,
-            "student_name": original_name if original_name == student.name else f"{original_name} → {student.name}",
-            "old_group_name": old_group.group_name or old_group.name if old_group else None,
+            "student_name": original_name
+            if original_name == student.name
+            else f"{original_name} ÔåÆ {student.name}",
+            "old_group_name": old_group.group_name or old_group.name
+            if old_group
+            else None,
             "new_group_name": target.group_name or target.name if target else None,
             "old_student_number": original_number,
             "new_student_number": student.student_number,
@@ -1733,7 +1959,9 @@ def move_student_to_group(
             "repo_added": student_repo_added,
             "old_github_branch": old_github_branch,
             "new_github_branch": student.github_branch,
-            "branch_changed": old_github_branch != student.github_branch and not student_repo_removed and not student_repo_added,
+            "branch_changed": old_github_branch != student.github_branch
+            and not student_repo_removed
+            and not student_repo_added,
         },
         ip_address=request.client.host if request.client else None,
         commit=False,
@@ -1779,7 +2007,10 @@ async def import_module_students(
         s.student_number
         for s in (
             db.query(Student)
-            .join(student_projects, Student.student_number == student_projects.c.student_id)
+            .join(
+                student_projects,
+                Student.student_number == student_projects.c.student_id,
+            )
             .filter(student_projects.c.project_id.in_(module_project_ids))
             .all()
         )
@@ -1795,19 +2026,45 @@ async def import_module_students(
         number = row.student_number.strip()
 
         if not name:
-            errors.append(ImportRowError(row=row.row_number, student_number=number or None, message="Missing name"))
+            errors.append(
+                ImportRowError(
+                    row=row.row_number,
+                    student_number=number or None,
+                    message="Missing name",
+                )
+            )
             continue
         if not number:
-            errors.append(ImportRowError(row=row.row_number, message="Missing student number"))
+            errors.append(
+                ImportRowError(row=row.row_number, message="Missing student number")
+            )
             continue
         if not number.isdigit():
-            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number must contain digits only"))
+            errors.append(
+                ImportRowError(
+                    row=row.row_number,
+                    student_number=number,
+                    message="Student number must contain digits only",
+                )
+            )
             continue
         if number in seen:
-            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Duplicate student number in file"))
+            errors.append(
+                ImportRowError(
+                    row=row.row_number,
+                    student_number=number,
+                    message="Duplicate student number in file",
+                )
+            )
             continue
         if number in existing_numbers:
-            errors.append(ImportRowError(row=row.row_number, student_number=number, message="Student number already exists in this module"))
+            errors.append(
+                ImportRowError(
+                    row=row.row_number,
+                    student_number=number,
+                    message="Student number already exists in this module",
+                )
+            )
             continue
 
         seen.add(number)
@@ -1852,13 +2109,43 @@ async def import_module_students(
 @router.get("/{module_id}/overlap/signals", response_model=List[OverlapSignalOut])
 def list_module_overlap_signals(
     module_id: str,
+    status: Optional[str] = Query(None, description="confirmed or possible"),
+    scope: Optional[str] = Query(None, description="within_group or cross_group"),
+    group_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-    signals = OverlapService.get_module_signals(db, str(module.id))
+    signals = OverlapService.get_module_signals(
+        db,
+        str(module.id),
+        status=status,
+        scope=scope,
+        group_id=group_id,
+    )
     student_names, evidence_names = _module_signal_context(db, module)
     return [_signal_to_out(signal, student_names, evidence_names) for signal in signals]
+
+
+@router.get("/{module_id}/overlap/signals/{signal_id}", response_model=OverlapSignalOut)
+def get_module_overlap_signal(
+    module_id: str,
+    signal_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signal = OverlapService.get_signal(db, str(module.id), signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="Overlap signal not found")
+    student_names, evidence_names = _module_signal_context(db, module)
+    return _signal_to_out(
+        signal,
+        student_names,
+        evidence_names,
+        db=db,
+        include_documents=True,
+    )
 
 
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)
@@ -1892,7 +2179,10 @@ def analyze_module_overlap(
         module_id=str(module.id),
         generated_count=len(generated),
         warning=OverlapWarningOut(**warning_data),
-        signals=[_signal_to_out(signal, student_names, evidence_names) for signal in generated],
+        signals=[
+            _signal_to_out(signal, student_names, evidence_names)
+            for signal in generated
+        ],
     )
 
 
@@ -1937,14 +2227,47 @@ def export_grades_excel(
         )
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-    grade_rows, _, _ = _collect_grade_rows(db, module)
+
+    projects = db.query(Project).filter(Project.module_id == module.id).all()
+    project_ids = [p.id for p in projects]
+    project_name_by_id = {p.id: p.name for p in projects}
+
+    students = (
+        (
+            db.query(Student)
+            .join(
+                student_projects,
+                Student.student_number == student_projects.c.student_id,
+            )
+            .filter(student_projects.c.project_id.in_(project_ids))
+            .order_by(Student.name)
+            .all()
+        )
+        if project_ids
+        else []
+    )
+
+    student_project_map = _build_student_project_map(db, project_ids)
+
+    latest_assessment: dict = {}
+    if students:
+        for a in (
+            db.query(Assessment)
+            .filter(Assessment.student_id.in_([s.student_number for s in students]))
+            .all()
+        ):
+            existing = latest_assessment.get(a.student_id)
+            if existing is None or a.created_at > existing.created_at:
+                latest_assessment[a.student_id] = a
 
     # Build workbook
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Grades"
 
-    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_fill = PatternFill(
+        start_color="1E293B", end_color="1E293B", fill_type="solid"
+    )
     header_font = Font(bold=True, color="FFFFFF", size=11)
     center = Alignment(horizontal="center", vertical="center")
 
@@ -1961,13 +2284,18 @@ def export_grades_excel(
 
     ws.row_dimensions[1].height = 22
 
-    for row_idx, row in enumerate(grade_rows, start=2):
+    for row_idx, student in enumerate(students, start=2):
+        assessment = latest_assessment.get(student.student_number)
+        grade = _assessment_grade(assessment) or "—"
+        group_pid = student_project_map.get(student.student_number)
+        group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
+
         row_data = [
-            row["student_number"],
-            row["name"],
+            student.student_number or "—",
+            student.name,
             module.name,
-            row["group_name"],
-            row["grade"],
+            group_name,
+            grade,
         ]
 
         row_fill = PatternFill(
@@ -2001,13 +2329,16 @@ def export_grades_excel(
         details={
             "module_id": str(module.id),
             "module_name": module.name,
-            "student_count": len(grade_rows),
+            "student_count": len(students),
         },
         ip_address=request.client.host if request.client else None,
     )
 
     from datetime import date
-    safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in module.name).strip("_")
+
+    safe_name = "".join(
+        c if c.isalnum() or c in "_-" else "_" for c in module.name
+    ).strip("_")
     today = date.today().strftime("%Y-%m-%d")
     filename = f"{safe_name}_{today}.xlsx"
 
@@ -2016,7 +2347,6 @@ def export_grades_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
 
 # ---------------------------------------------------------------------------
 # Module archive export (Group Overview Report)

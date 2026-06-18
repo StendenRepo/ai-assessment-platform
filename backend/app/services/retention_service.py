@@ -155,8 +155,6 @@ def create_generation_retention_reminders(
 
     db.commit()
     return created
-
-
 def purge_expired_recordings(db: Session, *, now: datetime | None = None) -> int:
     """Permanently remove recordings whose deletion date has passed (G2-141).
 
