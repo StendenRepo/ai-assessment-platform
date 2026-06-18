@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, ClipboardList, FileText, Settings, Users } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  FileText,
+  Settings,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import Header from '@/components/layout/Header';

@@ -31,8 +31,6 @@ def _normalize_github_repo_url(value: Optional[str]) -> Optional[str]:
         raise ValueError("github_repo_url must include owner and repository")
 
     return f"https://github.com/{owner}/{repo}"
-
-
 class StudentCreate(BaseModel):
     name: str
     student_number: str
@@ -59,7 +57,6 @@ class StudentCreate(BaseModel):
     @classmethod
     def _normalize_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
-
 
 class StudentOut(BaseModel):
     id: str

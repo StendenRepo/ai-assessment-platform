@@ -31,8 +31,6 @@ def _normalize_github_repo_url(value: Optional[str]) -> Optional[str]:
         raise ValueError("github_repo_url must include owner and repository")
 
     return f"https://github.com/{owner}/{repo}"
-
-
 class RubricFileOut(BaseModel):
     id: str
     file_name: Optional[str] = None
@@ -76,7 +74,6 @@ class ModuleGroupCreate(BaseModel):
     def _normalize_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
 
-
 class ModuleGroupUpdate(BaseModel):
     name: Optional[str] = None
     group_name: Optional[str] = None
@@ -97,7 +94,6 @@ class ModuleGroupUpdate(BaseModel):
     @classmethod
     def _normalize_group_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
-
 
 class StudentGroupUpdate(BaseModel):
     project_id: Optional[str] = None
@@ -131,7 +127,6 @@ class StudentGroupUpdate(BaseModel):
     @classmethod
     def _normalize_student_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
-
 
 class ModuleOut(BaseModel):
     id: str

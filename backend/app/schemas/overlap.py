@@ -18,6 +18,28 @@ class OverlapSignalOut(BaseModel):
     confidence: float
     snippet: Optional[str] = None
     detected_at: datetime
+    status: Optional[str] = None
+    scope: Optional[str] = None
+    passage_a: Optional[str] = None
+    passage_b: Optional[str] = None
+    document_a: Optional[str] = None
+    document_b: Optional[str] = None
+    group_a_id: Optional[str] = None
+    group_b_id: Optional[str] = None
+    group_a_name: Optional[str] = None
+    group_b_name: Optional[str] = None
+    ai_verified: Optional[bool] = None
+    ai_explanation: Optional[str] = None
+    detection_method: Optional[str] = None
+    integrity_type: Optional[str] = None
+    flags: Optional[List[dict]] = None
+    view_mode: Optional[str] = None
+    ai_content_percent: Optional[int] = None
+    peak_ai_section_percent: Optional[int] = None
+    student_match_count: Optional[int] = None
+    overlap_confidence_percent: Optional[int] = None
+    detection_confidence_percent: Optional[int] = None
+    metrics_summary: Optional[str] = None
 
 
 class OverlapWarningOut(BaseModel):

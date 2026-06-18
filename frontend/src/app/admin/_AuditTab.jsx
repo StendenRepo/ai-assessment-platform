@@ -71,7 +71,6 @@ function detailEntries(details, action = '') {
       }
     }
   });
-
   const prioritized = [];
   if (clone.where) prioritized.push(['Where', clone.where]);
   if (clone.operation) {
@@ -269,32 +268,56 @@ export function AuditTab() {
       {selected && (
         <Modal title="Activity Details" onClose={() => setSelected(null)}>
           <div className="space-y-3">
-            {/* Metadata Section */}
-            <div className="space-y-3 pb-3 border-b border-border">
-              <EventMetaRow
-                label="When"
-                value={
-                  selected.timestamp
-                    ? new Date(selected.timestamp).toLocaleString()
-                    : '—'
-                }
-              />
-              <EventMetaRow
-                label="By"
-                value={selected.teacher_name || 'System'}
-              />
-              <EventMetaRow
-                label="Type"
-                value={formatAction(selected.action)}
-              />
-              <EventMetaRow
-                label="Source"
-                value={sourceLabel(selected.source)}
-              />
-            </div>
+            <EventMetaRow
+              label="When"
+              value={
+                selected.timestamp
+                  ? new Date(selected.timestamp).toLocaleString()
+                  : '—'
+              }
+            />
+            <EventMetaRow
+              label="By"
+              value={selected.teacher_name || 'System'}
+            />
+            <EventMetaRow label="Type" value={formatAction(selected.action)} />
+            <EventMetaRow label="Source" value={sourceLabel(selected.source)} />
 
             {detailEntries(selected.details_json).length > 0 && (
               <>
+                <div className="pt-2 border-t border-border" />
+                {detailEntries(selected.details_json, selected.action).map(
+                  ([label, value]) => (
+                    <EventMetaRow
+                      key={label}
+                      label={label}
+                      value={String(value)}
+                    />
+                  )
+                )}
+                {/* Metadata Section */}
+                <div className="space-y-3 pb-3 border-b border-border">
+                  <EventMetaRow
+                    label="When"
+                    value={
+                      selected.timestamp
+                        ? new Date(selected.timestamp).toLocaleString()
+                        : '—'
+                    }
+                  />
+                  <EventMetaRow
+                    label="By"
+                    value={selected.teacher_name || 'System'}
+                  />
+                  <EventMetaRow
+                    label="Type"
+                    value={formatAction(selected.action)}
+                  />
+                  <EventMetaRow
+                    label="Source"
+                    value={sourceLabel(selected.source)}
+                  />
+                </div>
                 {/* Main Details Sections */}
                 <div className="space-y-4">
                   {/* Name/Identity Changes */}
@@ -340,7 +363,6 @@ export function AuditTab() {
                       </div>
                     </div>
                   )}
-
                   {/* GitHub Related Changes */}
                   {detailEntries(selected.details_json, selected.action).filter(
                     ([label]) =>
@@ -370,7 +392,6 @@ export function AuditTab() {
                       </div>
                     </div>
                   )}
-
                   {/* Other Details */}
                   {detailEntries(selected.details_json, selected.action).filter(
                     ([label]) =>
