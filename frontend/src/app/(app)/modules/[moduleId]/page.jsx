@@ -488,7 +488,7 @@ export default function ModulePage() {
               className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download size={14} />
-              {exporting ? 'Exportingâ€¦' : 'Export Grades'}
+              {exporting ? 'Exporting...' : 'Export Grades'}
             </button>
             <button
               type="button"
@@ -705,7 +705,7 @@ export default function ModulePage() {
                           Grade
                         </div>
                         <div className="text-sm font-semibold text-foreground">
-                          {student.grade || 'â€”'}
+                          {student.grade || '-'}
                         </div>
                       </div>
                       <span
@@ -802,7 +802,7 @@ export default function ModulePage() {
               disabled={groupSubmitting}
               className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              {groupSubmitting ? 'Creatingâ€¦' : 'Create Group'}
+              {groupSubmitting ? 'Creating...' : 'Create Group'}
             </button>
           </form>
           <form
@@ -858,7 +858,7 @@ export default function ModulePage() {
               disabled={submitting}
               className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
             >
-              {submitting ? 'Addingâ€¦' : 'Add Student'}
+              {submitting ? 'Adding...' : 'Add Student'}
             </button>
           </form>
 
@@ -880,7 +880,7 @@ export default function ModulePage() {
                   onChange={(e) => setAssignStudentId(e.target.value)}
                   className={`${inputClass} cursor-pointer`}
                 >
-                  <option value="">â€” Select student â€”</option>
+                  <option value="">- Select student -</option>
                   {students.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.student_number})
@@ -897,7 +897,7 @@ export default function ModulePage() {
                   onChange={(e) => setAssignGroupId(e.target.value)}
                   className={`${inputClass} cursor-pointer`}
                 >
-                  <option value="">â€” Select group â€”</option>
+                  <option value="">- Select group -</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.name}
@@ -913,7 +913,7 @@ export default function ModulePage() {
                 disabled={assigning}
                 className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
               >
-                {assigning ? 'Assigningâ€¦' : 'Assign'}
+                {assigning ? 'Assigning...' : 'Assign'}
               </button>
             </form>
           )}
