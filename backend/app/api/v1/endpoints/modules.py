@@ -2204,7 +2204,7 @@ def export_module_archive(
 
         # Grades CSV — built from the shared _collect_grade_rows result
         grades_buf = _io.StringIO()
-        writer = csv.writer(grades_buf)
+        writer = csv.writer(grades_buf, delimiter=";")
         writer.writerow(["Student Number", "Student Name", "Module", "Group", "Grade"])
         for row in grade_rows:
             writer.writerow([
@@ -2214,7 +2214,7 @@ def export_module_archive(
                 row["group_name"],
                 row["grade"],
             ])
-        entries.append(("grades.csv", grades_buf.getvalue().encode("utf-8")))
+        entries.append(("grades.csv", grades_buf.getvalue().encode("utf-8-sig")))
 
         # README
         readme_lines = [
