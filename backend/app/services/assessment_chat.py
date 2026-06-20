@@ -37,6 +37,8 @@ from app.services.assessment_draft_core import (
     _reject_pending_proposals,
     _save_draft,
     _score_to_grade,
+    _unrefined_history_for_llm,
+    _unrefined_chat_messages,
 )
 from app.lib.llm_json import parse_json_response
 
@@ -106,13 +108,15 @@ def chat_propose_refine(
     assessment: Assessment,
     teacher: Teacher,
 ) -> dict[str, Any]:
-    """Generate a refinement proposal from the full conversation — does not mutate draft."""
+    """Generate a refinement proposal from unrefined chat messages — does not mutate draft."""
     _assert_editable(assessment)
     draft = _load_draft(assessment)
     _assert_has_suggestions(draft)
-
     history = list_chat_messages(db, assessment.id)
-    if not any(m.role == "teacher" for m in history):
+    fresh_messages = _unrefined_chat_messages(history)
+
+    refine_history = _unrefined_history_for_llm(history)
+    if not any(row["role"] == "user" for row in refine_history):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Discuss the assessment before refining — send at least one message first",
@@ -131,8 +135,9 @@ def chat_propose_refine(
                 + _context_block(ctx)
                 + "\n\nAvailable criteria (use criterion_key exactly):\n"
                 + catalog
-                + "\n\nBased on the conversation below, propose criterion updates grounded in evidence. "
-                "If the lecturer and assistant agreed on new scores, include every agreed change in updates[]."
+                + "\n\nBased only on the new conversation below, propose criterion updates grounded in evidence. "
+                  "Do not re-propose changes that were already applied in previous refinements. "
+                  "If the latest lecturer instruction mentions only one criterion, update only that criterion."
             ),
         },
         {
@@ -140,7 +145,7 @@ def chat_propose_refine(
             "content": "Ready to propose updates from the discussion.",
         },
     ]
-    chat_messages.extend(_history_for_llm(history))
+    chat_messages.extend(refine_history)
 
     raw = ollama_client.chat(
         chat_messages,
@@ -158,19 +163,19 @@ def chat_propose_refine(
         updates = parsed.get("updates") or []
         summary_update = parsed.get("summary")
 
-    proposed, _ = _build_proposed_changes(draft, updates, ctx)
-
-    if not proposed:
-        inferred = _infer_updates_from_conversation(history, draft, ctx)
-        if inferred:
-            proposed, _ = _build_proposed_changes(draft, inferred, ctx)
-            updates = inferred
+    # Deterministic teacher score commands (e.g. "change documentation to 10")
+    # take precedence over the model's proposal, which can be noisy or ignore
+    # the latest instruction.
+    inferred = _infer_updates_from_conversation(fresh_messages, draft, ctx)
+    if inferred:
+        proposed, _ = _build_proposed_changes(draft, inferred, ctx)
+        updates = inferred
+    else:
+        proposed, _ = _build_proposed_changes(draft, updates, ctx)
 
     if not proposed and not updates:
         convo_excerpt = "\n".join(
-            f"{m.role}: {m.content}"
-            for m in history[-10:]
-            if (m.metadata_json or {}).get("type") != "proposal"
+            f"{m['role']}: {m['content']}" for m in refine_history[-10:]
         )
         retry_raw = ollama_client.chat(
             [

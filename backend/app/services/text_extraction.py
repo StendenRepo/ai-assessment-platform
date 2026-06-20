@@ -1,11 +1,14 @@
-"""Plain-text extraction for uploaded documents (evidence, rubrics, module books).
+"""Best-effort plain-text extraction for module documents (rubrics, module books).
 
-``extract_document_text`` is best-effort (returns ``None`` on failure) for module
-documents where a failed parse must not block upload.
+Unlike ``evidence_service._extract_text`` (which raises HTTP 422 on a bad file),
+extraction here is *non-fatal*: a document that cannot be parsed yields ``None``
+and the upload still succeeds. That is deliberate for G2-105 slice (a) — nothing
+consumes this text yet, so a failed parse should never block a teacher from
+replacing a rubric or module book. The extracted text is what the AI retrieval
+(TF-IDF) will read once it is wired up; keeping it current on replace is the goal.
 
-``read_stored_evidence_text`` reads an evidence file from disk and returns text
-for overlap detection, AI grounding, and content APIs ? including PDF, Word,
-Excel, and markdown uploads.
+Supported extensions cover the formats the module endpoints accept:
+rubric (.pdf, .xlsx) and module book (.pdf, .docx).
 """
 
 from __future__ import annotations
@@ -50,7 +53,7 @@ def extract_document_text(raw: bytes, ext: str) -> str | None:
 
     *ext* is the lowercased extension including the leading dot (e.g. ".pdf").
     Returns ``None`` if the type is unsupported, the file cannot be parsed, or
-    the result is empty after stripping. Never raises.
+    the result is empty after stripping. Never raises — extraction is best-effort.
     """
     try:
         if ext == ".pdf":
@@ -66,6 +69,9 @@ def extract_document_text(raw: bytes, ext: str) -> str | None:
         else:
             return None
     except Exception:
+        # Intentionally silent: a real document that fails to parse leaves the
+        # teacher with no extracted text and no error. Acceptable for slice (a)
+        # because nothing reads this column yet; revisit when the AI consumes it.
         return None
 
     text = (text or "").strip()

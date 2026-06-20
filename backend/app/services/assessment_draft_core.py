@@ -308,6 +308,46 @@ def _history_for_llm(messages: list[ChatMessage]) -> list[dict[str, str]]:
         rows.append({"role": role, "content": msg.content})
     return rows
 
+def _unrefined_history_for_llm(messages: list[ChatMessage]) -> list[dict[str, str]]:
+    """Return chat messages after the latest applied refinement.
+
+    Normal chat can use full history, but refine should only consider new
+    lecturer instructions that have not already been applied.
+    """
+    latest_applied_index = -1
+
+    for index, msg in enumerate(messages):
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal" and meta.get("status") == "applied":
+            latest_applied_index = index
+
+    fresh_messages = messages[latest_applied_index + 1 :]
+
+    rows: list[dict[str, str]] = []
+    for msg in fresh_messages:
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal":
+            continue
+
+        role = "assistant" if msg.role == "assistant" else "user"
+        rows.append({"role": role, "content": msg.content})
+
+    return rows
+
+def _unrefined_chat_messages(messages: list[ChatMessage]) -> list[ChatMessage]:
+    latest_applied_index = -1
+
+    for index, msg in enumerate(messages):
+        meta = msg.metadata_json or {}
+        if meta.get("type") == "proposal" and meta.get("status") == "applied":
+            latest_applied_index = index
+
+    return [
+        msg
+        for msg in messages[latest_applied_index + 1 :]
+        if (msg.metadata_json or {}).get("type") != "proposal"
+    ]
+
 
 def _resolve_criterion_key(raw_key: str | None, defs_by_key: dict[str, dict]) -> Optional[str]:
     if not raw_key:
@@ -409,6 +449,7 @@ def _infer_updates_from_conversation(
             rf"(?:from|revised from)\s*(\d+(?:\.\d+)?)\s*/?\s*10?\s*(?:to|→|->)\s*(\d+(?:\.\d+)?).{{0,160}}?{name_re}",
             rf"{name_re}.{{0,160}}?(?:to|at|of)\s*(\d+(?:\.\d+)?)\s*/\s*10",
             rf"{name_re}.{{0,160}}?score(?:\s+of|\s+is|\s+would be)?\s*(\d+(?:\.\d+)?)",
+            rf"(?:set|change|make|update|put|give)?\s*{name_re}.{{0,80}}?\b(?:to|at|as)\s*(\d+(?:\.\d+)?)\b",
         )
         for pat in patterns:
             match = re.search(pat, blob, re.I | re.DOTALL)
@@ -419,6 +460,8 @@ def _infer_updates_from_conversation(
             break
 
         if new_score is None:
+            continue
+        if new_score < 0 or new_score > 10:
             continue
         if current_score is not None and float(new_score) == float(current_score):
             continue

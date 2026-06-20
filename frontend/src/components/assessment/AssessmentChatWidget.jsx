@@ -1,7 +1,20 @@
 'use client';
 
-import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react';
-import { Bot, Loader2, MessageSquare, Send, Sparkles, Undo2 } from 'lucide-react';
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  forwardRef,
+} from 'react';
+import {
+  Bot,
+  Loader2,
+  MessageSquare,
+  Send,
+  Sparkles,
+  Undo2,
+} from 'lucide-react';
 import {
   getAssessmentChat,
   postAssessmentChat,
@@ -18,6 +31,22 @@ const STARTER_CHIPS = [
   'Compare to rubric expectations',
   'Summarize strengths and gaps',
 ];
+
+function TypingDots() {
+  return (
+    <div className="flex justify-start">
+      <div className="bg-secondary border border-border rounded-lg px-3 py-2.5 flex items-center gap-1">
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            className="w-1.5 h-1.5 rounded-full bg-muted-foreground/70 animate-bounce"
+            style={{ animationDelay: `${delay}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
   {
@@ -41,8 +70,10 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
   const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState(null);
   const [activeCriterionKey, setActiveCriterionKey] = useState(null);
+  const [typing, setTyping] = useState({ id: null, text: '' });
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const seenIdsRef = useRef(new Set());
 
   useEffect(() => {
     if (!assessmentId) return;
@@ -52,7 +83,11 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
       setError(null);
       try {
         const data = await getAssessmentChat(assessmentId);
-        if (!cancelled) setMessages(data);
+        if (!cancelled) {
+          // Existing history loads instantly; only brand-new replies animate.
+          seenIdsRef.current = new Set((data || []).map((m) => m.id));
+          setMessages(data);
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Could not load chat');
       } finally {
@@ -64,9 +99,36 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
     };
   }, [assessmentId]);
 
+  // Reveal newly-arrived AI text replies character-by-character.
+  useEffect(() => {
+    if (loading) return;
+    const last = messages[messages.length - 1];
+    if (!last || seenIdsRef.current.has(last.id)) return;
+    seenIdsRef.current.add(last.id);
+
+    if (last.role === 'teacher' || last.metadata?.type === 'proposal') return;
+
+    const full = last.content || '';
+    if (!full) return;
+
+    setTyping({ id: last.id, text: '' });
+    let i = 0;
+    const step = Math.max(2, Math.ceil(full.length / 140));
+    const interval = setInterval(() => {
+      i += step;
+      if (i >= full.length) {
+        setTyping({ id: last.id, text: full });
+        clearInterval(interval);
+      } else {
+        setTyping({ id: last.id, text: full.slice(0, i) });
+      }
+    }, 16);
+    return () => clearInterval(interval);
+  }, [messages, loading]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, typing]);
 
   useImperativeHandle(ref, () => ({
     focusCriterion(criterionKey, criterionName, score) {
@@ -179,19 +241,25 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
       );
     }
 
+    const isAnimating = typing.id === m.id && typing.text !== m.content;
+    const displayed = isAnimating ? typing.text : m.content;
+
     return (
       <div
         key={m.id}
         className={`flex ${m.role === 'teacher' ? 'justify-end' : 'justify-start'}`}
       >
         <div
-          className={`max-w-[90%] rounded-lg px-3 py-2 text-xs leading-relaxed ${
+          className={`max-w-[90%] rounded-lg px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
             m.role === 'teacher'
               ? 'bg-primary text-primary-foreground'
               : 'bg-secondary border border-border text-foreground'
           }`}
         >
-          {m.content}
+          {displayed}
+          {isAnimating && (
+            <span className="inline-block w-1.5 h-3 ml-0.5 -mb-0.5 bg-current opacity-70 animate-pulse" />
+          )}
         </div>
       </div>
     );
@@ -259,12 +327,11 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
         ) : (
           messages.map(renderMessage)
         )}
+        {(sending || refining) && <TypingDots />}
         <div ref={bottomRef} />
       </div>
 
-      {error && (
-        <p className="px-4 pb-2 text-xs text-red-400">{error}</p>
-      )}
+      {error && <p className="px-4 pb-2 text-xs text-red-400">{error}</p>}
 
       {!chatDisabled && hasTeacherMessage && !hasPendingProposal && (
         <div className="px-3 pb-2">
@@ -279,7 +346,9 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
             ) : (
               <Sparkles size={14} />
             )}
-            {refining ? 'Generating proposal…' : 'Refine assessment from discussion'}
+            {refining
+              ? 'Generating proposal…'
+              : 'Refine assessment from discussion'}
           </button>
         </div>
       )}
