@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import {
   AlertTriangle,
@@ -14,6 +14,8 @@ import {
   CheckCircle2,
   XCircle,
   Mail,
+  Github,
+  GitBranch,
 } from 'lucide-react';
 import {
   mockContributions,
@@ -37,10 +39,14 @@ import {
   getSupportedEvidenceTypes,
   listStudentEvidence,
 } from '@/lib/api/evidence';
+
 import {
   listModuleOverlapSignals,
   listProjectStudents,
   getProject,
+  setStudentGithubRepo,
+  updateModuleStudent,
+  verifyGithubRepo,
 } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 import AssessmentFormPanel from '@/components/assessment/AssessmentFormPanel';
@@ -48,10 +54,12 @@ import AssessmentChatWidget from '@/components/assessment/AssessmentChatWidget';
 import TransparencyPanel from '@/components/assessment/TransparencyPanel';
 import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 
+const inputClass =
+  'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// AI Insights Panel
+// ─── AI Insights Panel ───────────────────────────────────────────────────────
 
 const insightConfig = {
   overlap: {
@@ -298,7 +306,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
   );
 }
 
-// Evidence Upload
+// ─── Evidence Upload ──────────────────────────────────────────────────────────
 
 const DEFAULT_EVIDENCE_EXTENSIONS = [
   '.md',
@@ -317,7 +325,7 @@ function EvidenceUpload({ studentId }) {
   const [allEvidence, setAllEvidence] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Allowed extensions fetched from the backend - starts with a safe default
+  // Allowed extensions fetched from the backend — starts with a safe default
   const [allowedExtensions, setAllowedExtensions] = useState(
     DEFAULT_EVIDENCE_EXTENSIONS
   );
@@ -457,7 +465,7 @@ function EvidenceUpload({ studentId }) {
           return changed ? next : prev;
         });
       } catch {
-        // Silently ignore polling errors - the user can still interact
+        // Silently ignore polling errors — the user can still interact
       }
     }, 3000);
 
@@ -653,7 +661,7 @@ function EvidenceUpload({ studentId }) {
   );
 }
 
-// Student Assessment Page
+// ─── Student Assessment Page ──────────────────────────────────────────────────
 
 const contributionTypeLabel = {
   code: 'CODE',
@@ -674,6 +682,8 @@ export default function StudentAssessmentPage() {
   const [loadError, setLoadError] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
   const [expanded, setExpanded] = useState(null);
+  const [scores, setScores] = useState({});
+  const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
   const [moduleName, setModuleName] = useState('');
   const [emailDraftOpen, setEmailDraftOpen] = useState(false);
@@ -684,6 +694,17 @@ export default function StudentAssessmentPage() {
   const [draftRefreshToken, setDraftRefreshToken] = useState(0);
   const [highlightedCriteria, setHighlightedCriteria] = useState([]);
   const chatRef = useRef(null);
+
+  const [repoUrl, setRepoUrl] = useState('');
+  const [repoBranch, setRepoBranch] = useState('');
+  const [branches, setBranches] = useState([]);
+  const [verified, setVerified] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [repoSaving, setRepoSaving] = useState(false);
+  const [repoError, setRepoError] = useState('');
+  const [repoSuccess, setRepoSuccess] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [confirmRepoRemove, setConfirmRepoRemove] = useState(false);
 
   function handleChatDraftUpdated(draft) {
     setDraftSnapshot(draft);
@@ -718,11 +739,113 @@ export default function StudentAssessmentPage() {
         const found = students.find(
           (s) => s.id === studentId || s.student_number === studentId
         );
-        if (found) setStudent(found);
-        else setLoadError('Student not found in this module.');
+        if (found) {
+          setStudent(found);
+          setRepoUrl(found.github_repo_url || '');
+          setRepoBranch(found.github_branch || '');
+
+          if (found.github_repo_url) {
+            setVerified(true);
+            setBranches(found.github_branch ? [found.github_branch] : []);
+          } else {
+            setVerified(false);
+            setBranches([]);
+          }
+
+          setEditing(!found.github_repo_url);
+        } else {
+          setLoadError('Student not found in this module.');
+        }
       })
       .catch((e) => setLoadError(e?.message || 'Failed to load student data'));
   }, [moduleId, studentId]);
+
+  const handleVerifyRepo = async () => {
+    setRepoError('');
+    setRepoSuccess('');
+    setVerified(false);
+    setBranches([]);
+    setRepoBranch('');
+    if (!repoUrl.trim()) {
+      setRepoError('Enter a GitHub repository URL first.');
+      return;
+    }
+    setVerifying(true);
+    try {
+      const result = await verifyGithubRepo(repoUrl.trim());
+      setBranches(result.branches);
+      setRepoBranch(result.default_branch);
+      setVerified(true);
+      setRepoSuccess(
+        `Repository verified. ${result.branches.length} branch${result.branches.length !== 1 ? 'es' : ''} found.`
+      );
+    } catch (err) {
+      setRepoError(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleSaveStudentRepo = async (e) => {
+    e.preventDefault();
+    setRepoError('');
+    setRepoSuccess('');
+    if (!verified) {
+      setRepoError('Please verify the repository before saving.');
+      return;
+    }
+    setRepoSaving(true);
+    try {
+      const updated = await updateModuleStudent(moduleId, studentId, {
+        github_repo_url: repoUrl.trim() || null,
+        github_branch: repoBranch || null,
+      });
+      setStudent((prev) => ({
+        ...prev,
+        github_repo_url: updated.github_repo_url || null,
+        github_branch: updated.github_branch || null,
+      }));
+      setRepoUrl(updated.github_repo_url || '');
+      setRepoBranch(updated.github_branch || '');
+      setEditing(false);
+      setRepoSuccess(
+        updated.github_repo_url
+          ? `Repository and branch "${updated.github_branch || repoBranch}" saved.`
+          : 'Repository removed.'
+      );
+    } catch (err) {
+      setRepoError(err.message);
+    } finally {
+      setRepoSaving(false);
+    }
+  };
+
+  const handleRemoveStudentRepo = async () => {
+    setRepoError('');
+    setRepoSuccess('');
+    setRepoSaving(true);
+    try {
+      await updateModuleStudent(moduleId, studentId, {
+        github_repo_url: null,
+        github_branch: null,
+      });
+      setStudent((prev) => ({
+        ...prev,
+        github_repo_url: null,
+        github_branch: null,
+      }));
+      setRepoUrl('');
+      setRepoBranch('');
+      setBranches([]);
+      setVerified(false);
+      setEditing(true);
+      setRepoSuccess('Repository removed.');
+    } catch (err) {
+      setRepoError(err.message);
+    } finally {
+      setRepoSaving(false);
+    }
+  };
 
   // Resolve (or lazily create) the assessment for this student so the recording
   // panel has a real assessment id to drive the recording/consent endpoints.
@@ -740,6 +863,11 @@ export default function StudentAssessmentPage() {
     };
   }, [studentId]);
 
+  const handleDraftChange = useCallback((draft) => {
+    setDraftSnapshot(draft);
+    setAuditRefresh((k) => k + 1);
+  }, []);
+
   if (loadError)
     return <div className="text-sm text-red-400 p-4">{loadError}</div>;
 
@@ -753,9 +881,9 @@ export default function StudentAssessmentPage() {
   const overallScore =
     draftSnapshot?.overall_score != null
       ? Number(draftSnapshot.overall_score).toFixed(1)
-      : student.grade && student.grade !== '-”'
+      : student.grade && student.grade !== '—'
         ? student.grade
-        : '-”';
+        : '—';
   const displayGrade =
     draftSnapshot?.overall_grade?.effective ||
     (student.assessment_status === 'completed' ? student.grade : null);
@@ -899,7 +1027,7 @@ export default function StudentAssessmentPage() {
                                         {ev.fileName}
                                       </span>
                                       <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                                        View source â†’
+                                        View source →
                                       </button>
                                     </div>
                                     {ev.excerpt && (
@@ -958,10 +1086,7 @@ export default function StudentAssessmentPage() {
                   refreshToken={draftRefreshToken}
                   highlightedCriteria={highlightedCriteria}
                   onDiscussCriterion={handleDiscussCriterion}
-                  onDraftChange={(d) => {
-                    setDraftSnapshot(d);
-                    setAuditRefresh((k) => k + 1);
-                  }}
+                  onDraftChange={handleDraftChange}
                   onFinalized={() => {
                     setFormKey((k) => k + 1);
                     setAuditRefresh((k) => k + 1);
@@ -970,7 +1095,7 @@ export default function StudentAssessmentPage() {
               )}
               {currentTab === 1 && !assessmentId && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
-                  Resolving assessment...¦
+                  Resolving assessment...
                 </div>
               )}
             </div>
@@ -979,6 +1104,185 @@ export default function StudentAssessmentPage() {
 
         <div className="col-span-1 space-y-4">
           <div className="sticky top-4 space-y-4">
+            {!editing && student.github_repo_url ? (
+              <div className="rounded-lg bg-card border border-border p-5 space-y-4">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <Github size={16} />
+                  GitHub Repository
+                </h2>
+                <div className="rounded-lg bg-secondary/50 border border-border p-3 space-y-3">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1">
+                      Repository
+                    </p>
+                    <a
+                      href={student.github_repo_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-primary hover:underline break-all font-mono leading-snug"
+                    >
+                      {student.github_repo_url.replace(
+                        'https://github.com/',
+                        ''
+                      )}
+                    </a>
+                  </div>
+                  {student.github_branch && (
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1 flex items-center gap-1">
+                        <GitBranch size={11} />
+                        Branch
+                      </p>
+                      <span className="text-xs font-mono text-foreground">
+                        {student.github_branch}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                {repoError && (
+                  <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
+                    {repoError}
+                  </p>
+                )}
+                {repoSuccess && (
+                  <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
+                    {repoSuccess}
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(true);
+                      setRepoSuccess('');
+                      setRepoError('');
+                    }}
+                    disabled={repoSaving}
+                    className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Update Branch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRepoRemove(true)}
+                    disabled={repoSaving}
+                    className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {repoSaving ? 'Removing…' : 'Remove'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSaveStudentRepo}
+                className="rounded-lg bg-card border border-border p-5 space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                    <Github size={16} />
+                    GitHub Repository
+                  </h2>
+                  {editing && student.github_repo_url && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(false);
+                        setRepoUrl(student.github_repo_url);
+                        setRepoBranch(student.github_branch || '');
+                        setRepoError('');
+                        setRepoSuccess('');
+                        setVerified(true);
+                        setBranches(
+                          student.github_branch ? [student.github_branch] : []
+                        );
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <input
+                    value={repoUrl}
+                    onChange={(e) => {
+                      setRepoUrl(e.target.value);
+                      setVerified(false);
+                      setBranches([]);
+                      setRepoBranch('');
+                      setRepoSuccess('');
+                      setRepoError('');
+                    }}
+                    placeholder="https://github.com/owner/repo"
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyRepo}
+                    disabled={verifying || !repoUrl.trim()}
+                    className="w-full px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {verifying ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Verifying…
+                      </span>
+                    ) : (
+                      'Verify Repository'
+                    )}
+                  </button>
+                </div>
+                {verified && branches.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Branch
+                    </label>
+                    <select
+                      value={repoBranch}
+                      onChange={(e) => setRepoBranch(e.target.value)}
+                      className={`${inputClass} cursor-pointer`}
+                    >
+                      {branches.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {repoError && (
+                  <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
+                    {repoError}
+                  </p>
+                )}
+                {repoSuccess && (
+                  <p className="rounded-md bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-400">
+                    {repoSuccess}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={repoSaving || !verified}
+                  className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {repoSaving ? 'Saving…' : 'Save Repo'}
+                </button>
+              </form>
+            )}
+
+            <DeleteConfirmDialog
+              open={confirmRepoRemove}
+              title="Remove GitHub Repository"
+              message="Are you sure you want to remove this student's GitHub repository and branch?"
+              confirmLabel="Remove"
+              loading={repoSaving}
+              onCancel={() => setConfirmRepoRemove(false)}
+              onConfirm={async () => {
+                setConfirmRepoRemove(false);
+                await handleRemoveStudentRepo();
+              }}
+            />
+
             {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
             {assessmentId && (
               <AssessmentChatWidget

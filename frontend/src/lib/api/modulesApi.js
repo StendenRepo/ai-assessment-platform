@@ -146,6 +146,7 @@ export async function verifyGithubRepo(repoUrl) {
     branches: branches.length ? branches : [defaultBranch],
   };
 }
+
 export const importProjectStudents = (projectId, file, targetGroupId = '') => {
   const formData = new FormData();
   formData.append('file', file);

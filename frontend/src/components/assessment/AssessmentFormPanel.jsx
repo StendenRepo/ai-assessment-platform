@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -144,7 +144,9 @@ export default function AssessmentFormPanel({
         const edit = localEdits[key] || {};
         const eff = c?.effective || {};
         const score =
-          edit.score === '' || edit.score == null ? null : parseFloat(edit.score);
+          edit.score === '' || edit.score == null
+            ? null
+            : parseFloat(edit.score);
         const comment = edit.comment ?? '';
         if (score === eff.score && comment === (eff.comment || '')) return null;
         return { criterion_key: key, score, comment };
@@ -268,7 +270,9 @@ export default function AssessmentFormPanel({
     setFinalizing(true);
     setError(null);
     try {
-      const finalData = await finalizeAssessment(assessmentId, { teacherNotes });
+      const finalData = await finalizeAssessment(assessmentId, {
+        teacherNotes,
+      });
       setFinalized(finalData);
       onFinalized?.(finalData);
       await loadDraft();
@@ -310,7 +314,9 @@ export default function AssessmentFormPanel({
                 <>
                   {' '}
                   ·{' '}
-                  {new Date(finalized.form.finalized_at).toLocaleString('en-GB')}
+                  {new Date(finalized.form.finalized_at).toLocaleString(
+                    'en-GB'
+                  )}
                 </>
               )}
             </p>
@@ -339,10 +345,7 @@ export default function AssessmentFormPanel({
 
       {!locked && confirmedOverlaps.length > 0 && moduleId && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-          <AlertTriangle
-            size={16}
-            className="text-amber-400 mt-0.5 shrink-0"
-          />
+          <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground">
               Overlap indicators ({confirmedOverlaps.length} high confidence)
@@ -515,9 +518,7 @@ export default function AssessmentFormPanel({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      saveOverrides([key], { exitEditMode: true })
-                    }
+                    onClick={() => saveOverrides([key], { exitEditMode: true })}
                     disabled={saving}
                     className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
@@ -740,9 +741,12 @@ export default function AssessmentFormPanel({
             <button
               type="button"
               onClick={() =>
-                saveOverrides(draft.criteria.map((c) => c.key), {
-                  includeSummaryGrade: true,
-                })
+                saveOverrides(
+                  draft.criteria.map((c) => c.key),
+                  {
+                    includeSummaryGrade: true,
+                  }
+                )
               }
               disabled={saving}
               className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"

@@ -125,11 +125,33 @@ services:
             set -e;
             echo 'Waiting for Ollama API...';
             until ollama list >/dev/null 2>&1; do sleep 2; done;
-            for m in \"${OLLAMA_MODEL}\" \"${OLLAMA_MODEL_BACKUP}\" \"${ASSESSMENT_OLLAMA_MODEL}\" \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" \"${VISION_MODEL}\"; do
-              [ -z \"$$m\" ] && continue;
-              echo \"Pulling $$m\";
-              ollama pull \"$$m\" || true;
-            done;
+        
+            pull_model() {
+              label=\"$$1\";
+              model=\"$$2\";
+              [ -z \"$$model\" ] && return 0;
+              echo \"Pulling $$label: $$model\";
+              ollama pull \"$$model\";
+            }
+        
+            pull_model 'primary model' \"${OLLAMA_MODEL}\";
+        
+            if [ \"${OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL}\" ]; then
+              pull_model 'backup model' \"${OLLAMA_MODEL_BACKUP}\";
+            fi;
+        
+            if [ \"${ASSESSMENT_OLLAMA_MODEL}\" != \"${OLLAMA_MODEL}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL}\" != \"${OLLAMA_MODEL_BACKUP}\" ]; then
+              pull_model 'assessment model' \"${ASSESSMENT_OLLAMA_MODEL}\";
+            fi;
+        
+            if [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL_BACKUP}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${ASSESSMENT_OLLAMA_MODEL}\" ]; then
+              pull_model 'assessment backup model' \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\";
+            fi;
+        
+            if [ -n \"${VISION_MODEL}\" ]; then
+              pull_model 'vision model' \"${VISION_MODEL}\";
+            fi;
+        
             echo 'Models ready';
             "
         restart: 'no'

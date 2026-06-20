@@ -181,6 +181,8 @@ def ensure_seed_admin(engine) -> None:
 def ensure_postgres_schema(engine) -> None:
     # Development helper: create any missing tables before importing seed data.
     Base.metadata.create_all(bind=engine)
+
+
 def main() -> None:
     if not SQLITE_DB.exists():
         raise SystemExit(f"SQLite seed database not found: {SQLITE_DB}")
