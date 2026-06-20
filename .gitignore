@@ -52,6 +52,7 @@ backend/.pytest_cache/
 # editor
 .vscode/
 .idea/
+.cursor/
 
 # Frontend
 frontend/node_modules/
