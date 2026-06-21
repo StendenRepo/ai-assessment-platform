@@ -1,12 +1,15 @@
 """Shared on-premise LLM client (Ollama) with primary/backup model fallback."""
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
 
 import httpx
 
 from app.config import settings
 from app.lib.llm_json import parse_json_response
+
+logger = logging.getLogger(__name__)
 
 
 def default_models() -> tuple[str, ...]:
@@ -75,8 +78,10 @@ def generate(
                 text = (response.json().get("response") or "").strip()
                 if text:
                     return text
-        except Exception:
+        except Exception as exc:
+            logger.warning("ollama generate failed for model %s: %s", model, exc)
             continue
+    logger.warning("ollama generate: all models failed (%s)", ", ".join(chain))
     return None
 
 
@@ -119,8 +124,10 @@ def chat(
                 text = (message.get("content") or "").strip()
                 if text:
                     return text
-        except Exception:
+        except Exception as exc:
+            logger.warning("ollama chat failed for model %s: %s", model, exc)
             continue
+    logger.warning("ollama chat: all models failed (%s)", ", ".join(chain))
     return None
 
 
