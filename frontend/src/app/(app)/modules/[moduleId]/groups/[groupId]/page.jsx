@@ -23,6 +23,7 @@ import {
 import ProjectEvidencePanel from '@/components/evidence/ProjectEvidencePanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import { APP_PATHS } from '@/lib/routes';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -406,7 +407,7 @@ export default function GroupDetailPage() {
                     disabled={repoSaving}
                     className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {repoSaving ? 'Removing…' : 'Remove'}
+                    {repoSaving ? UI_STATUS_LABELS.removing : 'Remove'}
                   </button>
                 </div>
               </div>
@@ -467,7 +468,7 @@ export default function GroupDetailPage() {
                     {verifying ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Verifying…
+                        {UI_STATUS_LABELS.verifying}
                       </span>
                     ) : (
                       'Verify Repository'
@@ -507,7 +508,7 @@ export default function GroupDetailPage() {
                   disabled={repoSaving || !verified}
                   className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {repoSaving ? 'Saving…' : 'Save Repo'}
+                  {repoSaving ? UI_STATUS_LABELS.saving : 'Save Repo'}
                 </button>
               </form>
             )}

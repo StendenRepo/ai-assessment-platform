@@ -24,6 +24,7 @@ import {
   patchAssessmentOverrides,
   revertCriterionOverride,
 } from '@/lib/api/assessmentsApi';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 import HighlightedComment from './HighlightedComment';
 import OverrideBadge from './OverrideBadge';
 
@@ -751,7 +752,7 @@ export default function AssessmentFormPanel({
               disabled={saving}
               className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
             >
-              {saving ? 'Saving…' : 'Save all overrides'}
+              {saving ? UI_STATUS_LABELS.saving : 'Save all overrides'}
             </button>
             <button
               type="button"

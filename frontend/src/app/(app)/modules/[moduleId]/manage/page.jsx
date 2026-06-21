@@ -19,6 +19,7 @@ import {
   useDeleteConfirm,
 } from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -325,7 +326,7 @@ export default function ModuleManagePage() {
                 disabled={groupSaving}
                 className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
               >
-                {groupSaving ? 'Saving…' : 'Create Group'}
+                {groupSaving ? UI_STATUS_LABELS.saving : 'Create Group'}
               </button>
             </form>
 
@@ -393,7 +394,7 @@ export default function ModuleManagePage() {
                           disabled={groupSaving}
                           className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
                         >
-                          {groupSaving ? 'Saving…' : 'Save'}
+                          {groupSaving ? UI_STATUS_LABELS.saving : 'Save'}
                         </button>
                       </div>
                     </form>
@@ -447,7 +448,7 @@ export default function ModuleManagePage() {
                 disabled={studentSaving}
                 className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
               >
-                {studentSaving ? 'Saving…' : 'Add Student'}
+                {studentSaving ? UI_STATUS_LABELS.saving : 'Add Student'}
               </button>
             </form>
             {studentError && (
@@ -617,7 +618,7 @@ export default function ModuleManagePage() {
                         disabled={editSaving}
                         className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
                       >
-                        {editSaving ? 'Saving…' : 'Save'}
+                        {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
                       </button>
                     </div>
                   </form>
