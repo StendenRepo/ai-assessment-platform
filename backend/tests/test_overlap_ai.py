@@ -16,6 +16,11 @@ from app.services.overlap.highlight import (
     apply_paired_student_highlights,
     compress_student_marker_ids,
 )
+from app.services.overlap.integrity.ai_policy import build_ai_result
+from app.services.overlap.integrity.thresholds import (
+    AI_CLASSIFIER_CONFIRMED,
+    AI_CLASSIFIER_MIN,
+)
 from app.services.overlap.markers import apply_flags_to_document
 
 
@@ -130,6 +135,28 @@ def test_detect_ai_segments_prefers_classifier_over_llm():
     assert result.confidence == 0.97
     assert result.detection_method == "classifier_roberta"
     mock_llm.assert_not_called()
+
+
+def test_ai_policy_keeps_classifier_document_score_as_report_confidence():
+    document_score = (AI_CLASSIFIER_MIN + AI_CLASSIFIER_CONFIRMED) / 2
+    result = build_ai_result(
+        [
+            IntegrityFlag(
+                "ai",
+                0.97,
+                "Classifier segment",
+                text="This report was written entirely by a language model.",
+            )
+        ],
+        confidence=document_score,
+        ai_verified=True,
+        detection_method="classifier_roberta",
+        explanation="Classifier score.",
+    )
+
+    assert result.integrity_type == "ai"
+    assert result.confidence == document_score
+    assert result.status == "possible"
 
 
 def test_scan_document_for_ai_flags_entirely_ai_submission():
