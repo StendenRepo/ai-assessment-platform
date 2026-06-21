@@ -1,18 +1,25 @@
-"""Typed marker handling: embed/strip the UI highlight markers in documents."""
+"""Typed-marker vocabulary for overlap highlighting (presentation layer).
+
+Single owner of the marker *format* - embedding flags as ``⟦.../⟧`` spans,
+stripping them back out, and the flag-dict helpers the UI relies on. This is a
+presentation concern: it does no AI/plagiarism detection. Detection modules
+depend on it only to strip markers from input text before analysis.
+"""
 
 from __future__ import annotations
 
 import re
 
-from app.services.overlap.integrity.thresholds import (
-    _MIN_ANCHOR_WORDS,
-)
+# Shortest snippet we will try to anchor/highlight in a document.
+_MIN_ANCHOR_WORDS = 4
 
 _MARKER_OPEN = re.compile(
     r"⟦(ai|student):(?:m(\d+):)?(\d+):([^⟧]*)⟧(.*?)⟦/\1⟧",
     re.DOTALL,
 )
-_LEGACY_MARKER_RE = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
+# Legacy ``[[...]]`` highlight markers (still present in older stored snippets).
+LEGACY_MARKER_RE = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
+_LEGACY_MARKER_RE = LEGACY_MARKER_RE
 
 
 def strip_markers(text: str) -> str:
@@ -43,7 +50,12 @@ def has_typed_markers(text: str) -> bool:
 
 
 def dedupe_student_flag_dicts(flags: list[dict]) -> list[dict]:
-    """Collapse overlapping student flags (no arbitrary cap - dedupe only)."""
+    """Collapse overlapping student flags (no arbitrary cap - dedupe only).
+
+    A specialisation of containment de-duplication: it compares the ``text_a``
+    and ``text_b`` sides independently (overlap on either side is a duplicate),
+    so it is kept separate from the generic ``overlap.dedupe`` helper.
+    """
     ai_and_other = [f for f in (flags or []) if f.get("type") != "student"]
     student = sorted(
         [f for f in (flags or []) if f.get("type") == "student"],

@@ -1,4 +1,9 @@
-"""Document highlighting: sentence boundaries, chronological match order, paired spans."""
+"""Document highlighting (presentation layer): sentence boundaries, match order, paired spans.
+
+Locates passages in a document and wraps them in typed markers for the UI. It
+relies on ``overlap.markers`` for the marker format and performs no AI/plagiarism
+detection itself.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import re
 from difflib import SequenceMatcher
 from typing import Callable, Iterable, Optional
 
-from app.services.overlap.integrity import (
+from app.services.overlap.markers import (
     _wrap_flag,
     dedupe_student_flag_dicts,
     strip_markers,

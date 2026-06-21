@@ -12,7 +12,7 @@ from app.services.overlap.integrity.aggregation import (
     attach_integrity_metrics,
     merge_student_plagiarism_results,
 )
-from app.services.overlap.integrity.markers import strip_markers
+from app.services.overlap.markers import strip_markers
 from app.services.overlap.integrity.models import IntegrityFlag, IntegrityResult
 from app.services.overlap.integrity.prompts import (
     _INTEGRITY_SYSTEM,

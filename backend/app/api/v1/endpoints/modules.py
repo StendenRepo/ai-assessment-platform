@@ -42,10 +42,8 @@ from app.services.module_service import (
     ModuleService,
     _module_file_path,
 )
-from app.services.overlap.integrity import (
-    dedupe_student_flag_dicts,
-    derive_signal_metrics,
-)
+from app.services.overlap.integrity import derive_signal_metrics
+from app.services.overlap.markers import dedupe_student_flag_dicts
 from app.services.overlap.service import (
     OverlapService,
     build_highlighted_documents,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from app.services.overlap.integrity import dedupe_student_flag_dicts
+from app.services.overlap.markers import dedupe_student_flag_dicts
 
 _SNIPPET_JSON_PREFIX = "{"
 

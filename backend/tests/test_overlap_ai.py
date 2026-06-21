@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from app.services.overlap.integrity import (
-    apply_flags_to_document,
     assess_student_plagiarism,
     detect_ai_segments,
     enrich_hit_with_ai,
@@ -17,6 +16,7 @@ from app.services.overlap.highlight import (
     apply_paired_student_highlights,
     compress_student_marker_ids,
 )
+from app.services.overlap.markers import apply_flags_to_document
 
 
 def test_assess_student_plagiarism_uses_ai_response():

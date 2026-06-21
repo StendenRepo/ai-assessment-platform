@@ -45,7 +45,6 @@ NEAR_DUPLICATE_DOC_MIN = settings.OVERLAP_NEAR_DUPLICATE_DOC_MIN
 NEAR_DUPLICATE_UNIT_MIN = settings.OVERLAP_NEAR_DUPLICATE_UNIT_MIN
 
 # Size and performance limits (internal tuning, not scoring thresholds).
-_MIN_ANCHOR_WORDS = 4  # shortest snippet we will try to anchor/highlight
 _MIN_PARTIAL_WINDOW = 10  # sliding-window size for partial anchor matching
 
 _MAX_CHUNK_CHARS = 1200  # cap per-chunk text sent to the LLM

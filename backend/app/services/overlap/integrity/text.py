@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
-from app.services.overlap.integrity.markers import strip_markers
+from app.services.overlap.markers import strip_markers
 from app.services.overlap.integrity.thresholds import (
     _DIRECT_MERGE_MAX_WORDS,
     _MIN_COMPARISON_SENTENCE_WORDS,

@@ -5,7 +5,6 @@ The implementation is split across focused modules in this package; importing
 
 - models               - IntegrityFlag / IntegrityResult data contracts
 - thresholds           - tunable scoring thresholds and size limits
-- markers              - typed marker embed/strip for UI highlighting
 - text                 - text normalisation, chunking and similarity
 - ai_heuristics        - local pattern-based AI writing signals
 - prompts              - LLM prompt templates and builders
@@ -29,14 +28,6 @@ from app.services.overlap.integrity.aggregation import (
     derive_signal_metrics,
     merge_integrity_results,
     merge_student_plagiarism_results,
-)
-from app.services.overlap.integrity.markers import (
-    apply_flags_to_document,
-    dedupe_student_flag_dicts,
-    ensure_flag_match_ids,
-    has_typed_markers,
-    strip_markers,
-    _wrap_flag,
 )
 from app.services.overlap.integrity.models import IntegrityFlag, IntegrityResult
 from app.services.overlap.integrity.thresholds import (
@@ -81,13 +72,6 @@ __all__ = [
     "STUDENT_AI_FLAG_MIN",
     "STUDENT_CONFIRMED_MIN",
     "STUDENT_POSSIBLE_MIN",
-    # Markers
-    "apply_flags_to_document",
-    "dedupe_student_flag_dicts",
-    "ensure_flag_match_ids",
-    "has_typed_markers",
-    "strip_markers",
-    "_wrap_flag",
     # Heuristics
     "score_ai_writing_heuristics",
     # Aggregation / metrics

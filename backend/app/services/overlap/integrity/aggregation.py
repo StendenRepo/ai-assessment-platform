@@ -7,6 +7,7 @@ the display metrics shown to teachers.
 
 from __future__ import annotations
 
+from app.services.overlap.dedupe import dedupe_by_containment
 from app.services.overlap.integrity.models import IntegrityFlag, IntegrityResult
 from app.services.overlap.integrity.thresholds import (
     AI_CLASSIFIER_CONFIRMED,
@@ -82,19 +83,11 @@ def _parse_flags(raw_flags: list, flag_type: str, min_confidence: float) -> list
 
 
 def _dedupe_ai_flags(flags: list[IntegrityFlag]) -> list[IntegrityFlag]:
-    seen: list[IntegrityFlag] = []
-    for flag in sorted(flags, key=lambda f: f.confidence, reverse=True):
-        key_text = (flag.text or "").lower()[:80]
-        if not key_text:
-            continue
-        if any(
-            key_text in (existing.text or "").lower()
-            or (existing.text or "").lower() in key_text
-            for existing in seen
-        ):
-            continue
-        seen.append(flag)
-    return seen
+    return dedupe_by_containment(
+        flags,
+        key=lambda f: (f.text or "").lower()[:80],
+        sort_key=lambda f: f.confidence,
+    )
 
 
 def _assign_student_match_ids(flags: list[IntegrityFlag]) -> list[IntegrityFlag]:
@@ -109,17 +102,11 @@ def _assign_student_match_ids(flags: list[IntegrityFlag]) -> list[IntegrityFlag]
 
 
 def _dedupe_student_integrity_flags(flags: list[IntegrityFlag]) -> list[IntegrityFlag]:
-    seen: list[IntegrityFlag] = []
-    for flag in sorted(flags, key=lambda f: f.confidence, reverse=True):
-        key_text = (flag.text_a or flag.text or "").lower()[:80]
-        if any(
-            key_text in (existing.text_a or existing.text or "").lower()
-            or (existing.text_a or existing.text or "").lower() in key_text
-            for existing in seen
-        ):
-            continue
-        seen.append(flag)
-    return seen
+    return dedupe_by_containment(
+        flags,
+        key=lambda f: (f.text_a or f.text or "").lower()[:80],
+        sort_key=lambda f: f.confidence,
+    )
 
 
 def _dedupe_flags(flags: list[IntegrityFlag]) -> list[IntegrityFlag]:

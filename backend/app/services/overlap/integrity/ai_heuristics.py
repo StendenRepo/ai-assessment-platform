@@ -6,7 +6,7 @@ import re
 from collections import Counter
 
 from app.services.overlap.integrity.aggregation import _dedupe_ai_flags
-from app.services.overlap.integrity.markers import strip_markers
+from app.services.overlap.markers import strip_markers
 from app.services.overlap.integrity.models import IntegrityFlag
 from app.services.overlap.integrity.text import _excerpt_around_phrase
 from app.services.overlap.integrity.thresholds import _MAX_AI_FLAGS

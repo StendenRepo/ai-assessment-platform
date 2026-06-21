@@ -1,8 +1,15 @@
-"""TF-IDF textual overlap between student evidence chunks (G2)."""
+"""TF-IDF textual overlap detection between student evidence chunks (G2).
+
+Detection layer: scores chunk/paragraph similarity and surfaces the shared
+passages. It does not build UI documents or own the typed-marker vocabulary
+(that is the presentation layer in ``overlap.markers`` / ``overlap.highlight``);
+it only emits the lightweight ``[[...]]`` legacy spans for shared word blocks.
+"""
 
 from __future__ import annotations
 
 import difflib
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -10,6 +17,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from app.config import settings
+from app.services.overlap.dedupe import dedupe_by_containment
+from app.services.overlap.markers import LEGACY_MARKER_RE
+from app.services.text_chunker import chunk_text
 
 # TF-IDF prescreen scoring thresholds (env-configurable, scale 0-1).
 CONFIRMED_MIN = settings.OVERLAP_TFIDF_CONFIRMED_MIN
@@ -67,6 +77,43 @@ def highlight_shared(a: str, b: str) -> tuple[str, str]:
     if not phrase:
         return a, b
     return _wrap_phrase(a, phrase), _wrap_phrase(b, phrase)
+
+
+def shared_phrases_between_documents(
+    full_a: str,
+    full_b: str,
+    *,
+    min_similarity: float = POSSIBLE_MIN,
+) -> list[str]:
+    """Collect shared phrases from chunk and paragraph pairs between two documents."""
+    phrases: list[str] = []
+
+    def _collect_from_pairs(left_chunks: list[str], right_chunks: list[str]) -> None:
+        if not left_chunks or not right_chunks:
+            return
+        combined = left_chunks + right_chunks
+        matrix = TfidfVectorizer(stop_words="english").fit_transform(combined)
+        sim = cosine_similarity(matrix)
+        offset = len(left_chunks)
+        for i, chunk_a in enumerate(left_chunks):
+            for j, chunk_b in enumerate(right_chunks):
+                if float(sim[i, offset + j]) < min_similarity:
+                    continue
+                marked_a, marked_b = highlight_shared(chunk_a, chunk_b)
+                for marked in (marked_a, marked_b):
+                    for match in LEGACY_MARKER_RE.finditer(marked):
+                        phrase = match.group(1).strip()
+                        if len(phrase.split()) >= 8:
+                            phrases.append(phrase)
+
+    _collect_from_pairs(chunk_text(full_a), chunk_text(full_b))
+
+    paragraphs_a = [p.strip() for p in re.split(r"\n\s*\n", full_a) if p.strip()]
+    paragraphs_b = [p.strip() for p in re.split(r"\n\s*\n", full_b) if p.strip()]
+    _collect_from_pairs(paragraphs_a, paragraphs_b)
+
+    cleaned = {p.strip() for p in phrases if p and p.strip()}
+    return dedupe_by_containment(cleaned, key=str.lower, sort_key=len)
 
 
 def _append_hit(

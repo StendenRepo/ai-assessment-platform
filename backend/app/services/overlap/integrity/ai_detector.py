@@ -9,7 +9,6 @@ from app.services.overlap.integrity import (
     STUDENT_POSSIBLE_MIN,
     IntegrityFlag,
     IntegrityResult,
-    apply_flags_to_document,
     assess_student_plagiarism,
     build_ai_only_hit,
     combine_ai_results,
@@ -19,11 +18,11 @@ from app.services.overlap.integrity import (
     scan_document_pair_plagiarism,
     scan_document_for_ai,
     score_ai_writing_heuristics,
-    strip_markers,
 )
 from app.services.overlap.integrity import (
     assess_student_plagiarism as assess_textual_overlap,
 )
+from app.services.overlap.markers import apply_flags_to_document, strip_markers
 
 __all__ = [
     "AI_CONFIRMED_MIN",

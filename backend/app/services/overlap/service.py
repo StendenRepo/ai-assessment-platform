@@ -26,7 +26,6 @@ from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
 from app.services.overlap.document_builder import (
     build_highlighted_documents,
     read_evidence_text,
-    shared_phrases_between_documents,
 )
 from app.services.overlap.repository import (
     clear_module_signals,
@@ -39,6 +38,7 @@ from app.services.overlap.text_detector import (
     EvidenceChunk,
     detect_cross_group,
     detect_within_group,
+    shared_phrases_between_documents,
 )
 from app.services.text_chunker import chunk_text
 

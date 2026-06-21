@@ -1,30 +1,32 @@
-"""Build highlighted overlap documents and collect shared phrases."""
+"""Assemble highlighted overlap documents from stored signals (orchestration).
+
+Pure orchestration layer: it reads evidence text, delegates detection to
+``overlap.text_detector`` / ``overlap.integrity`` and presentation to
+``overlap.markers`` / ``overlap.highlight``, then stitches the result together.
+It performs no detection or marker formatting of its own.
+"""
 
 from __future__ import annotations
 
-import re
-from typing import Iterable, Optional, Tuple
+from typing import Optional, Tuple
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.orm import Session
 
 from app.models.evidence import Evidence
 from app.models.overlap_signal import OverlapSignal
+from app.services.overlap.dedupe import dedupe_by_containment
 from app.services.overlap.highlight import (
     apply_paired_student_highlights,
     highlight_phrases_paired,
 )
-from app.services.overlap.integrity import (
+from app.services.overlap.markers import (
+    LEGACY_MARKER_RE,
     apply_flags_to_document,
     dedupe_student_flag_dicts,
 )
 from app.services.overlap.signal_codec import parse_signal_detail
-from app.services.overlap.text_detector import POSSIBLE_MIN, highlight_shared
-from app.services.text_chunker import chunk_text
+from app.services.overlap.text_detector import shared_phrases_between_documents
 from app.services.text_extraction import read_stored_evidence_text
-
-_HIGHLIGHT_MARKER_RE = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
 
 
 def read_evidence_text(evidence: Evidence) -> str:
@@ -36,57 +38,10 @@ def read_evidence_text(evidence: Evidence) -> str:
 def extract_highlight_phrase(passage: Optional[str]) -> Optional[str]:
     if not passage:
         return None
-    match = _HIGHLIGHT_MARKER_RE.search(passage)
+    match = LEGACY_MARKER_RE.search(passage)
     if match:
         return match.group(1).strip()
     return passage.strip()
-
-
-def _dedupe_phrases(phrases: Iterable[str]) -> list[str]:
-    ordered = sorted({p.strip() for p in phrases if p and p.strip()}, key=len, reverse=True)
-    kept: list[str] = []
-    for phrase in ordered:
-        lower = phrase.lower()
-        if any(lower in existing.lower() or existing.lower() in lower for existing in kept):
-            continue
-        kept.append(phrase)
-    return kept
-
-
-def shared_phrases_between_documents(
-    full_a: str,
-    full_b: str,
-    *,
-    min_similarity: float = POSSIBLE_MIN,
-) -> list[str]:
-    """Collect shared phrases from chunk and paragraph pairs between two documents."""
-    phrases: list[str] = []
-
-    def _collect_from_pairs(left_chunks: list[str], right_chunks: list[str]) -> None:
-        if not left_chunks or not right_chunks:
-            return
-        combined = left_chunks + right_chunks
-        matrix = TfidfVectorizer(stop_words="english").fit_transform(combined)
-        sim = cosine_similarity(matrix)
-        offset = len(left_chunks)
-        for i, chunk_a in enumerate(left_chunks):
-            for j, chunk_b in enumerate(right_chunks):
-                if float(sim[i, offset + j]) < min_similarity:
-                    continue
-                marked_a, marked_b = highlight_shared(chunk_a, chunk_b)
-                for marked in (marked_a, marked_b):
-                    for match in _HIGHLIGHT_MARKER_RE.finditer(marked):
-                        phrase = match.group(1).strip()
-                        if len(phrase.split()) >= 8:
-                            phrases.append(phrase)
-
-    _collect_from_pairs(chunk_text(full_a), chunk_text(full_b))
-
-    paragraphs_a = [p.strip() for p in re.split(r"\n\s*\n", full_a) if p.strip()]
-    paragraphs_b = [p.strip() for p in re.split(r"\n\s*\n", full_b) if p.strip()]
-    _collect_from_pairs(paragraphs_a, paragraphs_b)
-
-    return _dedupe_phrases(phrases)
 
 
 def build_highlighted_documents(
@@ -149,6 +104,10 @@ def build_highlighted_documents(
             phrases = [fallback]
     ai_excerpt = (detail.get("ai_shared_excerpt") or "").strip()
     if ai_excerpt:
-        phrases = _dedupe_phrases([*phrases, ai_excerpt])
+        phrases = dedupe_by_containment(
+            {p.strip() for p in [*phrases, ai_excerpt] if p and p.strip()},
+            key=str.lower,
+            sort_key=len,
+        )
 
     return (*highlight_phrases_paired(full_a, full_b, phrases), effective_flags)
