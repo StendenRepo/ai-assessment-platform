@@ -9,9 +9,12 @@ from dataclasses import dataclass
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-CONFIRMED_MIN = 0.68
-POSSIBLE_MIN = 0.50
-MAX_RESULTS = 50
+from app.config import settings
+
+# TF-IDF prescreen scoring thresholds (env-configurable, scale 0-1).
+CONFIRMED_MIN = settings.OVERLAP_TFIDF_CONFIRMED_MIN
+POSSIBLE_MIN = settings.OVERLAP_TFIDF_POSSIBLE_MIN
+MAX_RESULTS = 50  # cap on TF-IDF candidate pairs returned per run
 
 
 @dataclass

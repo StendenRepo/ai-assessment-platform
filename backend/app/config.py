@@ -75,6 +75,51 @@ class Settings:
         "MATCH_AI_MODEL_THOROUGH", os.getenv("MATCH_AI_MODEL", "qwen2.5:3b")
     )
 
+    # Overlap / academic-integrity detection scoring thresholds (scale 0-1).
+    # These define when a passage/document is flagged and when a result is
+    # promoted from "possible" to "confirmed". Tune via env without code changes;
+    # defaults are the validated production values.
+    #
+    # AI-generated-text detection (LLM + RoBERTa classifier):
+    OVERLAP_AI_FLAG_MIN: float = float(os.getenv("OVERLAP_AI_FLAG_MIN", "0.62"))
+    OVERLAP_AI_DOCUMENT_MIN: float = float(os.getenv("OVERLAP_AI_DOCUMENT_MIN", "0.58"))
+    OVERLAP_AI_CONFIRMED_MIN: float = float(os.getenv("OVERLAP_AI_CONFIRMED_MIN", "0.76"))
+    OVERLAP_AI_HEURISTIC_MIN: float = float(os.getenv("OVERLAP_AI_HEURISTIC_MIN", "0.70"))
+    OVERLAP_AI_CLASSIFIER_MIN: float = float(os.getenv("OVERLAP_AI_CLASSIFIER_MIN", "0.15"))
+    OVERLAP_AI_CLASSIFIER_CONFIRMED: float = float(
+        os.getenv("OVERLAP_AI_CLASSIFIER_CONFIRMED", "0.50")
+    )
+    OVERLAP_AI_CLASSIFIER_SEGMENT_MIN: float = float(
+        os.getenv("OVERLAP_AI_CLASSIFIER_SEGMENT_MIN", "0.55")
+    )
+    # Student-to-student plagiarism detection:
+    OVERLAP_STUDENT_POSSIBLE_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_POSSIBLE_MIN", "0.42")
+    )
+    OVERLAP_STUDENT_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_CONFIRMED_MIN", "0.68")
+    )
+    OVERLAP_STUDENT_AI_FLAG_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_AI_FLAG_MIN", "0.72")
+    )
+    OVERLAP_STUDENT_AI_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_AI_CONFIRMED_MIN", "0.82")
+    )
+    # No-LLM near-duplicate fast path:
+    OVERLAP_NEAR_DUPLICATE_DOC_MIN: float = float(
+        os.getenv("OVERLAP_NEAR_DUPLICATE_DOC_MIN", "0.90")
+    )
+    OVERLAP_NEAR_DUPLICATE_UNIT_MIN: float = float(
+        os.getenv("OVERLAP_NEAR_DUPLICATE_UNIT_MIN", "0.82")
+    )
+    # TF-IDF statistical prescreen (overlap_text_detector):
+    OVERLAP_TFIDF_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_TFIDF_CONFIRMED_MIN", "0.68")
+    )
+    OVERLAP_TFIDF_POSSIBLE_MIN: float = float(
+        os.getenv("OVERLAP_TFIDF_POSSIBLE_MIN", "0.50")
+    )
+
     GENERATION_RETENTION_DAYS: int = int(
         os.getenv("GENERATION_RETENTION_DAYS", "90")
     )
