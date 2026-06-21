@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 
 from app.models.enums import FileType, SourceType
-from app.services.overlap_service import OverlapService
+from app.services.overlap.service import OverlapService
 from app.services.text_extraction import read_stored_evidence_text
 
 
@@ -36,7 +36,7 @@ def test_read_stored_evidence_text_from_binary_xlsx(db, teacher, monkeypatch, tm
         upload_dir,
     )
     monkeypatch.setattr(
-        "app.services.overlap_service.EVIDENCE_UPLOAD_DIR",
+        "app.services.overlap.service.EVIDENCE_UPLOAD_DIR",
         upload_dir,
     )
 

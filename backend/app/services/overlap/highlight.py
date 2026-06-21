@@ -6,7 +6,7 @@ import re
 from difflib import SequenceMatcher
 from typing import Callable, Iterable, Optional
 
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     _wrap_flag,
     dedupe_student_flag_dicts,
     strip_markers,

@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     apply_flags_to_document,
     assess_student_plagiarism,
     detect_ai_segments,
@@ -13,7 +13,7 @@ from app.services.overlap_integrity_detector import (
     IntegrityResult,
     IntegrityFlag,
 )
-from app.services.overlap_highlight import (
+from app.services.overlap.highlight import (
     apply_paired_student_highlights,
     compress_student_marker_ids,
 )
@@ -28,7 +28,7 @@ def test_assess_student_plagiarism_uses_ai_response():
         '"explanation": "Both excerpts share the same authentication ideas with light edits."}'
     )
     with patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.plagiarism_detection.ollama_client.generate",
         return_value=ai_json,
     ):
         result = assess_student_plagiarism(
@@ -44,7 +44,7 @@ def test_assess_student_plagiarism_uses_ai_response():
 
 def test_assess_student_plagiarism_falls_back_when_ai_unavailable():
     with patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.plagiarism_detection.ollama_client.generate",
         return_value=None,
     ):
         result = assess_student_plagiarism(
@@ -69,7 +69,7 @@ def test_detect_ai_segments_flags_ai_content():
         "app.services.ai_detector_client.classify_text",
         return_value=None,
     ), patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.ai_detection.ollama_client.generate",
         return_value=ai_json,
     ):
         result = detect_ai_segments(long_text)
@@ -90,7 +90,7 @@ def test_detect_ai_segments_uses_heuristics_when_llm_unavailable():
         "app.services.ai_detector_client.classify_text",
         return_value=None,
     ), patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.ai_detection.ollama_client.generate",
         return_value=None,
     ):
         result = detect_ai_segments(long_text)
@@ -123,7 +123,7 @@ def test_detect_ai_segments_prefers_classifier_over_llm():
         "app.services.ai_detector_client.classify_text",
         return_value=classifier_payload,
     ), patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.ai_detection.ollama_client.generate",
     ) as mock_llm:
         result = detect_ai_segments(long_text)
     assert result.integrity_type == "ai"
@@ -141,10 +141,10 @@ def test_scan_document_for_ai_flags_entirely_ai_submission():
     )
     text = " ".join(["padding"] * 45) + " This comprehensive report utilizes robust methodologies."
     with patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.ai_detection.ollama_client.generate",
         return_value=ai_json,
     ):
-        from app.services.overlap_integrity_detector import scan_document_for_ai
+        from app.services.overlap.integrity import scan_document_for_ai
 
         result = scan_document_for_ai(text)
     assert result.integrity_type == "ai"
@@ -159,7 +159,7 @@ def test_enrich_hit_with_ai_rejects_when_model_says_none():
         "status": "possible",
     }
     with patch(
-        "app.services.overlap_integrity_detector.assess_student_plagiarism",
+        "app.services.overlap.integrity.plagiarism_detection.assess_student_plagiarism",
         return_value=IntegrityResult(
             integrity_type="none",
             confidence=0.1,
@@ -237,7 +237,7 @@ def test_scan_document_pair_plagiarism_orders_flags():
         "second shared paragraph about databases and storage design patterns here."
     )
     with patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.plagiarism_detection.ollama_client.generate",
         return_value=ai_json,
     ):
         result = scan_document_pair_plagiarism(doc_a, doc_b, tfidf_hint=0.7)
@@ -410,7 +410,7 @@ def test_near_duplicate_identical_documents():
         "Second paragraph explains the same project methodology in identical wording. "
         "Third paragraph concludes with shared results and identical summary text."
     )
-    with patch("app.services.overlap_integrity_detector.ollama_client.generate") as llm:
+    with patch("app.services.overlap.integrity.plagiarism_detection.ollama_client.generate") as llm:
         result = _near_duplicate_plagiarism_result(doc, doc, tfidf_hint=0.99)
     llm.assert_not_called()
     assert result is not None
@@ -436,7 +436,7 @@ def test_scan_evidence_pair_uses_near_duplicate_for_identical_docs():
         "Middle section repeats the same content in both student submissions exactly. "
         "Closing section also matches word for word between both uploaded files."
     )
-    with patch("app.services.overlap_integrity_detector.ollama_client.generate") as llm:
+    with patch("app.services.overlap.integrity.plagiarism_detection.ollama_client.generate") as llm:
         result = scan_evidence_pair_plagiarism(
             doc,
             doc,
@@ -454,9 +454,9 @@ def test_scan_evidence_pair_uses_excerpts_for_long_documents():
     long_a = "unique coursework paragraph with enough words for student A only. " * 400
     long_b = "different coursework paragraph with enough words for student B only. " * 400
     with patch(
-        "app.services.overlap_integrity_detector.scan_document_pair_plagiarism",
+        "app.services.overlap.integrity.plagiarism_detection.scan_document_pair_plagiarism",
     ) as full_scan, patch(
-        "app.services.overlap_integrity_detector.assess_student_plagiarism",
+        "app.services.overlap.integrity.plagiarism_detection.assess_student_plagiarism",
         return_value=IntegrityResult(
             integrity_type="student_plagiarism",
             confidence=0.84,
@@ -494,7 +494,7 @@ def test_enrich_hit_attaches_student_plagiarism_metrics():
         '"confidence": 0.84, "reason": "Copied"}], "explanation": "Copied passage."}'
     )
     with patch(
-        "app.services.overlap_integrity_detector.ollama_client.generate",
+        "app.services.overlap.integrity.plagiarism_detection.ollama_client.generate",
         return_value=ai_json,
     ):
         hit = enrich_hit_with_ai(

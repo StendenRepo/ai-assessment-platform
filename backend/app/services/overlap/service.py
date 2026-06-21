@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from app.services import ollama_client
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     IntegrityFlag,
     IntegrityResult,
     attach_integrity_metrics,
@@ -23,19 +23,19 @@ from app.models.overlap_signal import OverlapSignal
 from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
-from app.services.overlap_document_builder import (
+from app.services.overlap.document_builder import (
     build_highlighted_documents,
     read_evidence_text,
     shared_phrases_between_documents,
 )
-from app.services.overlap_repository import (
+from app.services.overlap.repository import (
     clear_module_signals,
     filter_signals,
     get_module_signals as repository_get_module_signals,
     get_signal as repository_get_signal,
 )
-from app.services.overlap_signal_codec import encode_text_snippet, parse_signal_detail
-from app.services.overlap_text_detector import (
+from app.services.overlap.signal_codec import encode_text_snippet, parse_signal_detail
+from app.services.overlap.text_detector import (
     EvidenceChunk,
     detect_cross_group,
     detect_within_group,

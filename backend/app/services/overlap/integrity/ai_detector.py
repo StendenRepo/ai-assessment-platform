@@ -1,6 +1,6 @@
-"""Backward-compatible re-exports — see overlap_integrity_detector."""
+"""Backward-compatible re-exports — see app.services.overlap.integrity."""
 
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     AI_CONFIRMED_MIN,
     AI_FLAG_MIN,
     STUDENT_AI_CONFIRMED_MIN,
@@ -21,7 +21,7 @@ from app.services.overlap_integrity_detector import (
     score_ai_writing_heuristics,
     strip_markers,
 )
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     assess_student_plagiarism as assess_textual_overlap,
 )
 

@@ -224,7 +224,7 @@ def write_student_files(folder: Path, content: str) -> None:
 def estimate_similarity(doc_a: str, doc_b: str) -> float:
     backend = Path(__file__).resolve().parents[1] / "backend"
     sys.path.insert(0, str(backend))
-    from app.services.overlap_text_detector import EvidenceChunk, detect_within_group
+    from app.services.overlap.text_detector import EvidenceChunk, detect_within_group
     from app.services.text_chunker import chunk_text
 
     def chunks(doc: str, student_id: str) -> list[EvidenceChunk]:

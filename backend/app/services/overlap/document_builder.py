@@ -11,16 +11,16 @@ from sqlalchemy.orm import Session
 
 from app.models.evidence import Evidence
 from app.models.overlap_signal import OverlapSignal
-from app.services.overlap_highlight import (
+from app.services.overlap.highlight import (
     apply_paired_student_highlights,
     highlight_phrases_paired,
 )
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     apply_flags_to_document,
     dedupe_student_flag_dicts,
 )
-from app.services.overlap_signal_codec import parse_signal_detail
-from app.services.overlap_text_detector import POSSIBLE_MIN, highlight_shared
+from app.services.overlap.signal_codec import parse_signal_detail
+from app.services.overlap.text_detector import POSSIBLE_MIN, highlight_shared
 from app.services.text_chunker import chunk_text
 from app.services.text_extraction import read_stored_evidence_text
 

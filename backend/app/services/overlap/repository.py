@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.models.overlap_signal import OverlapSignal
 from app.models.project import Project
 from app.models.student import Student, student_projects
-from app.services.overlap_signal_codec import parse_signal_detail
+from app.services.overlap.signal_codec import parse_signal_detail
 
 
 def filter_signals(

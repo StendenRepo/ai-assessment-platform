@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 from app.models.enums import FileType, SourceType
 from app.services.evidence_service import EVIDENCE_UPLOAD_DIR
-from app.services.overlap_service import OverlapService
-from app.services.overlap_text_detector import (
+from app.services.overlap.service import OverlapService
+from app.services.overlap.text_detector import (
     detect_within_group,
     EvidenceChunk,
     highlight_shared,
@@ -55,7 +55,7 @@ def test_detect_within_group_does_not_double_corpus():
             return TfidfVectorizer(stop_words="english").fit_transform(texts)
 
     with patch(
-        "app.services.overlap_text_detector.TfidfVectorizer",
+        "app.services.overlap.text_detector.TfidfVectorizer",
         RecordingVectorizer,
     ):
         detect_within_group(chunks)
@@ -73,7 +73,7 @@ def test_highlight_shared_finds_mid_document_phrase():
 
 
 def test_highlight_phrase_in_full_document():
-    from app.services.overlap_highlight import highlight_phrase_in_document
+    from app.services.overlap.highlight import highlight_phrase_in_document
 
     full = (
         "Title line\n\n"
@@ -87,8 +87,8 @@ def test_highlight_phrase_in_full_document():
 
 
 def test_shared_phrases_between_documents_finds_multiple_blocks():
-    from app.services.overlap_service import shared_phrases_between_documents
-    from app.services.overlap_highlight import highlight_phrases_in_document
+    from app.services.overlap.service import shared_phrases_between_documents
+    from app.services.overlap.highlight import highlight_phrases_in_document
 
     block_one = (
         "OVERLAP_BLOCK_START: Our cohort implemented authentication using JWT tokens "
@@ -131,7 +131,7 @@ def test_analyze_module_overlap_with_text_evidence(db, teacher, monkeypatch):
         staticmethod(lambda _prompt: "Review overlap manually."),
     )
     monkeypatch.setattr(
-        "app.services.overlap_service.enrich_hit_with_ai",
+        "app.services.overlap.service.enrich_hit_with_ai",
         lambda hit, **kwargs: {
             **hit,
             "ai_verified": True,

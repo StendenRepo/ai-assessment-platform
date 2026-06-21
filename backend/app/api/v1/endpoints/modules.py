@@ -42,11 +42,11 @@ from app.services.module_service import (
     ModuleService,
     _module_file_path,
 )
-from app.services.overlap_integrity_detector import (
+from app.services.overlap.integrity import (
     dedupe_student_flag_dicts,
     derive_signal_metrics,
 )
-from app.services.overlap_service import (
+from app.services.overlap.service import (
     OverlapService,
     build_highlighted_documents,
     parse_signal_detail,

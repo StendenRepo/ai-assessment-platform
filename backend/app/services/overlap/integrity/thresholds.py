@@ -1,0 +1,37 @@
+"""Tunable thresholds and size limits for integrity detection.
+
+Centralised so scoring decisions live in one place rather than being scattered
+across the detection and aggregation logic.
+"""
+
+from __future__ import annotations
+
+# AI detection thresholds - document-level is slightly looser than per-flag.
+AI_FLAG_MIN = 0.62
+AI_DOCUMENT_MIN = 0.58
+AI_CONFIRMED_MIN = 0.76
+AI_HEURISTIC_MIN = 0.70
+AI_CLASSIFIER_MIN = 0.15
+AI_CLASSIFIER_CONFIRMED = 0.50
+AI_CLASSIFIER_SEGMENT_MIN = 0.55
+STUDENT_POSSIBLE_MIN = 0.42
+STUDENT_CONFIRMED_MIN = 0.68
+STUDENT_AI_FLAG_MIN = 0.72
+STUDENT_AI_CONFIRMED_MIN = 0.82
+NEAR_DUPLICATE_DOC_MIN = 0.90
+NEAR_DUPLICATE_UNIT_MIN = 0.82
+
+_MIN_ANCHOR_WORDS = 4
+_MIN_PARTIAL_WINDOW = 10
+
+_MAX_CHUNK_CHARS = 1200
+_MAX_PAIR_CHARS = 1400
+_MAX_DOC_COMPARE_CHARS = 3000
+_MAX_FULL_DOC_COMBINED_CHARS = 10000
+_MAX_PAIR_VERIFY_CHUNK_PAIRS = 3
+_MAX_AI_CHUNKS_PER_DOC = 12
+_MAX_AI_FLAGS = 12
+_MAX_PAIR_FLAGS = 20
+_MAX_FLAG_SNIPPET_CHARS = 1200
+_DIRECT_MERGE_MAX_WORDS = 90
+_MIN_COMPARISON_SENTENCE_WORDS = 4

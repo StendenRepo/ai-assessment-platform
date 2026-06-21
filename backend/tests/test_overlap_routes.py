@@ -117,7 +117,7 @@ def _cleanup_module_seed(db, seed):
 
 class TestOverlapRoutes:
     def _patch_ai(self, monkeypatch):
-        from app.services.overlap_service import OverlapService
+        from app.services.overlap.service import OverlapService
 
         def _fake_enrich(hit, **kwargs):
             return {
@@ -139,18 +139,18 @@ class TestOverlapRoutes:
             }
 
         monkeypatch.setattr(
-            "app.services.overlap_service.enrich_hit_with_ai",
+            "app.services.overlap.service.enrich_hit_with_ai",
             _fake_enrich,
         )
         monkeypatch.setattr(
-            "app.services.overlap_service.detect_ai_segments",
+            "app.services.overlap.service.detect_ai_segments",
             lambda _text: __import__(
-                "app.services.overlap_integrity_detector",
+                "app.services.overlap.integrity",
                 fromlist=["IntegrityResult"],
             ).IntegrityResult(integrity_type="none", confidence=0, status="none"),
         )
         monkeypatch.setattr(
-            "app.services.overlap_service.combine_ai_results",
+            "app.services.overlap.service.combine_ai_results",
             lambda *_args, **_kwargs: None,
         )
         monkeypatch.setattr(
@@ -168,7 +168,7 @@ class TestOverlapRoutes:
             upload_dir,
         )
         monkeypatch.setattr(
-            "app.services.overlap_service.EVIDENCE_UPLOAD_DIR",
+            "app.services.overlap.service.EVIDENCE_UPLOAD_DIR",
             upload_dir,
         )
         self._patch_ai(monkeypatch)
@@ -217,7 +217,7 @@ class TestOverlapRoutes:
             upload_dir,
         )
         monkeypatch.setattr(
-            "app.services.overlap_service.EVIDENCE_UPLOAD_DIR",
+            "app.services.overlap.service.EVIDENCE_UPLOAD_DIR",
             upload_dir,
         )
         self._patch_ai(monkeypatch)

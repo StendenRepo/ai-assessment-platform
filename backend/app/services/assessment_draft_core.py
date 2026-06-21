@@ -24,7 +24,7 @@ from app.models.student import Student
 from app.services.evidence_matcher import match_criterion_to_evidence, persist_matches
 from app.lib.llm_json import parse_json_response
 from app.services import ollama_client
-from app.services.overlap_service import OverlapService, parse_signal_detail
+from app.services.overlap.service import OverlapService, parse_signal_detail
 
 DRAFT_VERSION = 1
 
