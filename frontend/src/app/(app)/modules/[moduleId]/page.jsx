@@ -401,6 +401,8 @@ export default function ModulePage() {
     await performModuleBookUpload(nextFile);
   };
 
+  const viewOnly = useModuleViewOnly(project?.teacher_id);
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -419,8 +421,6 @@ export default function ModulePage() {
       </div>
     );
   }
-
-  const viewOnly = useModuleViewOnly(project?.teacher_id);
 
   const rubric = project?.rubric_file;
   const moduleBook = project?.module_book_file;

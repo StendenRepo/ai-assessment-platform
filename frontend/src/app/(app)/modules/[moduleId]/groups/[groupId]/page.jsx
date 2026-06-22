@@ -105,6 +105,8 @@ export default function GroupDetailPage() {
       .finally(() => setLoading(false));
   }, [moduleId, groupId]);
 
+  const viewOnly = useModuleViewOnly(module?.teacher_id);
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -221,8 +223,6 @@ export default function GroupDetailPage() {
       setRepoSaving(false);
     }
   };
-
-  const viewOnly = useModuleViewOnly(module?.teacher_id);
 
   return (
     <div className="space-y-6">

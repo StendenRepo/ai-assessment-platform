@@ -843,6 +843,8 @@ export default function StudentAssessmentPage() {
     setAuditRefresh((k) => k + 1);
   }, []);
 
+  const viewOnly = useModuleViewOnly(moduleTeacherId);
+
   if (loadError)
     return <div className="text-sm text-red-400 p-4">{loadError}</div>;
 
@@ -852,8 +854,6 @@ export default function StudentAssessmentPage() {
         <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
-
-  const viewOnly = useModuleViewOnly(moduleTeacherId);
 
   const overallScore =
     draftSnapshot?.overall_score != null

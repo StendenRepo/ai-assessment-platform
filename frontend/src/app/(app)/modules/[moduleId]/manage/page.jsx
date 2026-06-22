@@ -274,6 +274,8 @@ export default function ModuleManagePage() {
     }
   };
 
+  const viewOnly = useModuleViewOnly(moduleTeacherId);
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -292,8 +294,6 @@ export default function ModuleManagePage() {
       </div>
     );
   }
-
-  const viewOnly = useModuleViewOnly(moduleTeacherId);
 
   return (
     <div className="space-y-6">
