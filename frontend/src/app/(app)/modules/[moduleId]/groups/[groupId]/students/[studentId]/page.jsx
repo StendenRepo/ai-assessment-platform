@@ -4,8 +4,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import {
   AlertTriangle,
-  Lightbulb,
-  Activity,
   ChevronDown,
   ChevronRight,
   Shield,
@@ -17,11 +15,6 @@ import {
   Github,
   GitBranch,
 } from 'lucide-react';
-import {
-  mockContributions,
-  mockCriteria,
-  mockAIInsights,
-} from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
 import EvidenceListSections from '@/components/evidence/EvidenceListSections';
@@ -50,7 +43,7 @@ import {
 } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
 import AssessmentFormPanel from '@/components/assessment/AssessmentFormPanel';
-import AssessmentChatWidget from '@/components/assessment/AssessmentChatWidget';
+import FloatingAssessmentChat from '@/components/assessment/FloatingAssessmentChat';
 import TransparencyPanel from '@/components/assessment/TransparencyPanel';
 import EmailDraftModal from '@/components/assessment/EmailDraftModal';
 import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
@@ -70,24 +63,6 @@ const insightConfig = {
       high: 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20',
       medium: 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20',
       low: 'bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/20',
-    },
-  },
-  suggestion: {
-    icon: Lightbulb,
-    label: 'Suggestion',
-    severityColors: {
-      high: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
-      medium: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
-      low: 'bg-secondary text-muted-foreground ring-1 ring-border',
-    },
-  },
-  anomaly: {
-    icon: Activity,
-    label: 'Anomaly',
-    severityColors: {
-      high: 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20',
-      medium: 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20',
-      low: 'bg-secondary text-muted-foreground ring-1 ring-border',
     },
   },
 };
@@ -143,9 +118,6 @@ function overlapToInsight(signal, studentId, studentNames = {}) {
 function AIInsightsPanel({ moduleId, studentId }) {
   const [overlapSignals, setOverlapSignals] = useState([]);
   const [overlapLoading, setOverlapLoading] = useState(false);
-  const mockInsights = mockAIInsights.filter(
-    (i) => i.type !== 'overlap' && i.affectedStudents.includes(studentId)
-  );
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
@@ -175,7 +147,6 @@ function AIInsightsPanel({ moduleId, studentId }) {
   const overlapInsights = overlapSignals.map((s) =>
     overlapToInsight(s, studentId)
   );
-  const insights = [...overlapInsights, ...mockInsights];
 
   return (
     <div className="rounded-lg bg-card border border-border overflow-hidden">
@@ -188,7 +159,8 @@ function AIInsightsPanel({ moduleId, studentId }) {
             AI Insights
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {insights.length} finding{insights.length !== 1 ? 's' : ''}
+            {overlapInsights.length} finding
+            {overlapInsights.length !== 1 ? 's' : ''}
           </div>
         </div>
       </div>
@@ -206,7 +178,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
           <div className="flex justify-center py-4">
             <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : insights.length === 0 ? (
+        ) : overlapInsights.length === 0 ? (
           <div className="rounded-lg border border-border p-6 text-center">
             <div className="text-2xl mb-2">✓</div>
             <p className="text-sm font-medium text-foreground">
@@ -217,7 +189,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
             </p>
           </div>
         ) : (
-          insights.map((insight) => {
+          overlapInsights.map((insight) => {
             const config = insightConfig[insight.type];
             const Icon = config.icon;
             const severityClass = config.severityColors[insight.severity];
@@ -664,27 +636,11 @@ function EvidenceUpload({ studentId }) {
 
 // ─── Student Assessment Page ──────────────────────────────────────────────────
 
-const contributionTypeLabel = {
-  code: 'CODE',
-  documentation: 'DOC',
-  presentation: 'PRES',
-  research: 'RES',
-};
-const contributionTypeColor = {
-  code: 'bg-blue-500/10 text-blue-400',
-  documentation: 'bg-violet-500/10 text-violet-400',
-  presentation: 'bg-amber-500/10 text-amber-400',
-  research: 'bg-emerald-500/10 text-emerald-400',
-};
-
 export default function StudentAssessmentPage() {
   const { moduleId, studentId } = useParams();
   const [student, setStudent] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
-  const [expanded, setExpanded] = useState(null);
-  const [scores, setScores] = useState({});
-  const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
   const [moduleName, setModuleName] = useState('');
   const [emailDraftOpen, setEmailDraftOpen] = useState(false);
@@ -695,6 +651,8 @@ export default function StudentAssessmentPage() {
   const [draftRefreshToken, setDraftRefreshToken] = useState(0);
   const [highlightedCriteria, setHighlightedCriteria] = useState([]);
   const chatRef = useRef(null);
+  const pendingDiscussRef = useRef(null);
+  const [discussTrigger, setDiscussTrigger] = useState(0);
 
   const [repoUrl, setRepoUrl] = useState('');
   const [repoBranch, setRepoBranch] = useState('');
@@ -725,8 +683,18 @@ export default function StudentAssessmentPage() {
 
   function handleDiscussCriterion({ key, name, score }) {
     setCurrentTab(1);
-    chatRef.current?.focusCriterion(key, name, score);
+    pendingDiscussRef.current = { key, name, score };
+    setDiscussTrigger((t) => t + 1);
   }
+
+  useEffect(() => {
+    if (currentTab !== 1 || !pendingDiscussRef.current) return;
+    const { key, name, score } = pendingDiscussRef.current;
+    pendingDiscussRef.current = null;
+    requestAnimationFrame(() => {
+      chatRef.current?.focusCriterion(key, name, score);
+    });
+  }, [currentTab, discussTrigger]);
 
   useEffect(() => {
     getProject(moduleId)
@@ -899,6 +867,17 @@ export default function StudentAssessmentPage() {
         />
       )}
 
+      {currentTab === 1 && assessmentId && (
+        <FloatingAssessmentChat
+          ref={chatRef}
+          assessmentId={assessmentId}
+          disabled={draftSnapshot?.locked}
+          canChat={draftSnapshot?.can_chat ?? false}
+          onDraftUpdated={handleChatDraftUpdated}
+          onApplied={handleChatApplied}
+        />
+      )}
+
       <div className="rounded-lg bg-card border border-border p-6">
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary shrink-0">
@@ -968,111 +947,6 @@ export default function StudentAssessmentPage() {
                     studentId={studentId}
                     moduleId={moduleId}
                   />
-
-                  <div className="space-y-3">
-                    <div className="mb-4">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        Detected Contributions
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        AI-detected contributions linked to supporting evidence
-                      </p>
-                    </div>
-                    {mockContributions.map((contrib) => (
-                      <div
-                        key={contrib.id}
-                        className="rounded-lg border border-border overflow-hidden"
-                      >
-                        <button
-                          onClick={() =>
-                            setExpanded(
-                              expanded === contrib.id ? null : contrib.id
-                            )
-                          }
-                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer"
-                        >
-                          <span
-                            className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
-                          >
-                            {contributionTypeLabel[contrib.type]}
-                          </span>
-                          {expanded === contrib.id ? (
-                            <ChevronDown
-                              size={15}
-                              className="text-muted-foreground shrink-0"
-                            />
-                          ) : (
-                            <ChevronRight
-                              size={15}
-                              className="text-muted-foreground shrink-0"
-                            />
-                          )}
-                        </button>
-                        {expanded === contrib.id && (
-                          <div className="border-t border-border bg-secondary/30 p-5 space-y-4">
-                            <p className="text-sm text-muted-foreground">
-                              {contrib.description}
-                            </p>
-                            <div>
-                              <p className="text-xs font-semibold text-foreground mb-2">
-                                Evidence ({contrib.evidenceFiles.length})
-                              </p>
-                              <div className="space-y-2">
-                                {contrib.evidenceFiles.map((ev) => (
-                                  <div
-                                    key={ev.id}
-                                    className="rounded-md bg-card border border-border p-3"
-                                  >
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-semibold text-foreground font-mono">
-                                        {ev.fileName}
-                                      </span>
-                                      <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                                        View source →
-                                      </button>
-                                    </div>
-                                    {ev.excerpt && (
-                                      <div className="rounded bg-background border border-border px-3 py-2 text-xs font-mono text-muted-foreground mb-2">
-                                        {ev.excerpt}
-                                      </div>
-                                    )}
-                                    <div className="text-[10px] text-muted-foreground">
-                                      Uploaded{' '}
-                                      {new Date(
-                                        ev.uploadDate
-                                      ).toLocaleDateString('en-US')}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            {contrib.linkedCriteria.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-foreground mb-2">
-                                  Linked Criteria
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {contrib.linkedCriteria.map((cid) => {
-                                    const c = mockCriteria.find(
-                                      (x) => x.id === cid
-                                    );
-                                    return c ? (
-                                      <span
-                                        key={cid}
-                                        className="rounded-full px-2.5 py-0.5 text-xs bg-primary/10 text-primary ring-1 ring-primary/20"
-                                      >
-                                        {c.name}
-                                      </span>
-                                    ) : null;
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
 
                   <EvidenceUpload studentId={studentId} />
                 </div>
@@ -1285,16 +1159,6 @@ export default function StudentAssessmentPage() {
             />
 
             {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
-            {assessmentId && (
-              <AssessmentChatWidget
-                ref={chatRef}
-                assessmentId={assessmentId}
-                disabled={draftSnapshot?.locked}
-                canChat={draftSnapshot?.can_chat ?? false}
-                onDraftUpdated={handleChatDraftUpdated}
-                onApplied={handleChatApplied}
-              />
-            )}
             {assessmentId && (
               <TransparencyPanel
                 assessmentId={assessmentId}

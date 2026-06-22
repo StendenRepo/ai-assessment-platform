@@ -35,7 +35,7 @@ from app.services.assessment_draft_core import (
     _now,
     _proposal_summary_text,
     _reject_pending_proposals,
-    _save_draft,
+    _persist_draft,
     _score_to_grade,
     _unrefined_history_for_llm,
     _unrefined_chat_messages,
@@ -283,13 +283,12 @@ def chat_apply_proposal(
         summary_update=meta.get("summary_proposed"),
         ctx=ctx,
     )
-    _save_draft(db, assessment, draft)
+    _persist_draft(db, assessment, draft)
 
     meta = {**meta, "status": "applied", "applied_changes": _changes_to_out(applied)}
     msg.metadata_json = meta
     msg.content = f"Applied refinement: {msg.content}"
     db.add(msg)
-    db.commit()
 
     audit_service.log_action(
         db,
@@ -303,7 +302,10 @@ def chat_apply_proposal(
             "updates_applied": len(applied),
             "changes": applied,
         },
+        commit=False,
     )
+    db.commit()
+
     return draft, _changes_to_out(applied)
 
 
@@ -390,7 +392,7 @@ def chat_undo_last_apply(
         draft["overall_grade"]["ai"] = _score_to_grade(overall)
         draft["overall_grade"]["effective"] = draft["overall_grade"]["ai"]
 
-    _save_draft(db, assessment, draft)
+    _persist_draft(db, assessment, draft)
     audit_service.log_action(
         db,
         action="assessment.chat_undo",
@@ -398,7 +400,9 @@ def chat_undo_last_apply(
         teacher_name=teacher.name,
         assessment_id=assessment.id,
         details={"restored": restored},
+        commit=False,
     )
+    db.commit()
     return draft, restored
 
 

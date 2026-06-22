@@ -24,6 +24,7 @@ import {
   postAssessmentChatUndo,
 } from '@/lib/api/assessmentsApi';
 import RefineProposalCard from './RefineProposalCard';
+import ChatMessageContent from './ChatMessageContent';
 
 const STARTER_CHIPS = [
   'Why is this score what it is?',
@@ -56,6 +57,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
     onDraftUpdated,
     onApplied,
     focusCriterionKey = null,
+    className = '',
   },
   ref
 ) {
@@ -250,13 +252,17 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
         className={`flex ${m.role === 'teacher' ? 'justify-end' : 'justify-start'}`}
       >
         <div
-          className={`max-w-[90%] rounded-lg px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+          className={`max-w-[95%] rounded-lg px-3 py-2 ${
             m.role === 'teacher'
-              ? 'bg-primary text-primary-foreground'
+              ? 'bg-primary text-primary-foreground text-xs leading-relaxed whitespace-pre-wrap'
               : 'bg-secondary border border-border text-foreground'
           }`}
         >
-          {displayed}
+          {m.role === 'teacher' ? (
+            displayed
+          ) : (
+            <ChatMessageContent content={displayed} />
+          )}
           {isAnimating && (
             <span className="inline-block w-1.5 h-3 ml-0.5 -mb-0.5 bg-current opacity-70 animate-pulse" />
           )}
@@ -266,7 +272,9 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
   }
 
   return (
-    <div className="rounded-lg bg-card border border-border overflow-hidden flex flex-col max-h-[560px]">
+    <div
+      className={`rounded-lg bg-card border border-border overflow-hidden flex flex-col max-h-[560px] ${className}`.trim()}
+    >
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
         <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
           <MessageSquare size={14} className="text-accent" />
@@ -276,7 +284,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
             Discuss with AI
           </div>
           <div className="text-[11px] text-muted-foreground">
-            Discuss this assessment — refine when ready
+            Discuss this assessment - refine when ready
           </div>
         </div>
         {!chatDisabled && (
@@ -347,7 +355,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
               <Sparkles size={14} />
             )}
             {refining
-              ? 'Generating proposal…'
+              ? 'Generating proposal...'
               : 'Refine assessment from discussion'}
           </button>
         </div>
@@ -365,10 +373,10 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
           disabled={chatDisabled || sending}
           placeholder={
             disabled
-              ? 'Assessment finalized — chat locked'
+              ? 'Assessment finalized - chat locked'
               : !canChat
-                ? 'Generate AI suggestions first…'
-                : 'Ask about scores, evidence, or rubric…'
+                ? 'Generate AI suggestions first...'
+                : 'Ask about scores, evidence, or rubric...'
           }
           className="flex-1 bg-secondary border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
         />

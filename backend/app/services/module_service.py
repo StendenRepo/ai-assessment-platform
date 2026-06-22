@@ -220,3 +220,78 @@ class ModuleService:
             missing_detail="This module has no module book attached.",
             db=db,
         )
+
+    @staticmethod
+    def delete_module(module: Module, db: Session) -> None:
+        """Delete module, its projects, orphan students, and related evidence. Does not commit."""
+        from app.models.project import Project
+        from app.models.student import Student, student_projects
+        from app.models.evidence import Evidence
+        from app.services.evidence_service import EvidenceService
+
+        project_ids = [
+            p.id
+            for p in db.query(Project).filter(Project.module_id == module.id).all()
+        ]
+
+        student_ids = [
+            row.student_id
+            for row in db.execute(
+                student_projects.select().where(student_projects.c.project_id.in_(project_ids))
+            ).all()
+        ] if project_ids else []
+
+        if project_ids:
+            db.execute(
+                student_projects.delete().where(
+                    student_projects.c.project_id.in_(project_ids)
+                )
+            )
+
+        orphaned_ids = [
+            sid
+            for sid in student_ids
+            if not db.execute(
+                student_projects.select().where(student_projects.c.student_id == sid)
+            ).first()
+        ]
+
+        evidence_by_id: dict = {}
+        if orphaned_ids:
+            for ev in db.query(Evidence).filter(Evidence.student_id.in_(orphaned_ids)).all():
+                evidence_by_id[ev.id] = ev
+        if project_ids:
+            for ev in db.query(Evidence).filter(Evidence.project_id.in_(project_ids)).all():
+                evidence_by_id[ev.id] = ev
+        evidence_items = list(evidence_by_id.values())
+
+        if evidence_items:
+            EvidenceService._delete_evidence_rows(evidence_items, db)
+
+        if orphaned_ids:
+            db.query(Student).filter(Student.student_number.in_(orphaned_ids)).delete(
+                synchronize_session=False
+            )
+
+        if module.rubric_file_id:
+            rubric_record = (
+                db.query(FileRecord).filter(FileRecord.id == module.rubric_file_id).first()
+            )
+            if rubric_record:
+                try:
+                    rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_record.path
+                    if rubric_path.exists():
+                        rubric_path.unlink()
+                    rubric_dir = RUBRIC_UPLOAD_DIR / str(module.id)
+                    if rubric_dir.exists() and not any(rubric_dir.iterdir()):
+                        rubric_dir.rmdir()
+                except OSError:
+                    pass
+                db.delete(rubric_record)
+
+        db.query(Project).filter(Project.module_id == module.id).delete(synchronize_session=False)
+        db.delete(module)
+        db.flush()
+
+        for ev in evidence_items:
+            EvidenceService._delete_evidence_artifacts(ev)

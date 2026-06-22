@@ -24,7 +24,7 @@ from app.services.assessment_draft_core import (
     _now,
     _recording_context,
     _rubric_text,
-    _save_draft,
+    _persist_draft,
     _score_to_grade,
     _build_evidence_refs,
 )
@@ -100,7 +100,7 @@ def generate_suggestions(
     draft["generated_at"] = now.isoformat()
     draft["locked"] = False
 
-    _save_draft(db, assessment, draft)
+    _persist_draft(db, assessment, draft)
 
     audit_service.log_action(
         db,
@@ -114,7 +114,9 @@ def generate_suggestions(
             "evidence_count": len(evidence_rows),
             "overall_score": overall,
         },
+        commit=False,
     )
+    db.commit()
     return draft
 
 
@@ -223,7 +225,7 @@ def apply_overrides(
             draft["overall_grade"]["teacher"] = overall_grade
             draft["overall_grade"]["effective"] = overall_grade
 
-    _save_draft(db, assessment, draft)
+    _persist_draft(db, assessment, draft)
     db.commit()
     return draft
 
@@ -246,7 +248,7 @@ def revert_criterion(
     entry["is_overridden"] = False
     entry["effective"] = _effective_value(ai_value, None, False)
 
-    _save_draft(db, assessment, draft)
+    _persist_draft(db, assessment, draft)
     audit_service.log_action(
         db,
         action="assessment.override_reverted",
@@ -254,5 +256,7 @@ def revert_criterion(
         teacher_name=teacher.name,
         assessment_id=assessment.id,
         details={"criterion_key": criterion_key},
+        commit=False,
     )
+    db.commit()
     return draft

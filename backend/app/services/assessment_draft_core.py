@@ -1,8 +1,6 @@
 """Shared assessment draft helpers, constants, and context builders."""
 from __future__ import annotations
 
-from __future__ import annotations
-
 import copy
 import json
 import re
@@ -82,7 +80,9 @@ Rules:
 - You may suggest what could change, but do NOT output JSON or claim scores have been changed.
 - The lecturer will use a separate Refine action to commit changes to the form.
 - Never invent evidence or rewrite student work.
-- Be clear, helpful, and concise."""
+- Be clear, helpful, and concise.
+- Format replies for on-screen reading: short paragraphs, simple "-" bullet lists, and **bold** for criterion names or scores.
+- Avoid markdown headings (###), numbered outlines, and code fences unless quoting a short excerpt."""
 
 _CHAT_PROPOSE_SYSTEM_PROMPT = """You are an expert university assessor assistant. Based on the lecturer conversation and assessment context, propose criterion updates grounded in uploaded evidence.
 
@@ -144,10 +144,11 @@ def _load_draft(assessment: Assessment) -> dict[str, Any]:
     return draft
 
 
-def _save_draft(db: Session, assessment: Assessment, draft: dict[str, Any]) -> None:
+def _persist_draft(db: Session, assessment: Assessment, draft: dict[str, Any]) -> None:
+    """Stage draft JSON on the assessment; does not commit."""
     assessment.draft_form_json = draft
     db.add(assessment)
-    db.commit()
+    db.flush()
     db.refresh(assessment)
 
 
@@ -788,7 +789,7 @@ def _build_chat_reply(
         return (
             "I understood your request but could not apply the suggested criterion "
             "changes — they need to reference uploaded evidence files. Try being "
-            "specific, e.g. “Raise Testing to 8 — see maximizing_synergies.pdf.”"
+            "specific, e.g. “Raise Testing to 8 and cite the supporting evidence file.”"
         )
 
     snippet = teacher_message.strip()[:120]
