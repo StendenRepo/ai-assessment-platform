@@ -17,8 +17,10 @@ import {
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import ModuleFileCard from '@/components/modules/ModuleFileCard';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import { useDocumentPreview } from '@/lib/hooks/useDocumentPreview';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 import {
   getProject,
   listProjectGroups,
@@ -44,7 +46,6 @@ const inputClass =
 export default function ModulePage() {
   const { moduleId } = useParams();
   const router = useRouter();
-
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
@@ -419,6 +420,8 @@ export default function ModulePage() {
     );
   }
 
+  const viewOnly = useModuleViewOnly(project?.teacher_id);
+
   const rubric = project?.rubric_file;
   const moduleBook = project?.module_book_file;
 
@@ -462,6 +465,8 @@ export default function ModulePage() {
 
   return (
     <div className="space-y-6">
+      {viewOnly && <ViewModeBanner />}
+
       <div>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -469,7 +474,9 @@ export default function ModulePage() {
               {project?.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Manage the students in this module to set up the assessment
+              {viewOnly
+                ? 'Viewing module in read-only mode'
+                : 'Manage the students in this module to set up the assessment'}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -490,13 +497,15 @@ export default function ModulePage() {
               <Download size={14} />
               {exporting ? 'Exporting…' : 'Export Grades'}
             </button>
-            <button
-              type="button"
-              onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
-              className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-            >
-              Manage Groups & Students
-            </button>
+            {!viewOnly && (
+              <button
+                type="button"
+                onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
+                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              >
+                Manage Groups & Students
+              </button>
+            )}
           </div>
         </div>
         {exportError && (
@@ -751,6 +760,7 @@ export default function ModulePage() {
             onFileChange={handleRubricFile}
             onDelete={handleRubricDelete}
             docPreview={docPreview}
+            readOnly={viewOnly}
           />
 
           <ModuleFileCard
@@ -775,147 +785,156 @@ export default function ModulePage() {
             onFileChange={handleModuleBookFile}
             onDelete={handleModuleBookDelete}
             docPreview={docPreview}
+            readOnly={viewOnly}
           />
 
-          <form
-            onSubmit={handleCreateGroup}
-            className="rounded-lg bg-card border border-border p-5 space-y-4"
-          >
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <FolderPlus size={15} />
-              Add Group
-            </h3>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Group name *
-              </label>
-              <input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="e.g. Group 1"
-                className={inputClass}
-              />
-            </div>
-            {groupError && <p className="text-xs text-red-400">{groupError}</p>}
-            <button
-              type="submit"
-              disabled={groupSubmitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {groupSubmitting ? 'Creating…' : 'Create Group'}
-            </button>
-          </form>
-          <form
-            onSubmit={handleAdd}
-            className="rounded-lg bg-card border border-border p-5 space-y-4"
-          >
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <UserPlus size={15} />
-              Add Student
-            </h3>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Name *
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Lisa Anderson"
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Student Number *
-              </label>
-              <input
-                value={studentNumber}
-                onChange={(e) => setStudentNumber(e.target.value)}
-                placeholder="e.g. S2034567"
-                className={`${inputClass} font-mono`}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">
-                Group (optional)
-              </label>
-              <select
-                value={selectedGroupId}
-                onChange={(e) => setSelectedGroupId(e.target.value)}
-                className={`${inputClass} cursor-pointer`}
+          {!viewOnly && (
+            <>
+              <form
+                onSubmit={handleCreateGroup}
+                className="rounded-lg bg-card border border-border p-5 space-y-4"
               >
-                <option value="">Default individual group</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {formError && <p className="text-xs text-red-400">{formError}</p>}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {submitting ? 'Adding…' : 'Add Student'}
-            </button>
-          </form>
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <FolderPlus size={15} />
+                  Add Group
+                </h3>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Group name *
+                  </label>
+                  <input
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="e.g. Group 1"
+                    className={inputClass}
+                  />
+                </div>
+                {groupError && (
+                  <p className="text-xs text-red-400">{groupError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={groupSubmitting}
+                  className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {groupSubmitting ? 'Creating…' : 'Create Group'}
+                </button>
+              </form>
+              <form
+                onSubmit={handleAdd}
+                className="rounded-lg bg-card border border-border p-5 space-y-4"
+              >
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <UserPlus size={15} />
+                  Add Student
+                </h3>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Name *
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Lisa Anderson"
+                    className={inputClass}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Student Number *
+                  </label>
+                  <input
+                    value={studentNumber}
+                    onChange={(e) => setStudentNumber(e.target.value)}
+                    placeholder="e.g. S2034567"
+                    className={`${inputClass} font-mono`}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Group (optional)
+                  </label>
+                  <select
+                    value={selectedGroupId}
+                    onChange={(e) => setSelectedGroupId(e.target.value)}
+                    className={`${inputClass} cursor-pointer`}
+                  >
+                    <option value="">Default individual group</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {formError && (
+                  <p className="text-xs text-red-400">{formError}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  {submitting ? 'Adding…' : 'Add Student'}
+                </button>
+              </form>
 
-          {groups.length > 0 && students.length > 0 && (
-            <form
-              onSubmit={handleAssign}
-              className="rounded-lg bg-card border border-border p-5 space-y-4"
-            >
-              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <UserCheck size={15} />
-                Assign to Group
-              </h3>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Student *
-                </label>
-                <select
-                  value={assignStudentId}
-                  onChange={(e) => setAssignStudentId(e.target.value)}
-                  className={`${inputClass} cursor-pointer`}
+              {groups.length > 0 && students.length > 0 && (
+                <form
+                  onSubmit={handleAssign}
+                  className="rounded-lg bg-card border border-border p-5 space-y-4"
                 >
-                  <option value="">— Select student —</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.student_number})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Group *
-                </label>
-                <select
-                  value={assignGroupId}
-                  onChange={(e) => setAssignGroupId(e.target.value)}
-                  className={`${inputClass} cursor-pointer`}
-                >
-                  <option value="">— Select group —</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {assignError && (
-                <p className="text-xs text-red-400">{assignError}</p>
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <UserCheck size={15} />
+                    Assign to Group
+                  </h3>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Student *
+                    </label>
+                    <select
+                      value={assignStudentId}
+                      onChange={(e) => setAssignStudentId(e.target.value)}
+                      className={`${inputClass} cursor-pointer`}
+                    >
+                      <option value="">— Select student —</option>
+                      {students.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.student_number})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Group *
+                    </label>
+                    <select
+                      value={assignGroupId}
+                      onChange={(e) => setAssignGroupId(e.target.value)}
+                      className={`${inputClass} cursor-pointer`}
+                    >
+                      <option value="">— Select group —</option>
+                      {groups.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {assignError && (
+                    <p className="text-xs text-red-400">{assignError}</p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={assigning}
+                    className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {assigning ? 'Assigning…' : 'Assign'}
+                  </button>
+                </form>
               )}
-              <button
-                type="submit"
-                disabled={assigning}
-                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {assigning ? 'Assigning…' : 'Assign'}
-              </button>
-            </form>
+            </>
           )}
         </div>
       </div>
