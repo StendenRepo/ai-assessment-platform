@@ -285,7 +285,7 @@ function AIInsightsPanel({ moduleId, studentId }) {
                         href={APP_PATHS.moduleOverlaps(moduleId)}
                         className="text-[11px] text-primary hover:underline inline-block"
                       >
-                        View overlap details â†’
+                        View overlap details →
                       </a>
                     )}
                   </div>
