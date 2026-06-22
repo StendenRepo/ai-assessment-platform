@@ -33,7 +33,6 @@ from app.schemas.module import (
     ModuleGroupCreate,
     ModuleGroupUpdate,
     ModuleOut,
-    RubricFileOut,
     StudentGroupUpdate,
 )
 from app.schemas.overlap import OverlapAnalysisOut, OverlapSignalOut, OverlapWarningOut

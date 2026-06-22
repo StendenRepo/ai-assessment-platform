@@ -1,8 +1,6 @@
 """Direct tests for ModuleService.delete_module cleanup behavior."""
 import uuid
 
-import pytest
-
 from app.config import settings
 from app.models.enums import EmbeddingStatus, FileType, SourceType
 from app.models.evidence import Evidence

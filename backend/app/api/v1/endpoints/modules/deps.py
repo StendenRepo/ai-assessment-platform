@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.services.module_group_service import DEFAULT_GROUP_NAME, get_or_create_default_group
+from app.services.module_group_service import get_or_create_default_group
 from app.models.evidence import Evidence
 from app.models.module import Module
 from app.models.project import Project

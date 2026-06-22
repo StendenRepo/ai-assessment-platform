@@ -1,0 +1,9 @@
+[lint.per-file-ignores]
+# Route modules re-export shared symbols via star import by design.
+"app/api/v1/endpoints/modules/crud.py" = ["F405"]
+"app/api/v1/endpoints/modules/templates.py" = ["F405"]
+"app/api/v1/endpoints/modules/documents.py" = ["F405"]
+"app/api/v1/endpoints/modules/groups.py" = ["F405"]
+"app/api/v1/endpoints/modules/students.py" = ["F405"]
+"app/api/v1/endpoints/modules/overlap.py" = ["F405"]
+"app/api/v1/endpoints/modules/export.py" = ["F405"]
