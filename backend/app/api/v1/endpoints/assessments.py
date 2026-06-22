@@ -37,7 +37,7 @@ def _get_owned_assessment(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found"
         )
-    if assessment.teacher_id != teacher.id and not teacher.is_admin:
+    if assessment.teacher_id != teacher.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only manage your own assessments",
