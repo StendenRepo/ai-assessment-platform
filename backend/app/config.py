@@ -42,7 +42,17 @@ class Settings:
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
     OLLAMA_MODEL_BACKUP: str = os.getenv("OLLAMA_MODEL_BACKUP", "qwen2.5:3b")
     OLLAMA_TIMEOUT_SECONDS: float = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
-    # Vision model for image evidence description (must support images via Ollama API)
+    OLLAMA_NUM_PREDICT: int = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
+    OLLAMA_NUM_CTX: int = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+
+    ASSESSMENT_OLLAMA_MODEL: str = os.getenv("ASSESSMENT_OLLAMA_MODEL", "qwen2.5:7b")
+    ASSESSMENT_OLLAMA_MODEL_BACKUP: str = os.getenv(
+        "ASSESSMENT_OLLAMA_MODEL_BACKUP", "llama3.1:8b"
+    )
+    ASSESSMENT_OLLAMA_TIMEOUT_SECONDS: float = float(
+        os.getenv("ASSESSMENT_OLLAMA_TIMEOUT_SECONDS", "120")
+    )
+
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
     VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
 
@@ -65,6 +75,51 @@ class Settings:
         "MATCH_AI_MODEL_THOROUGH", os.getenv("MATCH_AI_MODEL", "qwen2.5:3b")
     )
 
+    # Overlap / academic-integrity detection scoring thresholds (scale 0-1).
+    # These define when a passage/document is flagged and when a result is
+    # promoted from "possible" to "confirmed". Tune via env without code changes;
+    # defaults are the validated production values.
+    #
+    # AI-generated-text detection (LLM + RoBERTa classifier):
+    OVERLAP_AI_FLAG_MIN: float = float(os.getenv("OVERLAP_AI_FLAG_MIN", "0.62"))
+    OVERLAP_AI_DOCUMENT_MIN: float = float(os.getenv("OVERLAP_AI_DOCUMENT_MIN", "0.58"))
+    OVERLAP_AI_CONFIRMED_MIN: float = float(os.getenv("OVERLAP_AI_CONFIRMED_MIN", "0.76"))
+    OVERLAP_AI_HEURISTIC_MIN: float = float(os.getenv("OVERLAP_AI_HEURISTIC_MIN", "0.70"))
+    OVERLAP_AI_CLASSIFIER_MIN: float = float(os.getenv("OVERLAP_AI_CLASSIFIER_MIN", "0.15"))
+    OVERLAP_AI_CLASSIFIER_CONFIRMED: float = float(
+        os.getenv("OVERLAP_AI_CLASSIFIER_CONFIRMED", "0.50")
+    )
+    OVERLAP_AI_CLASSIFIER_SEGMENT_MIN: float = float(
+        os.getenv("OVERLAP_AI_CLASSIFIER_SEGMENT_MIN", "0.55")
+    )
+    # Student-to-student plagiarism detection:
+    OVERLAP_STUDENT_POSSIBLE_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_POSSIBLE_MIN", "0.42")
+    )
+    OVERLAP_STUDENT_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_CONFIRMED_MIN", "0.68")
+    )
+    OVERLAP_STUDENT_AI_FLAG_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_AI_FLAG_MIN", "0.72")
+    )
+    OVERLAP_STUDENT_AI_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_STUDENT_AI_CONFIRMED_MIN", "0.82")
+    )
+    # No-LLM near-duplicate fast path:
+    OVERLAP_NEAR_DUPLICATE_DOC_MIN: float = float(
+        os.getenv("OVERLAP_NEAR_DUPLICATE_DOC_MIN", "0.90")
+    )
+    OVERLAP_NEAR_DUPLICATE_UNIT_MIN: float = float(
+        os.getenv("OVERLAP_NEAR_DUPLICATE_UNIT_MIN", "0.82")
+    )
+    # TF-IDF statistical prescreen (overlap_text_detector):
+    OVERLAP_TFIDF_CONFIRMED_MIN: float = float(
+        os.getenv("OVERLAP_TFIDF_CONFIRMED_MIN", "0.68")
+    )
+    OVERLAP_TFIDF_POSSIBLE_MIN: float = float(
+        os.getenv("OVERLAP_TFIDF_POSSIBLE_MIN", "0.50")
+    )
+
     GENERATION_RETENTION_DAYS: int = int(
         os.getenv("GENERATION_RETENTION_DAYS", "90")
     )
@@ -85,6 +140,11 @@ class Settings:
     # override it per connection via the WS ?language= query param. Empty string
     # means auto-detect.
     LIVE_SUBTITLE_LANGUAGE: str = os.getenv("LIVE_SUBTITLE_LANGUAGE", "en")
+
+    # Dedicated AI-text classifier (on-premise RoBERTa — not a generic LLM)
+    AI_DETECTOR_URL: str = os.getenv("AI_DETECTOR_URL", "http://ai-detector:9001")
+    AI_DETECTOR_TIMEOUT_SECONDS: int = int(os.getenv("AI_DETECTOR_TIMEOUT_SECONDS", "120"))
+    AI_DETECTOR_MODEL: str = os.getenv("AI_DETECTOR_MODEL", "Hello-SimpleAI/chatgpt-detector-roberta")
 
     # Recording retention (GDPR): flag for deletion after this many days,
     # and start reminding the teacher this many days before that date.

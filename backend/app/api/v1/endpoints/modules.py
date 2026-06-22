@@ -3,7 +3,7 @@ import json
 import mimetypes
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -42,7 +42,13 @@ from app.services.module_service import (
     ModuleService,
     _module_file_path,
 )
-from app.services.overlap_service import OverlapService
+from app.services.overlap.integrity import derive_signal_metrics
+from app.services.overlap.markers import dedupe_student_flag_dicts
+from app.services.overlap.service import (
+    OverlapService,
+    build_highlighted_documents,
+    parse_signal_detail,
+)
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -250,7 +256,31 @@ def _build_student_project_map(db: Session, project_ids: list) -> dict:
     return {row.student_id: row.project_id for row in rows}
 
 
-def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+def _signal_to_out(
+    signal,
+    student_names: dict,
+    evidence_names: dict,
+    *,
+    db: Session | None = None,
+    include_documents: bool = False,
+) -> OverlapSignalOut:
+    detail = parse_signal_detail(signal.snippet)
+    confidence = round(float(signal.confidence or 0.0), 2)
+    status = detail.get("status")
+    if not status:
+        status = "confirmed" if confidence >= 0.68 else "possible"
+    integrity_type = detail.get("integrity_type") or "student_plagiarism"
+    if integrity_type == "ai":
+        view_mode = "single"
+    else:
+        view_mode = "side_by_side"
+    document_a = document_b = None
+    effective_flags = dedupe_student_flag_dicts(detail.get("flags") or [])
+    if include_documents and db is not None:
+        document_a, document_b, effective_flags = build_highlighted_documents(
+            db, signal, detail=detail
+        )
+    metrics = derive_signal_metrics(detail, confidence, integrity_type)
     return OverlapSignalOut(
         id=str(signal.id),
         student_a_id=str(signal.student_a_id),
@@ -262,9 +292,33 @@ def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> Overlap
         evidence_b_id=str(signal.evidence_b_id),
         evidence_b_name=evidence_names.get(signal.evidence_b_id, "Unknown evidence"),
         overlap_type=signal.overlap_type.value if signal.overlap_type else "textual",
-        confidence=round(float(signal.confidence or 0.0), 2),
-        snippet=signal.snippet,
+        confidence=confidence,
+        snippet=signal.snippet
+        if not detail
+        else detail.get("passage_a") or signal.snippet,
         detected_at=signal.detected_at,
+        status=status,
+        scope=detail.get("scope"),
+        passage_a=detail.get("passage_a"),
+        passage_b=detail.get("passage_b"),
+        document_a=document_a,
+        document_b=document_b,
+        group_a_id=detail.get("group_a_id"),
+        group_b_id=detail.get("group_b_id"),
+        group_a_name=detail.get("group_a_name"),
+        group_b_name=detail.get("group_b_name"),
+        ai_verified=detail.get("ai_verified"),
+        ai_explanation=detail.get("ai_explanation"),
+        detection_method=detail.get("detection_method"),
+        integrity_type=integrity_type,
+        flags=effective_flags or None,
+        view_mode=view_mode,
+        ai_content_percent=metrics.get("ai_content_percent"),
+        peak_ai_section_percent=metrics.get("peak_ai_section_percent"),
+        student_match_count=metrics.get("student_match_count"),
+        overlap_confidence_percent=metrics.get("overlap_confidence_percent"),
+        detection_confidence_percent=metrics.get("detection_confidence_percent"),
+        metrics_summary=metrics.get("metrics_summary"),
     )
 
 
@@ -403,12 +457,12 @@ def download_student_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     # Add a few more empty rows for user input
@@ -422,7 +476,7 @@ def download_student_template(
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     ws.freeze_panes = "A2"
@@ -480,10 +534,10 @@ def download_rubric_template(
     # Define styles
     header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    
+
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    
+
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -535,13 +589,13 @@ def download_rubric_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Add empty rows for user input (rows 7-15)
@@ -556,7 +610,7 @@ def download_rubric_template(
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Summary section (row 17)
@@ -578,7 +632,7 @@ def download_rubric_template(
     total_label.font = Font(bold=True, size=10)
     total_label.alignment = Alignment(horizontal="right", vertical="center")
     total_label.border = thin_border
-    
+
     total_cell = ws['F19']
     total_cell.value = "=SUM(F4:F15)"  # Sum of max points
     total_cell.font = Font(bold=True, size=10, color="FFFFFF")
@@ -615,6 +669,9 @@ def download_rubric_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
 def create_module(
     payload: ModuleCreate,
     request: Request,
@@ -1852,13 +1909,43 @@ async def import_module_students(
 @router.get("/{module_id}/overlap/signals", response_model=List[OverlapSignalOut])
 def list_module_overlap_signals(
     module_id: str,
+    status: Optional[str] = Query(None, description="confirmed or possible"),
+    scope: Optional[str] = Query(None, description="within_group or cross_group"),
+    group_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-    signals = OverlapService.get_module_signals(db, str(module.id))
+    signals = OverlapService.get_module_signals(
+        db,
+        str(module.id),
+        status=status,
+        scope=scope,
+        group_id=group_id,
+    )
     student_names, evidence_names = _module_signal_context(db, module)
     return [_signal_to_out(signal, student_names, evidence_names) for signal in signals]
+
+
+@router.get("/{module_id}/overlap/signals/{signal_id}", response_model=OverlapSignalOut)
+def get_module_overlap_signal(
+    module_id: str,
+    signal_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signal = OverlapService.get_signal(db, str(module.id), signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="Overlap signal not found")
+    student_names, evidence_names = _module_signal_context(db, module)
+    return _signal_to_out(
+        signal,
+        student_names,
+        evidence_names,
+        db=db,
+        include_documents=True,
+    )
 
 
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)

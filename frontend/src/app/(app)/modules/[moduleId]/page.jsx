@@ -8,6 +8,7 @@ import {
   FileText,
   FolderPlus,
   Github,
+  ScanSearch,
   Search,
   UserCheck,
   UserPlus,
@@ -472,6 +473,14 @@ export default function ModulePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => router.push(APP_PATHS.moduleOverlaps(moduleId))}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary transition-all"
+            >
+              <ScanSearch size={14} />
+              Review overlaps
+            </button>
             <button
               type="button"
               onClick={handleExportGrades}

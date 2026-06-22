@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CalendarClock } from 'lucide-react';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 /**
  * Modal to extend a recording's deletion date (GDPR-capped).
@@ -86,7 +87,7 @@ export default function ExtendExpiryDialog({ recording, onClose, onSubmit }) {
             disabled={saving || remaining === 0}
             className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Extend'}
+            {saving ? UI_STATUS_LABELS.saving : 'Extend'}
           </button>
         </div>
       </div>

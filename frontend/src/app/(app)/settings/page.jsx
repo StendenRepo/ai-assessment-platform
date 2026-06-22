@@ -19,6 +19,7 @@ import {
 import { useTheme } from '@/context/ThemeContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuth } from '@/context/AuthContext';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 import {
   downloadStudentTemplate,
@@ -170,7 +171,7 @@ function LoginPinSection() {
             disabled={loading || !password}
             className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-red-400 hover:border-red-500/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? 'Removing…' : 'Remove PIN'}
+            {loading ? UI_STATUS_LABELS.removing : 'Remove PIN'}
           </button>
         ) : (
           <button
@@ -178,7 +179,7 @@ function LoginPinSection() {
             disabled={loading || !password || !pin}
             className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? 'Saving…' : 'Set PIN'}
+            {loading ? UI_STATUS_LABELS.saving : 'Set PIN'}
           </button>
         )}
       </div>
