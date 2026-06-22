@@ -50,8 +50,6 @@ The project is currently in the prototype and development phase.
 - [Ollama](https://ollama.com/) — on-premise LLM for assessment chat and overlap warnings
 - **ai-detector** — RoBERTa classifier for AI-generated text detection (separate from Ollama)
 - STT microservice (faster-whisper) for interview transcription
-- [Ollama](https://ollama.com/) for local LLM inference
-- STT microservice (faster-whisper based) for transcription
 - pgAdmin 4 (development only)
 
 ## Version Control
@@ -149,13 +147,7 @@ Development uploads, recordings, and exports are stored in [backend/data](backen
 | AI detector  | http://localhost:9001  |
 | Ollama       | http://localhost:11434 |
 | pgAdmin      | http://localhost:5050  |
-| Service  | URL                    |
-| -------- | ---------------------- |
-| Frontend | http://localhost:3000  |
-| Backend  | http://localhost:8000  |
-| STT API  | http://localhost:9000  |
-| Ollama   | http://localhost:11434 |
-| pgAdmin  | http://localhost:5050  |
+
 
 **pgAdmin login:** `admin@admin.com` / `admin`
 Connect to the database using host `postgres`, port `5432`, database `ai_assessment`, user `postgres`, password `postgres`.
