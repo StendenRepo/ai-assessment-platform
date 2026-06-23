@@ -14,6 +14,7 @@ export const APP_PATHS = {
 
 export const API_PATHS = {
   authLogin: '/auth/login',
+  authLogout: '/auth/logout',
   authMe: '/auth/me',
   authPin: '/auth/pin',
   authUsers: '/auth/users',
