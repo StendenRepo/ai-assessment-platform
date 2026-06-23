@@ -13,7 +13,7 @@ from app.api.deps import get_current_teacher, get_db
 from app.config import settings
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
-from app.models.enums import AuditSource, ProjectStatus, StudentStatus
+from app.models.enums import AuditSource, ModuleStatus, ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.project import Project
@@ -24,6 +24,7 @@ from app.schemas.module import (
     ModuleGroupCreate,
     ModuleGroupUpdate,
     ModuleOut,
+    ModuleStatusUpdate,
     RubricFileOut,
     StudentGroupUpdate,
 )
@@ -391,10 +392,16 @@ def _student_duplicate_in_module(db: Session, project_ids: list[str], student_nu
 
 @router.get("", response_model=List[ModuleOut])
 def list_modules(
+    status_filter: Optional[ModuleStatus] = Query(
+        None, alias="status", description="Filter modules by status"
+    ),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    modules = _visible_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
+    query = _visible_modules_query(db, current_teacher)
+    if status_filter is not None:
+        query = query.filter(Module.status == status_filter)
+    modules = query.order_by(Module.created_at.desc()).all()
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
@@ -751,6 +758,67 @@ def rename_module(
             "new_name": module.name,
             "old_academic_year": old_academic_year,
             "new_academic_year": module.academic_year,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+    db.commit()
+    db.refresh(module)
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
+@router.patch(
+    "/{module_id}/status",
+    response_model=ModuleOut,
+    summary="Update a module's status",
+)
+def update_module_status(
+    module_id: str,
+    payload: ModuleStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Set a module's lifecycle status (active / inactive / completed / archived).
+
+    Only the module's owner may change its status. Admins can view every module
+    but are not owners, so they receive a 403 here. Every change writes an
+    audit entry in the same transaction as the update (NFR-02). Statuses are
+    fully reversible, so any valid target is accepted.
+    """
+    # 404 for modules the teacher can't see; admins pass this gate but are
+    # blocked by the ownership check below.
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    if module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can change its status",
+        )
+
+    old_value = module.status.value if module.status else None
+    new_value = payload.status.value
+
+    # No-op: don't write a spurious audit entry when nothing changes.
+    if old_value == new_value:
+        project_count, student_count = _module_project_counts(db, module.id)
+        return _module_to_out(module, project_count, student_count, db)
+
+    module.status = payload.status
+
+    audit_service.log_action(
+        db,
+        action="module.status_changed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "old_status": old_value,
+            "new_status": new_value,
+            "operation": "status_change",
+            "where": "Modules",
+            "route": "/api/v1/modules/{module_id}/status",
         },
         ip_address=request.client.host if request.client else None,
         commit=False,

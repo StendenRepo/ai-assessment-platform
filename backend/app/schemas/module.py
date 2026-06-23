@@ -4,6 +4,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, field_validator
 
+from app.models.enums import ModuleStatus
+
 
 def _normalize_github_repo_url(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -131,6 +133,19 @@ class StudentGroupUpdate(BaseModel):
     @classmethod
     def _normalize_student_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
+
+
+class ModuleStatusUpdate(BaseModel):
+    status: ModuleStatus
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value):
+        # Accept case-insensitive strings ("Active" -> "active") before the
+        # enum coercion runs; invalid values still raise a 422.
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
 
 class ModuleOut(BaseModel):

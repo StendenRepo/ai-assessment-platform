@@ -23,6 +23,7 @@ export const API_PATHS = {
   evidenceFile: (evidenceId) => `/evidence/${evidenceId}/file`,
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
+  moduleStatus: (moduleId) => `/modules/${moduleId}/status`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
   moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
   moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,

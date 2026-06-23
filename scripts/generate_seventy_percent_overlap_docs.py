@@ -221,11 +221,16 @@ def write_student_files(folder: Path, content: str) -> None:
     write_pdf(folder / f"{stem}.pdf", content)
 
 
-def estimate_similarity(doc_a: str, doc_b: str) -> float:
+def estimate_similarity(doc_a: str, doc_b: str) -> tuple[float, str]:
     backend = Path(__file__).resolve().parents[1] / "backend"
     sys.path.insert(0, str(backend))
-    from app.services.overlap.text_detector import EvidenceChunk, detect_within_group
-    from app.services.text_chunker import chunk_text
+    try:
+        from app.services.overlap.text_detector import EvidenceChunk, detect_within_group
+        from app.services.text_chunker import chunk_text
+    except ModuleNotFoundError as exc:
+        if exc.name != "sklearn":
+            raise
+        return estimate_similarity_fallback(doc_a, doc_b), "fallback local estimate"
 
     def chunks(doc: str, student_id: str) -> list[EvidenceChunk]:
         return [
@@ -234,13 +239,20 @@ def estimate_similarity(doc_a: str, doc_b: str) -> float:
         ]
 
     hits = detect_within_group(chunks(doc_a, "a") + chunks(doc_b, "b"))
-    return hits[0]["similarity"] if hits else 0.0
+    return (hits[0]["similarity"] if hits else 0.0), "backend detector estimate"
+
+
+def estimate_similarity_fallback(doc_a: str, doc_b: str) -> float:
+    """Approximate similarity when local Python lacks backend ML dependencies."""
+    import difflib
+
+    return difflib.SequenceMatcher(None, doc_a, doc_b).ratio()
 
 
 def main() -> None:
     doc_a = build_document_a()
     doc_b = build_document_b()
-    similarity = estimate_similarity(doc_a, doc_b)
+    similarity, similarity_label = estimate_similarity(doc_a, doc_b)
 
     if ROOT.exists():
         shutil.rmtree(ROOT)
@@ -264,7 +276,7 @@ Realistic copy-paste pattern:
 - `student-a/` — original template wording
 - `student-b/` — lightly reworded copy (~38% word swaps)
 
-Estimated detector score: **{round(similarity * 100)}%** (top chunk pair).
+Estimated {similarity_label}: **{round(similarity * 100)}%** (top chunk pair).
 
 ## How to test scrolling
 
