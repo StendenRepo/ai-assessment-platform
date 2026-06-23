@@ -96,9 +96,7 @@ export async function apiLogout() {
       method: 'POST',
       headers: authHeaders(),
     });
-  } catch {
-    // Best-effort: network errors must not block client-side logout
-  }
+  } catch {}
 }
 
 export async function apiGetLoginUsers(isAdmin = false) {

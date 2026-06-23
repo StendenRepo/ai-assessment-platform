@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    apiLogout(); // fire-and-forget: records audit event without blocking the UI
+    apiLogout();
     clearSession();
     setUser(null);
   }, []);
