@@ -23,7 +23,12 @@ class Teacher(Base):
     last_login = Column(DateTime, nullable=True)
 
     department = relationship("Department", back_populates="teachers")
-    modules = relationship("Module", back_populates="teacher")
+    modules = relationship("Module", back_populates="teacher", foreign_keys="Module.teacher_id")
+    co_taught_modules = relationship(
+        "Module",
+        secondary="module_teachers",
+        back_populates="co_teachers",
+    )
     assessments = relationship(
         "Assessment",
         back_populates="teacher",

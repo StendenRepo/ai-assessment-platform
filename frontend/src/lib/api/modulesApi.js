@@ -87,6 +87,23 @@ export const moveStudentToGroup = (moduleId, studentId, projectId) =>
  * @param {string[]} studentIds  - array of student_number strings
  * @param {string} targetProjectId
  */
+export async function listCoTeachers(moduleId) {
+  return request(API_PATHS.moduleCoTeachers(moduleId));
+}
+
+export async function addCoTeacher(moduleId, email) {
+  return request(API_PATHS.moduleCoTeachers(moduleId), {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function removeCoTeacher(moduleId, teacherId) {
+  return request(API_PATHS.moduleCoTeacher(moduleId, teacherId), {
+    method: 'DELETE',
+  });
+}
+
 export const bulkMoveStudents = (moduleId, studentIds, targetProjectId) =>
   request(API_PATHS.moduleStudentsBulkMove(moduleId), {
     method: 'POST',

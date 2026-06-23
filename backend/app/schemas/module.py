@@ -133,6 +133,23 @@ class StudentGroupUpdate(BaseModel):
         return _normalize_github_repo_url(value)
 
 
+class CoTeacherOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+
+class AddCoTeacherRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _trim(cls, value: str) -> str:
+        return value.strip().lower()
+
+
 class BulkMoveStudentsRequest(BaseModel):
     student_ids: list[str]
     target_project_id: str

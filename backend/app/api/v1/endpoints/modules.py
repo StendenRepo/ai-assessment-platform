@@ -20,8 +20,10 @@ from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.module import (
+    AddCoTeacherRequest,
     BulkMoveResult,
     BulkMoveStudentsRequest,
+    CoTeacherOut,
     ModuleCreate,
     ModuleGroupCreate,
     ModuleGroupUpdate,
@@ -208,9 +210,18 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
 
 
 def _visible_modules_query(db: Session, teacher: Teacher):
+    from app.models.module import module_teachers
     if teacher.is_admin:
         return db.query(Module)
-    return db.query(Module).filter(Module.teacher_id == teacher.id)
+    # Owner OR co-teacher
+    return db.query(Module).filter(
+        (Module.teacher_id == teacher.id) |
+        Module.id.in_(
+            db.query(module_teachers.c.module_id).filter(
+                module_teachers.c.teacher_id == teacher.id
+            )
+        )
+    )
 
 
 def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
@@ -2482,3 +2493,138 @@ def export_module_archive(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Co-teachers
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{module_id}/co-teachers",
+    response_model=List[CoTeacherOut],
+    summary="List co-teachers of a module",
+)
+def list_co_teachers(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return [
+        CoTeacherOut(id=str(t.id), name=t.name, email=t.email)
+        for t in module.co_teachers
+    ]
+
+
+@router.post(
+    "/{module_id}/co-teachers",
+    response_model=CoTeacherOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a co-teacher to a module by email",
+)
+def add_co_teacher(
+    module_id: str,
+    payload: AddCoTeacherRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may add co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can add co-teachers",
+        )
+
+    invitee = db.query(Teacher).filter(Teacher.email == payload.email).first()
+    if not invitee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No teacher account found with that email address",
+        )
+
+    if invitee.id == module.teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The module owner is already a teacher of this module",
+        )
+
+    if any(t.id == invitee.id for t in module.co_teachers):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This teacher is already a co-teacher of this module",
+        )
+
+    module.co_teachers.append(invitee)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_added",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(invitee.id),
+            "co_teacher_name": invitee.name,
+            "co_teacher_email": invitee.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return CoTeacherOut(id=str(invitee.id), name=invitee.name, email=invitee.email)
+
+
+@router.delete(
+    "/{module_id}/co-teachers/{teacher_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a co-teacher from a module",
+)
+def remove_co_teacher(
+    module_id: str,
+    teacher_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may remove co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can remove co-teachers",
+        )
+
+    target = next((t for t in module.co_teachers if str(t.id) == teacher_id), None)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This teacher is not a co-teacher of this module",
+        )
+
+    module.co_teachers.remove(target)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_removed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(target.id),
+            "co_teacher_name": target.name,
+            "co_teacher_email": target.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

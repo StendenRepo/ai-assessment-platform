@@ -61,6 +61,9 @@ export const API_PATHS = {
   },
   moduleStudentsBulkMove: (moduleId) =>
     `/modules/${moduleId}/students/bulk-move`,
+  moduleCoTeachers: (moduleId) => `/modules/${moduleId}/co-teachers`,
+  moduleCoTeacher: (moduleId, teacherId) =>
+    `/modules/${moduleId}/co-teachers/${teacherId}`,
   assessmentForStudent: (studentId) => `/assessments/for-student/${studentId}`,
   assessmentRecordingState: (assessmentId) =>
     `/assessments/${assessmentId}/recording`,
