@@ -20,6 +20,8 @@ import {
 } from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
 import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -27,8 +29,8 @@ const inputClass =
 export default function ModuleManagePage() {
   const { moduleId } = useParams();
   const router = useRouter();
-
   const [moduleName, setModuleName] = useState('');
+  const [moduleTeacherId, setModuleTeacherId] = useState(null);
   const [groups, setGroups] = useState([]);
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
@@ -111,6 +113,7 @@ export default function ModuleManagePage() {
     ])
       .then(([module, groupList, studentList]) => {
         setModuleName(module.name);
+        setModuleTeacherId(module.teacher_id ?? null);
         setGroups(groupList);
         setStudents(studentList);
         setLoadError('');
@@ -271,6 +274,8 @@ export default function ModuleManagePage() {
     }
   };
 
+  const viewOnly = useModuleViewOnly(moduleTeacherId);
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -292,9 +297,13 @@ export default function ModuleManagePage() {
 
   return (
     <div className="space-y-6">
+      {viewOnly && <ViewModeBanner />}
+
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Manage Roster</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            {viewOnly ? 'View Roster' : 'Manage Roster'}
+          </h1>
           <p className="text-sm text-muted-foreground mt-1">{moduleName}</p>
         </div>
         <button
@@ -314,21 +323,23 @@ export default function ModuleManagePage() {
               Project Groups
             </h2>
 
-            <form onSubmit={handleCreateGroup} className="space-y-3">
-              <input
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="e.g. Group 2"
-                className={inputClass}
-              />
-              <button
-                type="submit"
-                disabled={groupSaving}
-                className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
-              >
-                {groupSaving ? UI_STATUS_LABELS.saving : 'Create Group'}
-              </button>
-            </form>
+            {!viewOnly && (
+              <form onSubmit={handleCreateGroup} className="space-y-3">
+                <input
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="e.g. Group 2"
+                  className={inputClass}
+                />
+                <button
+                  type="submit"
+                  disabled={groupSaving}
+                  className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {groupSaving ? UI_STATUS_LABELS.saving : 'Create Group'}
+                </button>
+              </form>
+            )}
 
             <div className="rounded-lg bg-secondary/20 border border-border divide-y divide-border overflow-hidden">
               <div className="px-4 py-3 text-xs font-semibold text-foreground">
@@ -346,25 +357,27 @@ export default function ModuleManagePage() {
                         {group.student_count === 1 ? 'student' : 'students'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditGroup(group)}
-                        className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteGroup(group)}
-                        className="px-3 py-1.5 rounded-md border border-red-500/30 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-all"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    {!viewOnly && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditGroup(group)}
+                          className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteGroup(group)}
+                          className="px-3 py-1.5 rounded-md border border-red-500/30 text-xs font-medium text-red-400 hover:bg-red-500/10 transition-all"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {editingGroupId === group.id && (
+                  {!viewOnly && editingGroupId === group.id && (
                     <form
                       onSubmit={handleSaveGroup}
                       className="rounded-md bg-card border border-border p-3 space-y-2"
@@ -412,107 +425,109 @@ export default function ModuleManagePage() {
           </div>
         </div>
 
-        <div className="lg:col-span-1">
-          <div className="rounded-lg bg-card border border-border p-5 space-y-4 mb-4">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <Users size={15} />
-              Add Student
-            </h2>
-            <form onSubmit={handleAddStudent} className="space-y-3">
+        {!viewOnly && (
+          <div className="lg:col-span-1">
+            <div className="rounded-lg bg-card border border-border p-5 space-y-4 mb-4">
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Users size={15} />
+                Add Student
+              </h2>
+              <form onSubmit={handleAddStudent} className="space-y-3">
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Full name"
+                  className={inputClass}
+                />
+                <input
+                  value={newStudentNumber}
+                  onChange={(e) => setNewStudentNumber(e.target.value)}
+                  placeholder="Student number"
+                  className={`${inputClass} font-mono`}
+                />
+                <select
+                  value={newStudentGroupId}
+                  onChange={(e) => setNewStudentGroupId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Default individual group</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={studentSaving}
+                  className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                >
+                  {studentSaving ? UI_STATUS_LABELS.saving : 'Add Student'}
+                </button>
+              </form>
+              {studentError && (
+                <p className="text-xs text-red-400">{studentError}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg bg-card border border-border p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <FileSpreadsheet size={15} />
+                Import from Excel
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Upload an Excel (.xlsx) or CSV file with Name and Student Number
+                columns.
+              </p>
               <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Full name"
-                className={inputClass}
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.csv"
+                onChange={handleImport}
+                className="hidden"
               />
-              <input
-                value={newStudentNumber}
-                onChange={(e) => setNewStudentNumber(e.target.value)}
-                placeholder="Student number"
-                className={`${inputClass} font-mono`}
-              />
-              <select
-                value={newStudentGroupId}
-                onChange={(e) => setNewStudentGroupId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Default individual group</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
               <button
-                type="submit"
-                disabled={studentSaving}
-                className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={importing}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60"
               >
-                {studentSaving ? UI_STATUS_LABELS.saving : 'Add Student'}
+                <Upload size={15} />
+                {importing ? 'Importing…' : 'Choose file'}
               </button>
-            </form>
-            {studentError && (
-              <p className="text-xs text-red-400">{studentError}</p>
-            )}
-          </div>
 
-          <div className="rounded-lg bg-card border border-border p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <FileSpreadsheet size={15} />
-              Import from Excel
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              Upload an Excel (.xlsx) or CSV file with Name and Student Number
-              columns.
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.csv"
-              onChange={handleImport}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={importing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md border border-border bg-secondary text-sm font-semibold text-foreground hover:bg-secondary/70 transition-colors disabled:opacity-60"
-            >
-              <Upload size={15} />
-              {importing ? 'Importing…' : 'Choose file'}
-            </button>
+              {importError && (
+                <p className="text-xs text-red-400">{importError}</p>
+              )}
 
-            {importError && (
-              <p className="text-xs text-red-400">{importError}</p>
-            )}
-
-            {importResult && (
-              <div className="space-y-2 pt-1">
-                <p className="text-xs font-medium text-emerald-400">
-                  Imported {importResult.imported_count} of{' '}
-                  {importResult.total_rows}{' '}
-                  {importResult.total_rows === 1 ? 'row' : 'rows'}.
-                </p>
-                {importResult.error_count > 0 && (
-                  <div className="rounded-md border border-border bg-secondary/50 p-3 space-y-1 max-h-48 overflow-y-auto">
-                    <p className="text-xs font-medium text-amber-400">
-                      {importResult.error_count}{' '}
-                      {importResult.error_count === 1 ? 'row' : 'rows'} skipped:
-                    </p>
-                    {importResult.errors.map((err, i) => (
-                      <p key={i} className="text-xs text-muted-foreground">
-                        Row {err.row}
-                        {err.student_number
-                          ? ` (${err.student_number})`
-                          : ''}: {err.message}
+              {importResult && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs font-medium text-emerald-400">
+                    Imported {importResult.imported_count} of{' '}
+                    {importResult.total_rows}{' '}
+                    {importResult.total_rows === 1 ? 'row' : 'rows'}.
+                  </p>
+                  {importResult.error_count > 0 && (
+                    <div className="rounded-md border border-border bg-secondary/50 p-3 space-y-1 max-h-48 overflow-y-auto">
+                      <p className="text-xs font-medium text-amber-400">
+                        {importResult.error_count}{' '}
+                        {importResult.error_count === 1 ? 'row' : 'rows'}{' '}
+                        skipped:
                       </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                      {importResult.errors.map((err, i) => (
+                        <p key={i} className="text-xs text-muted-foreground">
+                          Row {err.row}
+                          {err.student_number ? ` (${err.student_number})` : ''}
+                          : {err.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="lg:col-span-3 rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
           <div className="px-5 py-4 text-sm font-semibold text-foreground">
@@ -557,71 +572,75 @@ export default function ModuleManagePage() {
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openEditStudent(student)}
-                  className="w-full px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-                >
-                  Edit
-                </button>
+                {!viewOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openEditStudent(student)}
+                      className="w-full px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                    >
+                      Edit
+                    </button>
 
-                {editingStudentId === student.id && (
-                  <form
-                    onSubmit={handleSaveStudent}
-                    className="rounded-md bg-card border border-border p-3 space-y-2"
-                  >
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Student name"
-                      className={inputClass}
-                    />
-                    <input
-                      value={editStudentNumber}
-                      onChange={(e) => setEditStudentNumber(e.target.value)}
-                      placeholder="Student number"
-                      className={`${inputClass} font-mono`}
-                    />
-                    <select
-                      value={editGroupId}
-                      onChange={(e) => setEditGroupId(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="">Default individual group</option>
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Dropped out</option>
-                    </select>
-                    {editError && (
-                      <p className="text-xs text-red-400">{editError}</p>
+                    {editingStudentId === student.id && (
+                      <form
+                        onSubmit={handleSaveStudent}
+                        className="rounded-md bg-card border border-border p-3 space-y-2"
+                      >
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Student name"
+                          className={inputClass}
+                        />
+                        <input
+                          value={editStudentNumber}
+                          onChange={(e) => setEditStudentNumber(e.target.value)}
+                          placeholder="Student number"
+                          className={`${inputClass} font-mono`}
+                        />
+                        <select
+                          value={editGroupId}
+                          onChange={(e) => setEditGroupId(e.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="">Default individual group</option>
+                          {groups.map((group) => (
+                            <option key={group.id} value={group.id}>
+                              {group.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={editStatus}
+                          onChange={(e) => setEditStatus(e.target.value)}
+                          className={inputClass}
+                        >
+                          <option value="active">Active</option>
+                          <option value="inactive">Dropped out</option>
+                        </select>
+                        {editError && (
+                          <p className="text-xs text-red-400">{editError}</p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingStudentId('')}
+                            className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={editSaving}
+                            className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                          >
+                            {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
+                          </button>
+                        </div>
+                      </form>
                     )}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditingStudentId('')}
-                        className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={editSaving}
-                        className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
-                      >
-                        {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
-                      </button>
-                    </div>
-                  </form>
+                  </>
                 )}
               </div>
             ))}

@@ -340,8 +340,8 @@ class TestDeleteModule:
 
         assert not fake_file.exists(), "Evidence file must be removed from disk after module delete"
 
-def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db, teacher):
-    from app.models.file_record import FileRecord
+def test_admin_cannot_upload_rubric_for_other_teachers_module(client, db, teacher):
+    """Admins are blocked (403) from uploading a rubric to a module they don't own."""
     from app.models.module import Module
     from app.models.teacher import Teacher
 
@@ -369,20 +369,8 @@ def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db
             files={"file": ("rubric.pdf", b"%PDF-1.4 test rubric", "application/pdf")},
             headers=headers,
         )
-        assert upload.status_code == 200
-        body = upload.json()
-        assert body["id"] == str(module.id)
-        assert body["rubric_file"] is not None
-        assert body["rubric_file"]["file_name"] == "rubric.pdf"
-
-        remove = client.delete(f"{MODULES_URL}/{module.id}/rubric", headers=headers)
-        assert remove.status_code == 204
-
-        db.refresh(module)
-        assert module.rubric_file_id is None
-        assert db.query(FileRecord).count() == 0
+        assert upload.status_code == 403
     finally:
-        db.query(FileRecord).delete()
         db.query(Module).filter(Module.id == module.id).delete()
         db.query(Teacher).filter(Teacher.id == admin.id).delete()
         db.commit()
@@ -866,3 +854,204 @@ class TestServeModuleDocuments:
                 AuditEvent.action == "document.viewed"
             ).delete()
             self._cleanup(db, module)
+
+
+# ---------------------------------------------------------------------------
+# Admin view-only: access control for modules owned by other teachers
+# ---------------------------------------------------------------------------
+
+_ADMIN_EMAIL = "admin_viewonly@test.com"
+_ADMIN_PASSWORD = "adminpass123"
+_OTHER_TEACHER_EMAIL = "other_teacher_viewonly@test.com"
+_OTHER_TEACHER_PASSWORD = "otherpass123"
+
+
+@pytest.fixture
+def admin_teacher(db):
+    """An admin teacher used by the admin view-only tests."""
+    from app.models.teacher import Teacher
+
+    existing = db.query(Teacher).filter(Teacher.email == _ADMIN_EMAIL).first()
+    if existing:
+        yield existing
+        return
+
+    t = Teacher(
+        id=uuid.uuid4(),
+        name="Admin Teacher",
+        email=_ADMIN_EMAIL,
+        password_hash=hash_password(_ADMIN_PASSWORD),
+        is_admin=True,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    yield t
+
+
+@pytest.fixture
+def other_teacher(db):
+    """A non-admin teacher who owns modules that the admin should only view."""
+    from app.models.teacher import Teacher
+
+    existing = db.query(Teacher).filter(Teacher.email == _OTHER_TEACHER_EMAIL).first()
+    if existing:
+        yield existing
+        return
+
+    t = Teacher(
+        id=uuid.uuid4(),
+        name="Other Teacher",
+        email=_OTHER_TEACHER_EMAIL,
+        password_hash=hash_password(_OTHER_TEACHER_PASSWORD),
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    yield t
+
+
+def _admin_auth(client) -> dict:
+    res = client.post(LOGIN_URL, json={"email": _ADMIN_EMAIL, "password": _ADMIN_PASSWORD})
+    assert res.status_code == 200, res.text
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
+def _create_module_for_teacher(db, teacher_id, name="Other Module"):
+    from app.models.module import Module
+
+    m = Module(id=uuid.uuid4(), teacher_id=teacher_id, name=name)
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+class TestAdminViewOnly:
+    """Admins can view but not mutate modules owned by other teachers."""
+
+    def test_admin_can_list_all_modules(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Listed Module")
+        try:
+            res = client.get(MODULES_URL, headers=_admin_auth(client))
+            assert res.status_code == 200
+            ids = [item["id"] for item in res.json()]
+            assert str(m.id) in ids
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_view_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Viewable Module")
+        try:
+            res = client.get(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 200
+            body = res.json()
+            assert body["id"] == str(m.id)
+            assert body["teacher_id"] == str(other_teacher.id)
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_rename_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Rename Target")
+        try:
+            res = client.patch(
+                f"{MODULES_URL}/{m.id}",
+                json={"name": "Hijacked"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_delete_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Delete Target")
+        try:
+            res = client.delete(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_create_group_in_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        m = _create_module_for_teacher(db, other_teacher.id, "Group Target")
+        try:
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/groups",
+                json={"name": "Injected Group"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_add_student_to_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        m = _create_module_for_teacher(db, other_teacher.id, "Student Target")
+        try:
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/students",
+                json={"name": "Injected Student", "student_number": "9999999"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_rename_own_module(self, client, admin_teacher, db):
+        """Admin retains full permissions on their own modules."""
+        m = _create_module_for_teacher(db, admin_teacher.id, "Admin Own Module")
+        try:
+            res = client.patch(
+                f"{MODULES_URL}/{m.id}",
+                json={"name": "Admin Renamed"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 200
+            assert res.json()["name"] == "Admin Renamed"
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_delete_own_module(self, client, admin_teacher, db):
+        """Admin retains full permissions to delete their own modules."""
+        m = _create_module_for_teacher(db, admin_teacher.id, "Admin Delete Me")
+        res = client.delete(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+        assert res.status_code == 204
+
+    def test_module_out_includes_teacher_id(self, client, admin_teacher, other_teacher, db):
+        """ModuleOut now exposes teacher_id so the frontend can detect view mode."""
+        m = _create_module_for_teacher(db, other_teacher.id, "Teacher ID Module")
+        try:
+            res = client.get(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 200
+            assert "teacher_id" in res.json()
+            assert res.json()["teacher_id"] == str(other_teacher.id)
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_import_students_to_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        import io
+
+        m = _create_module_for_teacher(db, other_teacher.id, "Import Target")
+        try:
+            csv_content = b"Name,Student Number\nJohn Doe,1234567\n"
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/students/import",
+                files={"file": ("students.csv", io.BytesIO(csv_content), "text/csv")},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
