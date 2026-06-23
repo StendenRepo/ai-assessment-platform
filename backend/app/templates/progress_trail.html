@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Assessment Progress Trail</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 22mm 16mm;
+      @bottom-center {
+        content: "Assessment progress trail — transparency record";
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 10pt;
+      color: #0f172a;
+      line-height: 1.45;
+      margin: 0;
+    }
+    .cover {
+      text-align: center;
+      padding: 24mm 0 16mm;
+      border-bottom: 3px solid #1e40af;
+      margin-bottom: 10mm;
+    }
+    .cover h1 { font-size: 22pt; margin: 0 0 6mm; color: #1e3a8a; }
+    .cover .meta { color: #475569; font-size: 10pt; }
+    .help-box {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 4mm;
+      margin-bottom: 8mm;
+      font-size: 9pt;
+      color: #334155;
+    }
+    .toc { margin-bottom: 10mm; page-break-after: always; }
+    .toc h2 { font-size: 14pt; color: #1e3a8a; margin-bottom: 4mm; }
+    .toc-row {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dotted #cbd5e1;
+      padding: 2mm 0;
+      font-size: 10pt;
+    }
+    .toc-row.sub { padding-left: 6mm; font-size: 9pt; color: #475569; }
+    .timeline { position: relative; padding-left: 14mm; }
+    .stage { position: relative; margin-bottom: 10mm; }
+    .stage::before {
+      content: "";
+      position: absolute;
+      left: -10mm;
+      top: 4mm;
+      width: 5mm;
+      height: 5mm;
+      border-radius: 50%;
+      background: #1e40af;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 2px #1e40af;
+    }
+    .stage.pending::before {
+      background: #fff;
+      box-shadow: 0 0 0 2px #94a3b8;
+    }
+    .stage::after {
+      content: "";
+      position: absolute;
+      left: -7.5mm;
+      top: 9mm;
+      bottom: -10mm;
+      width: 2px;
+      background: #cbd5e1;
+    }
+    .stage:last-child::after { display: none; }
+    .card {
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      padding: 4mm 5mm;
+      background: #fff;
+    }
+    .card.submission { border-left: 4px solid #64748b; }
+    .card.ai { border-left: 4px solid #2563eb; }
+    .card.teacher { border-left: 4px solid #d97706; }
+    .card.final { border-left: 4px solid #059669; }
+    .card.pending-card { background: #f8fafc; border-style: dashed; }
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 4mm;
+      margin-bottom: 3mm;
+    }
+    .stage-head h1 {
+      margin: 0;
+      font-size: 14pt;
+      color: #0f172a;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1mm 2.5mm;
+      border-radius: 4px;
+    }
+    .badge.student { background: #e2e8f0; color: #334155; }
+    .badge.ai { background: #dbeafe; color: #1d4ed8; }
+    .badge.teacher { background: #fef3c7; color: #b45309; }
+    .timestamp { font-size: 8.5pt; color: #64748b; }
+    .summary { font-size: 10pt; margin: 2mm 0 4mm; font-weight: 600; }
+    .file-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2mm 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 9pt;
+    }
+    .detail-block {
+      margin-top: 4mm;
+      padding-top: 3mm;
+      border-top: 1px solid #e2e8f0;
+    }
+    .detail-block h2 {
+      font-size: 11pt;
+      color: #1d4ed8;
+      margin: 0 0 2mm;
+    }
+    .detail-block h3 {
+      font-size: 10pt;
+      color: #334155;
+      margin: 3mm 0 1mm;
+    }
+    .quote {
+      font-style: italic;
+      color: #475569;
+      font-size: 9pt;
+      background: #f8fafc;
+      padding: 2mm 3mm;
+      border-radius: 4px;
+      margin: 2mm 0;
+      white-space: pre-wrap;
+    }
+    table.compact {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9pt;
+      margin: 2mm 0;
+    }
+    table.compact th, table.compact td {
+      border: 1px solid #e2e8f0;
+      padding: 2mm;
+      text-align: left;
+      vertical-align: top;
+    }
+    table.compact th { background: #f1f5f9; }
+    .evidence-match-list { margin: 2mm 0; }
+    .evidence-match-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 3mm;
+      margin-bottom: 3mm;
+      page-break-inside: avoid;
+      background: #fafbfc;
+    }
+    .evidence-match-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 4mm;
+      margin-bottom: 2mm;
+      padding-bottom: 2mm;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 9pt;
+    }
+    .evidence-match-head .criterion-key {
+      font-weight: 700;
+      color: #0f172a;
+      word-break: break-word;
+    }
+    .evidence-match-head .confidence {
+      flex-shrink: 0;
+      font-size: 8.5pt;
+      color: #475569;
+      white-space: nowrap;
+    }
+    .evidence-match-field { margin-top: 2mm; }
+    .evidence-match-field .field-label {
+      display: block;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-bottom: 1mm;
+    }
+    .evidence-match-field .field-body {
+      font-size: 9pt;
+      color: #334155;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    .evidence-match-field .field-body.quote-body {
+      font-style: italic;
+      color: #475569;
+      background: #f8fafc;
+      padding: 2mm 3mm;
+      border-radius: 4px;
+      border-left: 3px solid #cbd5e1;
+    }
+    .chat-bubble {
+      margin: 3mm 0;
+      padding: 3mm;
+      border-radius: 6px;
+      font-size: 9pt;
+    }
+    .chat-bubble.teacher { background: #f1f5f9; }
+    .chat-bubble.assistant { background: #eff6ff; border-left: 3px solid #2563eb; }
+    .question-block {
+      margin: 3mm 0;
+      padding: 3mm;
+      background: #f8fafc;
+      border-radius: 6px;
+    }
+    .criterion-block { margin: 3mm 0; }
+    .audit-row { font-size: 9pt; color: #475569; margin: 1mm 0; }
+    ul { margin: 2mm 0; padding-left: 5mm; }
+    .hint { font-size: 8.5pt; color: #64748b; margin-top: 2mm; }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <h1>Assessment Progress Trail</h1>
+    <div class="meta">
+      <div><strong>{{ trail.student_name }}</strong> · {{ trail.student_number }}</div>
+      {% if trail.module_name %}<div>{{ trail.module_name }}</div>{% endif %}
+      <div>Exported {{ trail.exported_at_display }}</div>
+    </div>
+  </section>
+
+  <div class="help-box">
+    <strong>How to read this document</strong><br/>
+    Scroll through the sections below for the full assessment trail. If your PDF app
+    has an <strong>Outline</strong> or <strong>Bookmarks</strong> panel, you can jump
+    between stages there. Original uploaded files are listed by name in Submission;
+    file contents are in the <strong>evidence/</strong> folder of your download package.
+  </div>
+
+  <section class="toc">
+    <h2>Contents</h2>
+    {% for stage in trail.stages %}
+    <div class="toc-row">
+      <span>{{ loop.index }}. {{ stage.label }}</span>
+      <span>{% if stage.status == 'completed' %}Complete{% else %}Pending{% endif %}</span>
+    </div>
+    {% if stage.key == 'ai_suggestion' and stage.content.ai_items %}
+      {% for item in stage.content.ai_items %}
+      <div class="toc-row sub">{{ item.label }} — {{ item.summary[:70] }}{% if item.summary|length > 70 %}…{% endif %}</div>
+      {% endfor %}
+    {% endif %}
+    {% endfor %}
+  </section>
+
+  <div class="timeline">
+    {% for stage in trail.stages %}
+    <section class="stage {% if stage.status == 'pending' %}pending{% endif %}" id="stage-{{ stage.key }}">
+      <div class="card {% if stage.status == 'pending' %}pending-card{% endif %}
+        {% if stage.key == 'submission' %}submission{% elif stage.key == 'ai_suggestion' %}ai{% elif stage.key == 'teacher_decision' %}teacher{% elif stage.key == 'final_form' %}final{% endif %}">
+        <div class="stage-head">
+          <h1>{{ loop.index }}. {{ stage.label }}</h1>
+          <div>
+            {% if stage.source == 'student' %}<span class="badge student">Your submission</span>
+            {% elif stage.source == 'ai' %}<span class="badge ai">AI-generated</span>
+            {% elif stage.source == 'teacher' %}<span class="badge teacher">Teacher decision</span>
+            {% endif %}
+            {% if stage.timestamp_display %}
+            <div class="timestamp">{{ stage.timestamp_display }}</div>
+            {% endif %}
+          </div>
+        </div>
+        <p class="summary">{{ stage.summary }}</p>
+
+        {% if stage.key == 'submission' %}
+          {% if stage.content.files %}
+          <table class="compact">
+            <tr><th>File name</th><th>Type</th><th>Source</th><th>Uploaded</th></tr>
+            {% for f in stage.content.files %}
+            <tr>
+              <td>{{ f.file_name }}</td>
+              <td>{{ f.file_type }}</td>
+              <td>{{ f.source_type }}</td>
+              <td>{{ f.uploaded_at_display or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          <p class="hint">File names only — open the evidence folder in your download for the original documents.</p>
+          {% endif %}
+
+        {% elif stage.key == 'ai_suggestion' %}
+          {% for item in stage.content.ai_items or [] %}
+          <div class="detail-block" id="ai-{{ item.type }}-{{ loop.index }}">
+            <h2>{{ item.label }}</h2>
+            {% if item.timestamp_display %}<div class="timestamp">{{ item.timestamp_display }}</div>{% endif %}
+            <p>{{ item.summary }}</p>
+
+            {% if item.type == 'overlap_detection' %}
+              {% set p = item.payload %}
+              <p><strong>Confidence:</strong> {{ (p.confidence * 100)|round|int }}%
+              {% if p.overlap_type %} · <strong>Type:</strong> {{ p.overlap_type }}{% endif %}
+              {% if p.integrity_type %} · <strong>Integrity:</strong> {{ p.integrity_type }}{% endif %}</p>
+              {% if p.ai_explanation %}<p>{{ p.ai_explanation }}</p>{% endif %}
+              {% if p.passage %}<div class="quote">{{ p.passage }}</div>{% endif %}
+
+            {% elif item.type == 'evidence_match' %}
+              {% set p = item.payload %}
+              <div class="evidence-match-list">
+                {% for m in p.matches or [] %}
+                <div class="evidence-match-item">
+                  <div class="evidence-match-head">
+                    <span class="criterion-key">{{ m.criterion_key }}</span>
+                    <span class="confidence">
+                      Confidence: {{ m.confidence_score if m.confidence_score is not none else '—' }}
+                    </span>
+                  </div>
+                  {% if m.supporting_quote %}
+                  <div class="evidence-match-field">
+                    <span class="field-label">Supporting quote</span>
+                    <div class="field-body quote-body">{{ m.supporting_quote }}</div>
+                  </div>
+                  {% endif %}
+                  {% if m.rationale or m.missing_note %}
+                  <div class="evidence-match-field">
+                    <span class="field-label">Rationale</span>
+                    <div class="field-body">{{ m.rationale or m.missing_note }}</div>
+                  </div>
+                  {% elif not m.supporting_quote %}
+                  <div class="evidence-match-field">
+                    <span class="field-label">Rationale</span>
+                    <div class="field-body">—</div>
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+
+            {% elif item.type == 'assessment_draft' %}
+              {% set p = item.payload %}
+              <p><strong>Overall grade:</strong> {{ p.overall_grade or '—' }}</p>
+              {% if p.summary %}<p><strong>Summary:</strong> {{ p.summary }}</p>{% endif %}
+              {% for c in p.criteria or [] %}
+              <div class="criterion-block">
+                <h3>{{ c.name }} ({{ c.key }})</h3>
+                <p><strong>Score:</strong> {{ c.score if c.score is not none else '—' }}
+                {% if c.confidence %} · <strong>Confidence:</strong> {{ c.confidence }}{% endif %}</p>
+                {% if c.comment %}<p>{{ c.comment }}</p>{% endif %}
+                {% if c.evidence_refs %}
+                <ul>
+                  {% for ref in c.evidence_refs %}
+                  <li>{{ ref.file_name or ref.evidence_id }}: {{ ref.quote or ref.missing_note or '' }}</li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+              </div>
+              {% endfor %}
+
+            {% elif item.type == 'assessment_questions' %}
+              {% for block in item.payload.questions or [] %}
+              <div class="question-block">
+                <h3>{{ block.criterion_key }}</h3>
+                <p>Basis: {{ block.basis }} · Covered: {{ 'yes' if block.covered else 'no' }}</p>
+                <ul>
+                  {% for q in block.questions or [] %}
+                  <li>{{ q }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              {% endfor %}
+
+            {% elif item.type == 'assessment_chat' %}
+              {% for msg in item.payload.messages or [] %}
+              <div class="chat-bubble {{ msg.role }}">
+                <strong>{{ 'Teacher' if msg.role == 'teacher' else 'AI assistant' }}</strong>
+                {% if msg.timestamp_display %}<span class="timestamp"> · {{ msg.timestamp_display }}</span>{% endif %}
+                <p>{{ msg.content }}</p>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          {% endfor %}
+
+        {% elif stage.key == 'teacher_decision' %}
+          {% if stage.content.accepted_without_changes %}
+          <p>Teacher accepted AI suggestions without modification.</p>
+          {% endif %}
+          {% for d in stage.content.decisions or [] %}
+          <div class="criterion-block">
+            <h2>{{ d.criterion_name }}</h2>
+            <table class="compact">
+              <tr><th></th><th>AI</th><th>Teacher</th></tr>
+              <tr>
+                <td>Score</td>
+                <td>{{ d.ai_score if d.ai_score is not none else '—' }}</td>
+                <td>{{ d.teacher_score if d.teacher_score is not none else '—' }}</td>
+              </tr>
+              <tr>
+                <td>Comment</td>
+                <td>{{ d.ai_comment or '—' }}</td>
+                <td>{{ d.teacher_comment or '—' }}</td>
+              </tr>
+            </table>
+            {% if d.overridden_at_display %}<div class="timestamp">Overridden {{ d.overridden_at_display }}</div>{% endif %}
+          </div>
+          {% endfor %}
+          {% if stage.content.audit_events %}
+          <div class="detail-block">
+            <h2>Review events</h2>
+            {% for ev in stage.content.audit_events %}
+            <div class="audit-row">
+              <strong>{{ ev.action }}</strong>
+              {% if ev.timestamp_display %} · {{ ev.timestamp_display }}{% endif %}
+              {% if ev.source %} · {{ ev.source }}{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+        {% elif stage.key == 'final_form' and stage.status == 'completed' %}
+          <p><strong>Grade:</strong> {{ stage.content.grade or '—' }}
+          {% if stage.content.overall_score is not none %} · <strong>Score:</strong> {{ stage.content.overall_score }}{% endif %}</p>
+          {% if stage.content.finalized_at_display %}
+          <div class="timestamp">Finalized {{ stage.content.finalized_at_display }}</div>
+          {% endif %}
+          {% if stage.content.summary %}
+          <p><strong>Summary:</strong> {{ stage.content.summary }}</p>
+          {% endif %}
+          {% if stage.content.teacher_notes %}
+          <p><strong>Teacher notes:</strong> {{ stage.content.teacher_notes }}</p>
+          {% endif %}
+          {% if stage.content.criteria %}
+          <table class="compact">
+            <tr><th>Criterion</th><th>Score</th><th>Feedback</th></tr>
+            {% for c in stage.content.criteria %}
+            <tr>
+              <td>{{ c.name }}</td>
+              <td>{{ c.score if c.score is not none else '—' }}</td>
+              <td>{{ c.comment or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+          {% endif %}
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</body>
+</html>

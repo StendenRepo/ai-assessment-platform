@@ -49,6 +49,7 @@ from app.services.overlap.service import (
     build_highlighted_documents,
     parse_signal_detail,
 )
+from app.services.progress_trail_pdf import build_progress_trail_pdf
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
@@ -2289,6 +2290,17 @@ def export_module_archive(
                     form_bytes = ("\n".join(ast_lines) + "\n").encode("utf-8")
                     entries.append((f"{folder}/assessment.txt", form_bytes))
 
+            try:
+                progress_pdf = build_progress_trail_pdf(
+                    db,
+                    student=student,
+                    assessment=assessment,
+                    module_name=module.name,
+                )
+                entries.append((f"{folder}/progress-trail.pdf", progress_pdf))
+            except Exception:
+                pass
+
         # Grades CSV — built from the shared _collect_grade_rows result
         grades_buf = _io.StringIO()
         writer = csv.writer(grades_buf, delimiter=";")
@@ -2319,7 +2331,8 @@ def export_module_archive(
             "module_book/     — Original module book",
             "groups/          — Per-group folders, each containing per-student subfolders",
             "  <group>/students/<student>/evidence/  — Evidence files",
-            "  <group>/students/<student>/assessment.json  — Assessment form",
+            "  <group>/students/<student>/assessment.txt  — Assessment summary",
+            "  <group>/students/<student>/progress-trail.pdf  — Transparency trail",
             "grades.csv       — Grade list for all students",
             "",
             "=" * 60,

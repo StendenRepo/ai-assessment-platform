@@ -27,6 +27,7 @@ import {
 import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 import HighlightedComment from './HighlightedComment';
 import OverrideBadge from './OverrideBadge';
+import FinalizeConfirmDialog from './FinalizeConfirmDialog';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -39,7 +40,6 @@ export default function AssessmentFormPanel({
   readOnly = false,
   onDraftChange,
   onFinalized,
-  externalDraft = null,
   refreshToken = 0,
   highlightedCriteria = [],
   onDiscussCriterion,
@@ -50,6 +50,10 @@ export default function AssessmentFormPanel({
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
+  const [finalizeOverlapWarning, setFinalizeOverlapWarning] = useState(false);
+  const [finalizePrepMessage, setFinalizePrepMessage] = useState(null);
+  const [finalizeCancelledHint, setFinalizeCancelledHint] = useState(null);
   const [error, setError] = useState(null);
   const [expandedAi, setExpandedAi] = useState(null);
   const [localEdits, setLocalEdits] = useState({});
@@ -104,11 +108,9 @@ export default function AssessmentFormPanel({
   }, [loadDraft]);
 
   useEffect(() => {
-    if (!externalDraft) return;
-    setDraft(externalDraft);
-    syncLocalFromDraft(externalDraft);
-    onDraftChange?.(externalDraft);
-  }, [externalDraft, refreshToken, syncLocalFromDraft, onDraftChange]);
+    if (refreshToken === 0) return;
+    loadDraft();
+  }, [refreshToken, loadDraft]);
 
   useEffect(() => {
     if (!highlightedCriteria?.length) return;
@@ -177,7 +179,7 @@ export default function AssessmentFormPanel({
           return next;
         });
       }
-      return;
+      return draft;
     }
 
     setSaving(true);
@@ -194,10 +196,92 @@ export default function AssessmentFormPanel({
           return next;
         });
       }
+      return updated;
     } catch (e) {
       setError(e.message || 'Save failed');
+      throw e;
     } finally {
       setSaving(false);
+    }
+  }
+
+  function getFinalizeBlockedMessage(data, suggestionsExist) {
+    if (!data || data.can_finalize) return null;
+    if (data.finalize_blocked_reason) return data.finalize_blocked_reason;
+    if (!suggestionsExist) return 'Generate AI suggestions before finalizing.';
+    return 'Complete all criterion scores before finalizing.';
+  }
+
+  async function handleFinalizeClick() {
+    const suggestionsExist = draft?.criteria?.some((c) => c.ai);
+    setFinalizeCancelledHint(null);
+    if (!draft?.can_finalize) {
+      setError(getFinalizeBlockedMessage(draft, suggestionsExist));
+      return;
+    }
+
+    const allKeys = draft.criteria.map((c) => c.key);
+    const hasPendingEdits =
+      buildChangedOverrides(allKeys).length > 0 ||
+      localSummary !== (draft.summary?.effective ?? '') ||
+      localGrade !== (draft.overall_grade?.effective ?? '');
+
+    let workingDraft = draft;
+    if (hasPendingEdits) {
+      setFinalizePrepMessage('Saving changes before finalize…');
+      setFinalizing(true);
+      setError(null);
+      try {
+        const updated = await saveOverrides(allKeys, {
+          includeSummaryGrade: true,
+        });
+        if (updated) {
+          workingDraft = updated;
+        }
+        if (!workingDraft.can_finalize) {
+          setError(
+            getFinalizeBlockedMessage(workingDraft, suggestionsExist) ||
+              'Save your scores before finalizing.'
+          );
+          return;
+        }
+      } catch (e) {
+        setError(e?.message || 'Could not save changes before finalizing.');
+        return;
+      } finally {
+        setFinalizing(false);
+        setFinalizePrepMessage(null);
+      }
+    }
+
+    const hasOverlap =
+      workingDraft?.overlap_alerts?.some((a) => a.status === 'confirmed') ??
+      false;
+    setFinalizeOverlapWarning(hasOverlap);
+    setFinalizeConfirmOpen(true);
+  }
+
+  function handleFinalizeCancel() {
+    setFinalizeConfirmOpen(false);
+    setFinalizeCancelledHint('Finalization cancelled.');
+  }
+
+  async function handleFinalizeConfirm() {
+    setFinalizing(true);
+    setError(null);
+    setFinalizeCancelledHint(null);
+    try {
+      const finalData = await finalizeAssessment(assessmentId, {
+        teacherNotes,
+      });
+      setFinalizeConfirmOpen(false);
+      setFinalized(finalData);
+      await loadDraft();
+      onFinalized?.(finalData);
+    } catch (e) {
+      setError(e.message || 'Finalization failed');
+    } finally {
+      setFinalizing(false);
     }
   }
 
@@ -257,33 +341,6 @@ export default function AssessmentFormPanel({
     }
   }
 
-  async function handleFinalize() {
-    const confirmedOverlap =
-      draft?.overlap_alerts?.some((a) => a.status === 'confirmed') ?? false;
-    let msg =
-      'Finalize this assessment? The form will be locked from further AI changes.';
-    if (confirmedOverlap) {
-      msg +=
-        '\n\nNote: high-confidence overlap indicators exist for this student. Review overlaps manually before finalizing.';
-    }
-    if (!window.confirm(msg)) return;
-
-    setFinalizing(true);
-    setError(null);
-    try {
-      const finalData = await finalizeAssessment(assessmentId, {
-        teacherNotes,
-      });
-      setFinalized(finalData);
-      onFinalized?.(finalData);
-      await loadDraft();
-    } catch (e) {
-      setError(e.message || 'Finalization failed');
-    } finally {
-      setFinalizing(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -296,6 +353,11 @@ export default function AssessmentFormPanel({
   const hasSuggestions = draft?.criteria?.some((c) => c.ai);
   const confirmedOverlaps =
     draft?.overlap_alerts?.filter((a) => a.status === 'confirmed') ?? [];
+  const finalizeBlockedMessage = getFinalizeBlockedMessage(
+    draft,
+    hasSuggestions
+  );
+  const canFinalizeNow = draft?.can_finalize && !finalizing;
 
   return (
     <div className="space-y-4">
@@ -722,10 +784,21 @@ export default function AssessmentFormPanel({
 
       {!locked && hasSuggestions && (
         <div className="space-y-3 pt-2 border-t border-border">
-          {draft.finalize_blocked_reason && (
+          {finalizePrepMessage && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 size={12} className="animate-spin" />
+              {finalizePrepMessage}
+            </p>
+          )}
+          {finalizeCancelledHint && (
+            <p className="text-xs text-muted-foreground">
+              {finalizeCancelledHint}
+            </p>
+          )}
+          {finalizeBlockedMessage && (
             <p className="text-xs text-amber-400 flex items-center gap-1.5">
               <AlertTriangle size={12} />
-              {draft.finalize_blocked_reason}
+              {finalizeBlockedMessage}
             </p>
           )}
           <label className="block text-xs font-medium text-muted-foreground">
@@ -756,10 +829,15 @@ export default function AssessmentFormPanel({
             </button>
             <button
               type="button"
-              onClick={handleFinalize}
-              disabled={finalizing || !draft.can_finalize}
-              title={draft.finalize_blocked_reason || undefined}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+              onClick={handleFinalizeClick}
+              disabled={finalizing || finalizeConfirmOpen}
+              aria-disabled={!canFinalizeNow}
+              title={finalizeBlockedMessage || undefined}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+                canFinalizeNow
+                  ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  : 'bg-secondary text-muted-foreground border border-border cursor-not-allowed'
+              }`}
             >
               {finalizing ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -771,6 +849,14 @@ export default function AssessmentFormPanel({
           </div>
         </div>
       )}
+
+      <FinalizeConfirmDialog
+        open={finalizeConfirmOpen}
+        hasOverlapWarning={finalizeOverlapWarning}
+        loading={finalizing}
+        onConfirm={handleFinalizeConfirm}
+        onCancel={handleFinalizeCancel}
+      />
     </div>
   );
 }

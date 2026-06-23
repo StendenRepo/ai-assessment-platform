@@ -18,6 +18,7 @@ from app.models.teacher import Teacher
 from app.schemas.evidence import EvidenceOut
 from app.services import audit_service
 from app.services.evidence_service import EvidenceService, run_vision_background, _evidence_upload_dir
+from app.services.progress_trail_pdf import build_progress_trail_pdf
 
 router = APIRouter()
 
@@ -117,6 +118,7 @@ def export_student_dossier(
     """Return an archive containing:
     - All evidence files uploaded for the student (in an ``evidence/`` folder).
     - A ``dossier.txt`` summary file with student info and assessment details.
+    - A ``progress-trail.pdf`` full transparency record (scroll in browser or use PDF outline).
 
     Use ``?format=tar`` if ZIP is blocked by school IT.
     All entries are stored with read-only permissions (0o444).
@@ -206,6 +208,13 @@ def export_student_dossier(
     lines += ["", "=" * 60]
     summary_text = "\n".join(lines) + "\n"
 
+    try:
+        progress_trail_pdf = build_progress_trail_pdf(
+            db, student=student, assessment=latest_assessment
+        )
+    except Exception:
+        progress_trail_pdf = None
+
     buf = io.BytesIO()
     upload_dir = _evidence_upload_dir()
     summary_bytes = summary_text.encode("utf-8")
@@ -223,6 +232,12 @@ def export_student_dossier(
             txt_info.size = len(summary_bytes)
             txt_info.mode = 0o444
             tf.addfile(txt_info, io.BytesIO(summary_bytes))
+
+            if progress_trail_pdf:
+                pt_info = tarfile.TarInfo(name="progress-trail.pdf")
+                pt_info.size = len(progress_trail_pdf)
+                pt_info.mode = 0o444
+                tf.addfile(pt_info, io.BytesIO(progress_trail_pdf))
 
             # evidence files
             seen_names: set[str] = set()
@@ -256,6 +271,12 @@ def export_student_dossier(
             meta_info = zipfile.ZipInfo("dossier.txt")
             meta_info.external_attr = 0o444 << 16
             zf.writestr(meta_info, summary_bytes)
+
+            if progress_trail_pdf:
+                pt_info = zipfile.ZipInfo("progress-trail.pdf")
+                pt_info.external_attr = 0o444 << 16
+                pt_info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(pt_info, progress_trail_pdf)
 
             for ev in evidence_records:
                 full_path = upload_dir / ev.file_path

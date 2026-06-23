@@ -432,8 +432,54 @@ def _infer_updates_from_conversation(
     if not blob.strip():
         return []
 
-    updates: list[dict[str, Any]] = []
     defs_by_key = ctx["defs_by_key"]
+
+    def _append_update(
+        updates: list[dict[str, Any]],
+        key: str,
+        d: dict[str, Any],
+        new_score: float,
+    ) -> None:
+        entry = draft["criteria"].get(key, {})
+        if entry.get("is_overridden"):
+            return
+        eff = entry.get("effective") or {}
+        current_score = eff.get("score")
+        if current_score is not None and float(new_score) == float(current_score):
+            return
+        name = d["name"]
+        comment = eff.get("comment") or ""
+        for line in reversed(lines):
+            if name.lower() in line.lower() and len(line.strip()) > 20:
+                comment = line.strip()[:600]
+                break
+        if not comment:
+            comment = f"Score adjusted to {new_score}/10 based on the discussion with the lecturer."
+        updates.append({"criterion_key": key, "score": new_score, "comment": comment})
+
+    bulk_patterns = (
+        r"all\s+(?:the\s+)?criteria(?:\s+should|\s+must|\s+to|\s+have)?(?:\s+(?:have|be|a))?\s*(?:a\s+)?score(?:\s+of)?\s*[:=]?\s*(\d+(?:\.\d+)?)",
+        r"every\s+criterion(?:\s+should|\s+to|\s+have)?(?:\s+(?:have|be))?\s*(?:a\s+)?score(?:\s+of)?\s*[:=]?\s*(\d+(?:\.\d+)?)",
+        r"set\s+all\s+criteria\s+to\s*(\d+(?:\.\d+)?)",
+    )
+    bulk_score: Optional[float] = None
+    for pat in bulk_patterns:
+        match = re.search(pat, blob, re.I)
+        if not match:
+            continue
+        candidate = float(match.group(1))
+        if 0 <= candidate <= 10:
+            bulk_score = candidate
+            break
+
+    if bulk_score is not None:
+        bulk_updates: list[dict[str, Any]] = []
+        for key, d in defs_by_key.items():
+            _append_update(bulk_updates, key, d, bulk_score)
+        if bulk_updates:
+            return bulk_updates
+
+    updates: list[dict[str, Any]] = []
 
     for key, d in defs_by_key.items():
         entry = draft["criteria"].get(key, {})
@@ -449,6 +495,7 @@ def _infer_updates_from_conversation(
             rf"{name_re}.{{0,240}}?(?:from|revised from)\s*(\d+(?:\.\d+)?)\s*/?\s*10?\s*(?:to|→|->)\s*(\d+(?:\.\d+)?)",
             rf"(?:from|revised from)\s*(\d+(?:\.\d+)?)\s*/?\s*10?\s*(?:to|→|->)\s*(\d+(?:\.\d+)?).{{0,160}}?{name_re}",
             rf"{name_re}.{{0,160}}?(?:to|at|of)\s*(\d+(?:\.\d+)?)\s*/\s*10",
+            rf"{name_re}.{{0,240}}?(?:effective\s+)?score\s*[:=]\s*(\d+(?:\.\d+)?)",
             rf"{name_re}.{{0,160}}?score(?:\s+of|\s+is|\s+would be)?\s*(\d+(?:\.\d+)?)",
             rf"(?:set|change|make|update|put|give)?\s*{name_re}.{{0,80}}?\b(?:to|at|as)\s*(\d+(?:\.\d+)?)\b",
         )
@@ -590,17 +637,17 @@ def _reject_pending_proposals(db: Session, assessment_id: UUID) -> None:
 
 
 def _proposal_summary_text(proposed: list[dict[str, Any]], reply: str) -> str:
+    if proposed:
+        parts = []
+        for c in proposed:
+            before = c.get("before") or {}
+            after = c.get("after") or {}
+            name = c.get("criterion_name", c["criterion_key"])
+            parts.append(f"{name}: {before.get('score')} → {after.get('score')}/10")
+        return "Proposed updates: " + "; ".join(parts) + "."
     if reply and not _is_template_placeholder(reply):
         return reply
-    if not proposed:
-        return "No criterion changes proposed based on the conversation."
-    parts = []
-    for c in proposed:
-        before = c.get("before") or {}
-        after = c.get("after") or {}
-        name = c.get("criterion_name", c["criterion_key"])
-        parts.append(f"{name}: {before.get('score')} → {after.get('score')}/10")
-    return "Proposed updates: " + "; ".join(parts) + "."
+    return "No criterion changes proposed based on the conversation."
 
 
 def _recording_context(db: Session, assessment_id: UUID) -> str:

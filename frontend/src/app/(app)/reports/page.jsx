@@ -271,7 +271,8 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
           </div>
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Contains all evidence files and a plain-text summary (dossier.txt).
+            Contains evidence files, dossier.txt, and progress-trail.pdf — full
+            assessment transparency trail (open in browser or PDF app).
           </p>
 
           {exportError && <p className="text-xs text-red-400">{exportError}</p>}
@@ -424,7 +425,8 @@ function GroupOverviewModal({ open, onClose, moduleId, moduleName }) {
 
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             Contains rubric, module book, all student evidence, assessment
-            forms, and a grade list.
+            summaries, progress-trail.pdf per student (full transparency trail),
+            and a grade list.
           </p>
 
           {exportError && <p className="text-xs text-red-400">{exportError}</p>}
