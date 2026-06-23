@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { FileSpreadsheet, FolderPlus, Upload, Users } from 'lucide-react';
+import { FileSpreadsheet, FolderPlus, MoveRight, Upload, Users } from 'lucide-react';
 import {
   addProjectStudent,
+  bulkMoveStudents,
   createProjectGroup,
   deleteProjectGroup,
   getProject,
@@ -62,6 +63,14 @@ export default function ModuleManagePage() {
   const [editError, setEditError] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
+  // Multi-select & bulk move state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkTargetGroupId, setBulkTargetGroupId] = useState('');
+  const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+  const [bulkSuccess, setBulkSuccess] = useState('');
+
   const {
     pendingItem: groupDeleteTarget,
     requestDelete: requestGroupDelete,
@@ -88,6 +97,7 @@ export default function ModuleManagePage() {
       );
       if (newStudentGroupId === group.id) setNewStudentGroupId('');
       if (editGroupId === group.id) setEditGroupId('');
+      if (bulkTargetGroupId === group.id) setBulkTargetGroupId('');
     },
     onError: (err) => {
       setGroupError(err.message);
@@ -268,6 +278,86 @@ export default function ModuleManagePage() {
       setEditError(err.message);
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  // ── Multi-select & bulk move helpers ─────────────────────────────────────
+
+  const toggleSelectMode = () => {
+    setSelectMode((prev) => !prev);
+    setSelectedIds(new Set());
+    setBulkTargetGroupId('');
+    setBulkError('');
+    setBulkSuccess('');
+    // Close any open edit form when entering select mode
+    setEditingStudentId('');
+  };
+
+  const toggleStudent = (studentId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredStudents.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredStudents.map((s) => s.id)));
+    }
+  };
+
+  const handleBulkMove = async () => {
+    setBulkError('');
+    setBulkSuccess('');
+
+    if (selectedIds.size === 0) {
+      setBulkError('Select at least one student to move.');
+      return;
+    }
+    if (!bulkTargetGroupId) {
+      setBulkError('Choose a destination group.');
+      return;
+    }
+
+    setBulkMoving(true);
+    try {
+      const result = await bulkMoveStudents(
+        moduleId,
+        Array.from(selectedIds),
+        bulkTargetGroupId
+      );
+
+      // Update the project_id of moved students in local state
+      setStudents((prev) =>
+        prev.map((s) =>
+          selectedIds.has(s.id)
+            ? { ...s, project_id: bulkTargetGroupId }
+            : s
+        )
+      );
+
+      const targetGroup = groups.find((g) => g.id === bulkTargetGroupId);
+      const targetName = targetGroup?.name || 'the selected group';
+      setBulkSuccess(
+        `${result.moved_count} student${result.moved_count !== 1 ? 's' : ''} moved to "${targetName}".` +
+          (result.skipped_count > 0
+            ? ` ${result.skipped_count} skipped (not found in this module).`
+            : '')
+      );
+      setSelectedIds(new Set());
+      setBulkTargetGroupId('');
+      setSelectMode(false);
+    } catch (err) {
+      setBulkError(err.message);
+    } finally {
+      setBulkMoving(false);
     }
   };
 
@@ -514,11 +604,100 @@ export default function ModuleManagePage() {
           </div>
         </div>
 
+        {/* ── Students table ──────────────────────────────────────────────── */}
         <div className="lg:col-span-3 rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-          <div className="px-5 py-4 text-sm font-semibold text-foreground">
-            Students ({students.length})
+          {/* Header row */}
+          <div className="px-5 py-4 flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-foreground">
+              Students ({students.length})
+            </span>
+            {students.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleSelectMode}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-semibold transition-colors ${
+                  selectMode
+                    ? 'border-primary/40 bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                <MoveRight size={13} />
+                {selectMode ? 'Cancel selection' : 'Move students'}
+              </button>
+            )}
           </div>
-          <div className="px-5 py-3 border-t border-border/60 bg-secondary/20">
+
+          {/* Bulk-move toolbar */}
+          {selectMode && students.length > 0 && (
+            <div className="px-5 py-3 bg-primary/5 border-b border-border space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium text-foreground">
+                  {selectedIds.size === 0
+                    ? 'Select students below to move them'
+                    : `${selectedIds.size} student${selectedIds.size !== 1 ? 's' : ''} selected`}
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="text-xs text-primary hover:underline shrink-0"
+                >
+                  {selectedIds.size === filteredStudents.length
+                    ? 'Deselect all'
+                    : 'Select all'}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={bulkTargetGroupId}
+                  onChange={(e) => setBulkTargetGroupId(e.target.value)}
+                  className={`${inputClass} flex-1`}
+                  disabled={bulkMoving}
+                >
+                  <option value="">— Choose destination group —</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleBulkMove}
+                  disabled={
+                    bulkMoving || selectedIds.size === 0 || !bulkTargetGroupId
+                  }
+                  className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkMoving ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      {UI_STATUS_LABELS.saving}
+                    </>
+                  ) : (
+                    <>
+                      <MoveRight size={14} />
+                      Move
+                    </>
+                  )}
+                </button>
+              </div>
+              {bulkError && (
+                <p className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-xs text-red-400">
+                  {bulkError}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Success banner (shown after selectMode closes) */}
+          {!selectMode && bulkSuccess && (
+            <div className="px-5 py-3 bg-emerald-500/10 border-b border-emerald-500/20">
+              <p className="text-xs text-emerald-400">{bulkSuccess}</p>
+            </div>
+          )}
+
+          {/* Search bar */}
+          <div className="px-5 py-3 bg-secondary/20">
             <input
               value={studentSearch}
               onChange={(e) => setStudentSearch(e.target.value)}
@@ -526,105 +705,156 @@ export default function ModuleManagePage() {
               className={inputClass}
             />
           </div>
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredStudents.map((student) => (
-              <div
-                key={student.id}
-                className="rounded-md border border-border bg-secondary/20 p-3 space-y-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      {student.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono">
-                      {student.student_number}
-                    </p>
-                    <span
-                      className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        student.status === 'inactive'
-                          ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
-                          : 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
-                      }`}
-                    >
-                      {student.status === 'inactive' ? 'Dropped out' : 'Active'}
-                    </span>
-                  </div>
-                  <div className="w-14 text-right shrink-0">
-                    <p className="text-[11px] text-muted-foreground">Grade</p>
-                    <p className="text-sm font-semibold text-foreground">
-                      {student.grade || '—'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => openEditStudent(student)}
-                  className="w-full px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-                >
-                  Edit
-                </button>
 
-                {editingStudentId === student.id && (
-                  <form
-                    onSubmit={handleSaveStudent}
-                    className="rounded-md bg-card border border-border p-3 space-y-2"
-                  >
-                    <input
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="Student name"
-                      className={inputClass}
-                    />
-                    <input
-                      value={editStudentNumber}
-                      onChange={(e) => setEditStudentNumber(e.target.value)}
-                      placeholder="Student number"
-                      className={`${inputClass} font-mono`}
-                    />
-                    <select
-                      value={editGroupId}
-                      onChange={(e) => setEditGroupId(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="">Default individual group</option>
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={editStatus}
-                      onChange={(e) => setEditStatus(e.target.value)}
-                      className={inputClass}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Dropped out</option>
-                    </select>
-                    {editError && (
-                      <p className="text-xs text-red-400">{editError}</p>
+          {/* Student cards */}
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {filteredStudents.map((student) => {
+              const isSelected = selectedIds.has(student.id);
+              return (
+                <div
+                  key={student.id}
+                  className={`rounded-md border p-3 space-y-3 transition-colors ${
+                    selectMode
+                      ? isSelected
+                        ? 'border-primary/40 bg-primary/10 cursor-pointer'
+                        : 'border-border bg-secondary/20 cursor-pointer hover:bg-secondary/40'
+                      : 'border-border bg-secondary/20'
+                  }`}
+                  onClick={() => {
+                    if (selectMode) toggleStudent(student.id);
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Checkbox (select mode only) */}
+                    {selectMode && (
+                      <div
+                        className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-primary border-primary'
+                            : 'border-border bg-transparent'
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg
+                            className="w-2.5 h-2.5 text-primary-foreground"
+                            fill="none"
+                            viewBox="0 0 12 12"
+                          >
+                            <path
+                              d="M2 6l3 3 5-5"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        )}
+                      </div>
                     )}
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditingStudentId('')}
-                        className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground">
+                        {student.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {student.student_number}
+                      </p>
+                      {/* Group badge */}
+                      {student.project_id && (
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {groups.find((g) => g.id === student.project_id)
+                            ?.name || '—'}
+                        </p>
+                      )}
+                      <span
+                        className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          student.status === 'inactive'
+                            ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
+                        }`}
                       >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={editSaving}
-                        className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
-                      >
-                        {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
-                      </button>
+                        {student.status === 'inactive' ? 'Dropped out' : 'Active'}
+                      </span>
                     </div>
-                  </form>
-                )}
-              </div>
-            ))}
+                    <div className="w-14 text-right shrink-0">
+                      <p className="text-[11px] text-muted-foreground">Grade</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {student.grade || '—'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Edit button — hidden in select mode */}
+                  {!selectMode && (
+                    <button
+                      type="button"
+                      onClick={() => openEditStudent(student)}
+                      className="w-full px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                    >
+                      Edit
+                    </button>
+                  )}
+
+                  {!selectMode && editingStudentId === student.id && (
+                    <form
+                      onSubmit={handleSaveStudent}
+                      className="rounded-md bg-card border border-border p-3 space-y-2"
+                    >
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Student name"
+                        className={inputClass}
+                      />
+                      <input
+                        value={editStudentNumber}
+                        onChange={(e) => setEditStudentNumber(e.target.value)}
+                        placeholder="Student number"
+                        className={`${inputClass} font-mono`}
+                      />
+                      <select
+                        value={editGroupId}
+                        onChange={(e) => setEditGroupId(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Default individual group</option>
+                        {groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={editStatus}
+                        onChange={(e) => setEditStatus(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Dropped out</option>
+                      </select>
+                      {editError && (
+                        <p className="text-xs text-red-400">{editError}</p>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditingStudentId('')}
+                          className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={editSaving}
+                          className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                        >
+                          {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              );
+            })}
           </div>
           {filteredStudents.length === 0 && (
             <div className="px-5 pb-6 text-center text-sm text-muted-foreground">

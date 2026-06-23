@@ -20,6 +20,8 @@ from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.module import (
+    BulkMoveResult,
+    BulkMoveStudentsRequest,
     ModuleCreate,
     ModuleGroupCreate,
     ModuleGroupUpdate,
@@ -1812,6 +1814,116 @@ def move_student_to_group(
         if row:
             current_project_id = str(row.project_id)
     return _student_to_out(student, project_id=current_project_id)
+
+
+@router.post(
+    "/{module_id}/students/bulk-move",
+    response_model=BulkMoveResult,
+    summary="Move multiple students to another group in one action",
+)
+def bulk_move_students(
+    module_id: str,
+    payload: BulkMoveStudentsRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Move a list of students to a target project group within the same module.
+
+    - Permission: teacher must own the module (or be admin).
+    - All student_ids must belong to this module; unknown IDs are skipped.
+    - The target_project_id must belong to this module.
+    - Duplicate IDs in the request are deduplicated automatically.
+    - GitHub repo/branch of the target group is applied to moved students.
+    """
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    project_ids = _module_project_ids(db, module.id)
+
+    # Validate target group belongs to this module
+    target = (
+        db.query(Project)
+        .filter(Project.id == payload.target_project_id, Project.module_id == module.id)
+        .first()
+    )
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target group not found in this module",
+        )
+
+    # Deduplicate requested student IDs
+    requested_ids = list(dict.fromkeys(payload.student_ids))
+
+    # Fetch students that actually belong to this module
+    students_in_module = (
+        db.query(Student)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(
+            Student.student_number.in_(requested_ids),
+            student_projects.c.project_id.in_(project_ids),
+        )
+        .all()
+    ) if project_ids else []
+
+    found_ids = {s.student_number for s in students_in_module}
+    skipped_ids = [sid for sid in requested_ids if sid not in found_ids]
+
+    if not students_in_module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="None of the provided student IDs belong to this module",
+        )
+
+    moved_count = 0
+    for student in students_in_module:
+        # Remove student from all current groups in this module
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.student_id == student.student_number,
+                student_projects.c.project_id.in_(project_ids),
+            )
+        )
+        # Add to target group
+        db.execute(
+            student_projects.insert().values(
+                student_id=student.student_number,
+                project_id=target.id,
+            )
+        )
+        # Sync GitHub repo/branch from target group
+        if target.github_repo_url is not None:
+            student.github_repo_url = target.github_repo_url
+        if target.github_branch is not None:
+            student.github_branch = target.github_branch
+
+        moved_count += 1
+
+    audit_service.log_action(
+        db,
+        action="students.bulk_moved",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "target_group_id": str(target.id),
+            "target_group_name": target.group_name or target.name,
+            "moved_count": moved_count,
+            "skipped_count": len(skipped_ids),
+            "skipped_ids": skipped_ids,
+            "student_ids": [s.student_number for s in students_in_module],
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+
+    return BulkMoveResult(
+        moved_count=moved_count,
+        skipped_count=len(skipped_ids),
+        skipped_ids=skipped_ids,
+    )
 
 
 @router.post("/{module_id}/students/import", response_model=StudentImportResult)
