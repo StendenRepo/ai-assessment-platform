@@ -23,3 +23,9 @@ class Module(Base):
     # Relationships
     teacher = relationship("Teacher", back_populates="modules")
     projects = relationship("Project", back_populates="module")
+    rubrics = relationship(
+        "ModuleRubric",
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="ModuleRubric.position",
+    )
