@@ -43,6 +43,22 @@ class RubricFileOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ModuleRubricOut(BaseModel):
+    id: str
+    name: Optional[str] = None
+    weight: Optional[float] = None
+    position: int = 0
+    file_id: str
+    file_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ModuleRubricUpdate(BaseModel):
+    name: Optional[str] = None
+    weight: Optional[float] = None
+
+
 class ModuleCreate(BaseModel):
     name: str
     academic_year: Optional[str] = None
