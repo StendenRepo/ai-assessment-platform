@@ -1,7 +1,6 @@
 """Tests for POST /api/v1/modules/{module_id}/students/bulk-move"""
 import uuid
 
-
 LOGIN_URL = "/api/v1/auth/login"
 MODULES_URL = "/api/v1/modules"
 
@@ -62,7 +61,7 @@ class TestBulkMoveStudentsSuccess:
             client, headers, module.id, group_a.id, "Alice Smith", "1001"
         )
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [student["id"]],
@@ -84,7 +83,7 @@ class TestBulkMoveStudentsSuccess:
         s2 = _add_student(client, headers, module.id, group_a.id, "Bob", "2002")
         s3 = _add_student(client, headers, module.id, group_a.id, "Carol", "2003")
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [s1["id"], s2["id"], s3["id"]],
@@ -159,7 +158,7 @@ class TestBulkMoveStudentsSuccess:
         )
 
         # Send the same ID twice
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [student["id"], student["id"]],
@@ -179,7 +178,7 @@ class TestBulkMoveStudentsSuccess:
             client, headers, module.id, group_a.id, "Grace", "6001"
         )
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [student["id"], "9999999"],
@@ -204,7 +203,7 @@ class TestBulkMoveStudentsValidation:
         headers = _auth_headers(client)
         module, group_a, group_b = _setup_module_with_groups(db, teacher)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={"student_ids": [], "target_project_id": str(group_b.id)},
             headers=headers,
@@ -215,7 +214,7 @@ class TestBulkMoveStudentsValidation:
         headers = _auth_headers(client)
         module, group_a, _ = _setup_module_with_groups(db, teacher)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={"student_ids": ["1001"]},
             headers=headers,
@@ -230,7 +229,7 @@ class TestBulkMoveStudentsValidation:
             client, headers, module.id, group_a.id, "Hank", "7001"
         )
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [student["id"]],
@@ -244,7 +243,7 @@ class TestBulkMoveStudentsValidation:
         headers = _auth_headers(client)
         module, group_a, group_b = _setup_module_with_groups(db, teacher)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": ["9999991", "9999992"],
@@ -257,7 +256,7 @@ class TestBulkMoveStudentsValidation:
     def test_unknown_module_returns_404(self, client, db, teacher):
         headers = _auth_headers(client)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(uuid.uuid4()),
             json={
                 "student_ids": ["1001"],
@@ -271,7 +270,7 @@ class TestBulkMoveStudentsValidation:
         headers = _auth_headers(client)
         module, _, group_b = _setup_module_with_groups(db, teacher)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [str(i) for i in range(101)],
@@ -291,7 +290,7 @@ class TestBulkMoveStudentsPermissions:
     def test_unauthenticated_request_returns_401(self, client, db, teacher):
         module, _, group_b = _setup_module_with_groups(db, teacher)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": ["1001"],
@@ -331,7 +330,7 @@ class TestBulkMoveStudentsPermissions:
         # Log in as the fixture teacher (not the owner)
         headers = _auth_headers(client)
 
-        client.post(
+        res = client.post(
             _bulk_move_url(other_module.id),
             json={
                 "student_ids": ["1001"],
@@ -367,7 +366,7 @@ class TestBulkMoveStudentsPermissions:
             client, _auth_headers(client), module.id, group_a.id, "Ivy", "8001"
         )
 
-        client.post(
+        res = client.post(
             _bulk_move_url(module.id),
             json={
                 "student_ids": [student["id"]],
@@ -375,3 +374,4 @@ class TestBulkMoveStudentsPermissions:
             },
             headers=_auth_headers(client),
         )
+        assert res.status_code == 404
