@@ -46,6 +46,9 @@ export const API_PATHS = {
     `/students/${studentId}/evidence-matches/runs/${runId}`,
   studentAssessmentQuestions: (studentId) =>
     `/students/${studentId}/assessment-questions`,
+  studentRubricScores: (studentId) => `/students/${studentId}/rubric-scores`,
+  studentRubricScore: (studentId, rubricId) =>
+    `/students/${studentId}/rubric-scores/${rubricId}`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
   reportsOverview: '/reports',
