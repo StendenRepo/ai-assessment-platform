@@ -11,3 +11,9 @@ export const generateRubricScore = (studentId, rubricId) =>
 
 export const getFinalGrade = (studentId) =>
   apiFetch(API_PATHS.studentFinalGrade(studentId));
+
+export const overrideRubricScore = (studentId, rubricId, score) =>
+  apiFetch(API_PATHS.studentRubricScore(studentId, rubricId), {
+    method: 'PATCH',
+    json: { score },
+  });

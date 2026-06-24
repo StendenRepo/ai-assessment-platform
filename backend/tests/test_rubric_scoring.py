@@ -172,3 +172,41 @@ class TestFinalGrade:
         assert body["grade"] == "B-"
         assert body["total_weight"] == 1.0
         assert len(body["components"]) == 2
+
+    def test_override_changes_final(self, client, seed_two):
+        headers = _auth(client)
+        rows = client.get(
+            "/api/v1/students/S-301/rubric-scores", headers=headers
+        ).json()
+        report = next(r for r in rows if r["rubric_name"] == "Report")
+
+        res = client.patch(
+            f"/api/v1/students/S-301/rubric-scores/{report['rubric_id']}",
+            json={"score": 6.0},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["score"] == 6.0
+        assert body["teacher_score"] == 6.0
+        assert body["ai_score"] == 9.0
+
+        final = client.get(
+            "/api/v1/students/S-301/final-grade", headers=headers
+        ).json()
+        # (6*0.6 + 4*0.4) / 1.0 = 5.2 -> "D"
+        assert final["score"] == 5.2
+        assert final["grade"] == "D"
+
+    def test_override_out_of_range_rejected(self, client, seed_two):
+        headers = _auth(client)
+        rows = client.get(
+            "/api/v1/students/S-301/rubric-scores", headers=headers
+        ).json()
+        rid = rows[0]["rubric_id"]
+        res = client.patch(
+            f"/api/v1/students/S-301/rubric-scores/{rid}",
+            json={"score": 99},
+            headers=headers,
+        )
+        assert res.status_code == 422

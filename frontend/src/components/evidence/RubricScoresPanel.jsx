@@ -7,6 +7,7 @@ import {
   listRubricScores,
   generateRubricScore,
   getFinalGrade,
+  overrideRubricScore,
 } from '@/lib/api/rubricScores';
 
 export default function RubricScoresPanel({ studentId, moduleId }) {
@@ -54,6 +55,25 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
       setError(err.message);
     } finally {
       setScoringId(null);
+    }
+  };
+
+  const handleOverride = async (rubric, raw) => {
+    const trimmed = raw.trim();
+    const score = trimmed === '' ? null : Number(trimmed);
+    if (score != null && (Number.isNaN(score) || score < 0 || score > 10)) {
+      setError('Override must be a number between 0 and 10.');
+      return;
+    }
+    const current = scores[rubric.id];
+    if (current && (current.teacher_score ?? null) === score) return;
+    setError('');
+    try {
+      const result = await overrideRubricScore(studentId, rubric.id, score);
+      setScores((prev) => ({ ...prev, [rubric.id]: result }));
+      setFinalGrade(await getFinalGrade(studentId));
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -122,14 +142,29 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
                   </div>
                 </div>
                 {s && s.score != null ? (
-                  <div className="shrink-0 text-right">
-                    <div className="text-sm font-bold text-foreground">
-                      {s.score}/10
+                  <>
+                    <div className="shrink-0 text-right">
+                      <div className="text-sm font-bold text-foreground">
+                        {s.score}/10
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {s.teacher_score != null
+                          ? `teacher · AI was ${s.ai_score}`
+                          : `AI · grade ${s.grade}`}
+                      </div>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      grade {s.grade}
-                    </div>
-                  </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      step={0.5}
+                      defaultValue={s.teacher_score ?? ''}
+                      placeholder="set"
+                      onBlur={(e) => handleOverride(r, e.target.value)}
+                      title="Teacher override (blank = use AI score)"
+                      className="shrink-0 w-14 bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground text-center focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                    />
+                  </>
                 ) : (
                   <span className="shrink-0 text-[10px] text-muted-foreground">
                     not scored

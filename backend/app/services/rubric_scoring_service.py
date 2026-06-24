@@ -128,6 +128,52 @@ def list_rubric_scores(db: Session, *, student_id: str, teacher: Teacher):
     )
 
 
+def effective_score(entry: RubricScore) -> float | None:
+    if entry.teacher_score is not None:
+        return entry.teacher_score
+    return entry.score
+
+
+def effective_grade(entry: RubricScore) -> str | None:
+    eff = effective_score(entry)
+    return _score_to_grade(eff, _MAX_SCORE) if eff is not None else None
+
+
+def override_rubric_score(
+    db: Session, *, student_id: str, teacher: Teacher, rubric_id, score: float | None
+) -> RubricScore:
+    if score is not None and (score < 0 or score > _MAX_SCORE):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Score must be between 0 and {_MAX_SCORE}",
+        )
+    rubric = _resolve_rubric(db, rubric_id, teacher)
+    assessment = (
+        db.query(Assessment)
+        .filter_by(student_id=student_id, teacher_id=teacher.id)
+        .order_by(Assessment.created_at.desc())
+        .first()
+    )
+    entry = (
+        db.query(RubricScore)
+        .filter(
+            RubricScore.assessment_id == assessment.id if assessment else False,
+            RubricScore.rubric_id == rubric.id,
+        )
+        .first()
+        if assessment
+        else None
+    )
+    if entry is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "Score this rubric before overriding it"
+        )
+    entry.teacher_score = score
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
 def compute_final_grade(db: Session, *, assessment: Assessment) -> dict | None:
     rows = (
         db.query(RubricScore, ModuleRubric)
@@ -139,17 +185,18 @@ def compute_final_grade(db: Session, *, assessment: Assessment) -> dict | None:
     weighted_sum = 0.0
     total_weight = 0.0
     for score_row, rubric in rows:
+        eff = effective_score(score_row)
         components.append(
             {
                 "rubric_id": rubric.id,
                 "rubric_name": rubric.name,
                 "weight": rubric.weight,
-                "score": score_row.score,
-                "grade": score_row.grade,
+                "score": eff,
+                "grade": effective_grade(score_row),
             }
         )
-        if score_row.score is not None and rubric.weight:
-            weighted_sum += float(score_row.score) * float(rubric.weight)
+        if eff is not None and rubric.weight:
+            weighted_sum += float(eff) * float(rubric.weight)
             total_weight += float(rubric.weight)
 
     if total_weight <= 0:

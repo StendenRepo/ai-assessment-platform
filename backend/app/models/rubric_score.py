@@ -24,6 +24,7 @@ class RubricScore(Base):
     )
     score = Column(Float, nullable=True)
     grade = Column(String, nullable=True)
+    teacher_score = Column(Float, nullable=True)
     summary = Column(Text, nullable=True)
     generated_at = Column(DateTime, default=datetime.utcnow)
 

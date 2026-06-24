@@ -3,7 +3,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.teacher import Teacher
-from app.schemas.rubric_score import FinalGradeOut, RubricScoreOut
+from app.schemas.rubric_score import (
+    FinalGradeOut,
+    RubricScoreOut,
+    RubricScoreOverride,
+)
 from app.services import rubric_scoring_service
 
 router = APIRouter()
@@ -14,8 +18,10 @@ def _out(entry) -> RubricScoreOut:
         rubric_id=entry.rubric_id,
         rubric_name=entry.rubric.name if entry.rubric else None,
         weight=entry.rubric.weight if entry.rubric else None,
-        score=entry.score,
-        grade=entry.grade,
+        score=rubric_scoring_service.effective_score(entry),
+        grade=rubric_scoring_service.effective_grade(entry),
+        ai_score=entry.score,
+        teacher_score=entry.teacher_score,
         generated_at=entry.generated_at,
     )
 
@@ -54,6 +60,29 @@ def list_rubric_scores(
             db, student_id=student_id, teacher=teacher
         )
     ]
+
+
+@router.patch(
+    "/{student_id}/rubric-scores/{rubric_id}",
+    response_model=RubricScoreOut,
+    summary="Override a rubric's score (teacher value wins)",
+)
+def override_rubric_score(
+    student_id: str,
+    rubric_id: str,
+    payload: RubricScoreOverride,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    return _out(
+        rubric_scoring_service.override_rubric_score(
+            db,
+            student_id=student_id,
+            teacher=teacher,
+            rubric_id=rubric_id,
+            score=payload.score,
+        )
+    )
 
 
 @router.get(
