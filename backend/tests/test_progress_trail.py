@@ -169,12 +169,19 @@ class TestProgressTrailBuilder:
         assert len(chat_items[0]["payload"]["messages"]) == 2
 
 
-try:
-    import weasyprint  # noqa: F401
+def _playwright_pdf_available() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
 
-    HAS_WEASYPRINT = True
-except (ImportError, OSError):
-    HAS_WEASYPRINT = False
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            browser.close()
+        return True
+    except Exception:
+        return False
+
+
+HAS_PLAYWRIGHT_PDF = _playwright_pdf_available()
 
 
 def _pdf_text(pdf_bytes: bytes) -> str:
@@ -184,7 +191,7 @@ def _pdf_text(pdf_bytes: bytes) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
-@pytest.mark.skipif(not HAS_WEASYPRINT, reason="WeasyPrint system libraries unavailable")
+@pytest.mark.skipif(not HAS_PLAYWRIGHT_PDF, reason="Playwright Chromium unavailable")
 class TestProgressTrailPdf:
     def test_pdf_smoke(self, db, student_with_evidence, assessment):
         student, _ = student_with_evidence
@@ -264,3 +271,19 @@ class TestDossierExportIntegration:
         zf = zipfile.ZipFile(io.BytesIO(res.content))
         assert "progress-trail.pdf" in zf.namelist()
         assert zf.read("progress-trail.pdf").startswith(b"%PDF")
+
+    @patch("app.api.v1.endpoints.students.build_progress_trail_pdf")
+    def test_dossier_warns_when_progress_trail_pdf_fails(
+        self, mock_pdf, client, db, teacher, student_with_evidence
+    ):
+        mock_pdf.side_effect = RuntimeError("pdf render failed")
+        student, _ = student_with_evidence
+        res = client.get(
+            f"/api/v1/students/{student.student_number}/export/dossier",
+            headers=_auth(teacher),
+        )
+        assert res.status_code == 200
+        zf = zipfile.ZipFile(io.BytesIO(res.content))
+        assert "progress-trail.pdf" not in zf.namelist()
+        dossier_text = zf.read("dossier.txt").decode("utf-8")
+        assert "WARNING: Progress trail PDF could not be generated" in dossier_text

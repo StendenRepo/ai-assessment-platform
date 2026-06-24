@@ -830,8 +830,7 @@ export default function AssessmentFormPanel({
             <button
               type="button"
               onClick={handleFinalizeClick}
-              disabled={finalizing || finalizeConfirmOpen}
-              aria-disabled={!canFinalizeNow}
+              disabled={!canFinalizeNow || finalizeConfirmOpen}
               title={finalizeBlockedMessage || undefined}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
                 canFinalizeNow

@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -13,7 +14,9 @@ from app.api.deps import get_current_teacher, get_db
 from app.models.assessment import Assessment
 from app.models.enums import EmbeddingStatus
 from app.models.evidence import Evidence
-from app.models.student import Student
+from app.models.module import Module
+from app.models.project import Project
+from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.evidence import EvidenceOut
 from app.services import audit_service
@@ -21,6 +24,27 @@ from app.services.evidence_service import EvidenceService, run_vision_background
 from app.services.progress_trail_pdf import build_progress_trail_pdf
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _assert_student_module_owner_or_403(student_id: str, teacher: Teacher, db: Session) -> None:
+    """Block admins from uploading evidence for a student in a module they don't own."""
+    if not teacher.is_admin:
+        return
+    row = db.execute(
+        student_projects.select().where(student_projects.c.student_id == student_id)
+    ).first()
+    if not row:
+        return
+    project = db.query(Project).filter(Project.id == row.project_id).first()
+    if not project:
+        return
+    module = db.query(Module).filter(Module.id == project.module_id).first()
+    if module and str(module.teacher_id) != str(teacher.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot modify modules owned by other teachers",
+        )
 
 
 @router.get(
@@ -60,6 +84,7 @@ def upload_evidence(
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
+    _assert_student_module_owner_or_403(student_id, current_teacher, db)
     student = db.get(Student, student_id)
     subject_label = f"student {student.name}" if student and student.name else "this student"
     evidence = EvidenceService.upload_file(student_id, file, db)
@@ -205,15 +230,25 @@ def export_student_dossier(
     else:
         lines.append("No evidence files uploaded.")
 
-    lines += ["", "=" * 60]
-    summary_text = "\n".join(lines) + "\n"
-
+    progress_trail_pdf = None
+    pdf_warning = None
     try:
         progress_trail_pdf = build_progress_trail_pdf(
             db, student=student, assessment=latest_assessment
         )
     except Exception:
-        progress_trail_pdf = None
+        logger.exception(
+            "Failed to generate progress trail PDF for student %s dossier export",
+            student.student_number,
+        )
+        pdf_warning = (
+            "WARNING: Progress trail PDF could not be generated for this export."
+        )
+
+    if pdf_warning:
+        lines += ["", pdf_warning]
+    lines += ["", "=" * 60]
+    summary_text = "\n".join(lines) + "\n"
 
     buf = io.BytesIO()
     upload_dir = _evidence_upload_dir()

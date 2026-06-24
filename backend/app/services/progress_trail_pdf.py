@@ -103,12 +103,36 @@ def _prepare_trail_view(trail: dict[str, Any]) -> dict[str, Any]:
 
 def render_progress_trail_pdf(trail: dict[str, Any]) -> bytes:
     """Render one self-contained PDF with full trail detail."""
-    from weasyprint import HTML
+    from playwright.sync_api import sync_playwright
 
     env = _env()
     view = _prepare_trail_view(trail)
     html = env.get_template("progress_trail.html").render(trail=view)
-    return HTML(string=html).write_pdf()
+    footer_template = (
+        '<div style="font-size:8px;color:#64748b;width:100%;text-align:center;">'
+        "Assessment progress trail — transparency record"
+        "</div>"
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content(html, wait_until="load")
+            return page.pdf(
+                format="A4",
+                margin={
+                    "top": "18mm",
+                    "bottom": "22mm",
+                    "left": "16mm",
+                    "right": "16mm",
+                },
+                print_background=True,
+                display_header_footer=True,
+                header_template="<div></div>",
+                footer_template=footer_template,
+            )
+        finally:
+            browser.close()
 
 
 def build_progress_trail_pdf(
