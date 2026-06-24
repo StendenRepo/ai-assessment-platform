@@ -142,6 +142,7 @@ def _student_to_out(
     assessment_status: str = "not-started",
     grade: Optional[str] = None,
     project_id: Optional[str] = None,
+    has_evidence: bool = False,
 ) -> StudentOut:
     return StudentOut(
         id=s.student_number,
@@ -154,6 +155,7 @@ def _student_to_out(
         assessment_status=assessment_status,
         grade=grade,
         project_id=project_id,
+        has_evidence=has_evidence,
     )
 
 
@@ -1582,12 +1584,22 @@ def list_module_students(
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
+
+    # Build a set of student IDs that have at least one evidence file
+    students_with_evidence: set[str] = set()
+    if students:
+        for sid, in db.query(Evidence.student_id).filter(
+            Evidence.student_id.in_([s.student_number for s in students])
+        ).distinct().all():
+            students_with_evidence.add(sid)
+
     return [
         _student_to_out(
             s,
             _assessment_status(latest_assessment.get(s.student_number)),
             _assessment_grade(latest_assessment.get(s.student_number)),
             project_id=str(student_project_map[s.student_number]) if s.student_number in student_project_map else None,
+            has_evidence=s.student_number in students_with_evidence,
         )
         for s in students
     ]
