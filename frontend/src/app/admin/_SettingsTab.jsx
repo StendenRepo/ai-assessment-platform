@@ -10,11 +10,13 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Brain,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
 const tabs = [
   { key: 'appearance', label: 'Appearance', icon: Palette },
+  { key: 'ai', label: 'AI Configuration', icon: Brain },
   { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
   { key: 'integration', label: 'Integrations', icon: Plug },
 ];
@@ -178,6 +180,93 @@ export function SettingsTab() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'ai' && (
+          <>
+            <SectionCard title="Model Configuration">
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-medium">
+                  <label className="text-muted-foreground">
+                    Overlap Detection Sensitivity
+                  </label>
+                  <span className="text-primary font-mono">70%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  defaultValue="70"
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>Less sensitive</span>
+                  <span>More sensitive</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Minimum AI Confidence (%)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  defaultValue="75"
+                  className={inputClass}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Suggestions below this threshold are suppressed
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Automatic Evidence Linking
+                </label>
+                <select className={`${inputClass} cursor-pointer`}>
+                  <option value="aggressive">
+                    Aggressive — Link all possible matches
+                  </option>
+                  <option value="balanced">
+                    Balanced — Only high confidence
+                  </option>
+                  <option value="conservative">
+                    Conservative — Very likely matches only
+                  </option>
+                  <option value="manual">
+                    Manual — No automatic linking
+                  </option>
+                </select>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Source Code Analysis">
+              <div className="space-y-4">
+                {[
+                  'Analyze Git commit history',
+                  'Detect code duplication',
+                  'Analyze comments and documentation',
+                  'Track file changes over time',
+                ].map((label) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-sm text-foreground">{label}</span>
+                    <Toggle defaultChecked />
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-4 flex items-start gap-3">
+              <span className="text-amber-400 text-sm">⚠</span>
+              <p className="text-sm text-muted-foreground">
+                Configuration changes apply to new analyses only. Existing
+                projects will not be re-analyzed automatically.
+              </p>
+            </div>
+          </>
         )}
 
         {activeTab === 'privacy' && (
