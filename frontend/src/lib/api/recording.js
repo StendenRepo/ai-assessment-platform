@@ -85,15 +85,3 @@ export async function getRecordingAudioBlob(assessmentId, recordingId) {
   }
   return res.blob();
 }
-
-// ── Notifications ─────────────────────────────────────────────────────────────
-
-export function listNotifications(unreadOnly = false) {
-  return apiFetch(API_PATHS.notifications(unreadOnly));
-}
-
-export function markNotificationRead(notificationId) {
-  return apiFetch(API_PATHS.notificationRead(notificationId), {
-    method: 'POST',
-  });
-}
