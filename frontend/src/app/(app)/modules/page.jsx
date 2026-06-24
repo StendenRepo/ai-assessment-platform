@@ -16,6 +16,8 @@ import {
 import { listModules, renameModule, deleteModule } from '@/lib/api/modulesApi';
 import { ModuleDeleteConfirmDialog } from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
+import { useAuth } from '@/context/AuthContext';
+import { isModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 
 const statusConfig = {
   active: {
@@ -38,6 +40,7 @@ const statusConfig = {
 
 export default function ModulesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -215,6 +218,7 @@ export default function ModulesPage() {
               classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
             };
             const isRenaming = renamingId === project.id;
+            const isViewOnly = isModuleViewOnly(user, project.teacher_id);
 
             return (
               <div
@@ -291,48 +295,50 @@ export default function ModulesPage() {
                   </div>
                 </div>
 
-                {/* Action buttons */}
-                <div
-                  className="flex items-center gap-1 shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {isRenaming ? (
-                    <>
-                      <button
-                        onClick={(e) => confirmRename(e, project.id)}
-                        disabled={renameLoading}
-                        title="Save name"
-                        className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                      >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={cancelRename}
-                        title="Cancel"
-                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={(e) => startRename(e, project)}
-                        title="Rename module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={(e) => requestDelete(e, project)}
-                        title="Delete module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                {/* Action buttons — hidden in view-only mode */}
+                {!isViewOnly && (
+                  <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {isRenaming ? (
+                      <>
+                        <button
+                          onClick={(e) => confirmRename(e, project.id)}
+                          disabled={renameLoading}
+                          title="Save name"
+                          className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={cancelRename}
+                          title="Cancel"
+                          className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => startRename(e, project)}
+                          title="Rename module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => requestDelete(e, project)}
+                          title="Delete module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {!isRenaming && (
                   <ArrowRight

@@ -202,6 +202,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         module_book = db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
     return ModuleOut(
         id=str(m.id),
+        teacher_id=str(m.teacher_id),
         name=m.name,
         academic_year=m.academic_year,
         deadline=m.deadline,
@@ -225,6 +226,15 @@ def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) ->
     if not module:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
     return module
+
+
+def _assert_module_owner_or_403(module: Module, teacher: Teacher) -> None:
+    """Raise 403 when an admin tries to mutate a module they don't own."""
+    if teacher.is_admin and str(module.teacher_id) != str(teacher.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot modify modules owned by other teachers",
+        )
 
 
 def _module_project_ids(db: Session, module_id: str) -> list[str]:
@@ -737,6 +747,7 @@ def rename_module(
 ):
     """Update the name (and optionally academic_year) of a module."""
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     new_name = payload.get("name", "").strip()
     if not new_name:
         raise HTTPException(
@@ -786,6 +797,7 @@ def delete_module(
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     module_name = module.name  # Capture name before deletion
     project_ids = _module_project_ids(db, module.id)
 
@@ -899,6 +911,7 @@ def upload_rubric(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_rubric = (
         db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
         if module_before.rubric_file_id
@@ -948,6 +961,7 @@ def delete_rubric(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_rubric = (
         db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
         if module_before.rubric_file_id
@@ -1077,6 +1091,7 @@ def upload_module_book(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_module_book = (
         db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
         if module_before.module_book_id
@@ -1132,6 +1147,7 @@ def delete_module_book(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_module_book = (
         db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
         if module_before.module_book_id
@@ -1379,6 +1395,7 @@ def create_module_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = Project(
         module_id=module.id,
         name=payload.name,
@@ -1422,6 +1439,7 @@ def update_module_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     group = (
         db.query(Project)
         .filter(Project.id == group_id, Project.module_id == module.id)
@@ -1533,6 +1551,7 @@ def delete_module_group(
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     group = (
         db.query(Project)
         .filter(Project.id == group_id, Project.module_id == module.id)
@@ -1675,6 +1694,7 @@ def add_module_student(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
     if (
@@ -1749,6 +1769,7 @@ def move_student_to_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project_ids = _module_project_ids(db, module.id)
 
     student = (
@@ -1915,6 +1936,7 @@ async def import_module_students(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = _resolve_group_for_module(db, module, project_id)
 
     contents = await file.read()

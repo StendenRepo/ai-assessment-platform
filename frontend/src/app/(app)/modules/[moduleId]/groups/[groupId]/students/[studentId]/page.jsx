@@ -24,6 +24,7 @@ import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import SuggestedQuestionsPanel from '@/components/evidence/SuggestedQuestionsPanel';
 import RubricScoresPanel from '@/components/evidence/RubricScoresPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
@@ -43,6 +44,7 @@ import {
   verifyGithubRepo,
 } from '@/lib/api/modulesApi';
 import { APP_PATHS } from '@/lib/routes';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 import AssessmentFormPanel from '@/components/assessment/AssessmentFormPanel';
 import FloatingAssessmentChat from '@/components/assessment/FloatingAssessmentChat';
 import TransparencyPanel from '@/components/assessment/TransparencyPanel';
@@ -644,6 +646,7 @@ export default function StudentAssessmentPage() {
   const [currentTab, setCurrentTab] = useState(0);
   const [assessmentId, setAssessmentId] = useState(null);
   const [moduleName, setModuleName] = useState('');
+  const [moduleTeacherId, setModuleTeacherId] = useState(null);
   const [emailDraftOpen, setEmailDraftOpen] = useState(false);
   const [draftSnapshot, setDraftSnapshot] = useState(null);
   const [formKey, setFormKey] = useState(0);
@@ -699,7 +702,10 @@ export default function StudentAssessmentPage() {
 
   useEffect(() => {
     getProject(moduleId)
-      .then((m) => setModuleName(m?.name || ''))
+      .then((m) => {
+        setModuleName(m?.name || '');
+        setModuleTeacherId(m?.teacher_id ?? null);
+      })
       .catch(() => {});
   }, [moduleId]);
 
@@ -838,6 +844,8 @@ export default function StudentAssessmentPage() {
     setAuditRefresh((k) => k + 1);
   }, []);
 
+  const viewOnly = useModuleViewOnly(moduleTeacherId);
+
   if (loadError)
     return <div className="text-sm text-red-400 p-4">{loadError}</div>;
 
@@ -860,6 +868,8 @@ export default function StudentAssessmentPage() {
 
   return (
     <div className="space-y-6">
+      {viewOnly && <ViewModeBanner />}
+
       {emailDraftOpen && (
         <EmailDraftModal
           student={student}
@@ -949,12 +959,14 @@ export default function StudentAssessmentPage() {
                     moduleId={moduleId}
                   />
 
-                  <RubricScoresPanel
-                    studentId={studentId}
-                    moduleId={moduleId}
-                  />
+                  {!viewOnly && (
+                    <RubricScoresPanel
+                      studentId={studentId}
+                      moduleId={moduleId}
+                    />
+                  )}
 
-                  <EvidenceUpload studentId={studentId} />
+                  {!viewOnly && <EvidenceUpload studentId={studentId} />}
                 </div>
               )}
 
@@ -985,7 +997,7 @@ export default function StudentAssessmentPage() {
 
         <div className="col-span-1 space-y-4">
           <div className="sticky top-4 space-y-4">
-            {!editing && student.github_repo_url ? (
+            {student.github_repo_url && (!editing || viewOnly) ? (
               <div className="rounded-lg bg-card border border-border p-5 space-y-4">
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
                   <Github size={16} />
@@ -1030,30 +1042,32 @@ export default function StudentAssessmentPage() {
                     {repoSuccess}
                   </p>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(true);
-                      setRepoSuccess('');
-                      setRepoError('');
-                    }}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Update Branch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRepoRemove(true)}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {repoSaving ? UI_STATUS_LABELS.removing : 'Remove'}
-                  </button>
-                </div>
+                {!viewOnly && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(true);
+                        setRepoSuccess('');
+                        setRepoError('');
+                      }}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Update Branch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRepoRemove(true)}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {repoSaving ? UI_STATUS_LABELS.removing : 'Remove'}
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
+            ) : !viewOnly ? (
               <form
                 onSubmit={handleSaveStudentRepo}
                 className="rounded-lg bg-card border border-border p-5 space-y-4"
@@ -1149,22 +1163,26 @@ export default function StudentAssessmentPage() {
                   {repoSaving ? UI_STATUS_LABELS.saving : 'Save Repo'}
                 </button>
               </form>
+            ) : null}
+
+            {!viewOnly && (
+              <DeleteConfirmDialog
+                open={confirmRepoRemove}
+                title="Remove GitHub Repository"
+                message="Are you sure you want to remove this student's GitHub repository and branch?"
+                confirmLabel="Remove"
+                loading={repoSaving}
+                onCancel={() => setConfirmRepoRemove(false)}
+                onConfirm={async () => {
+                  setConfirmRepoRemove(false);
+                  await handleRemoveStudentRepo();
+                }}
+              />
             )}
 
-            <DeleteConfirmDialog
-              open={confirmRepoRemove}
-              title="Remove GitHub Repository"
-              message="Are you sure you want to remove this student's GitHub repository and branch?"
-              confirmLabel="Remove"
-              loading={repoSaving}
-              onCancel={() => setConfirmRepoRemove(false)}
-              onConfirm={async () => {
-                setConfirmRepoRemove(false);
-                await handleRemoveStudentRepo();
-              }}
-            />
-
-            {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
+            {!viewOnly && assessmentId && (
+              <RecordingPanel assessmentId={assessmentId} />
+            )}
             {assessmentId && (
               <TransparencyPanel
                 assessmentId={assessmentId}
