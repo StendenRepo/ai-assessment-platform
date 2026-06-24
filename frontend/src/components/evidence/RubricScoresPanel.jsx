@@ -147,11 +147,6 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
                       <div className="text-sm font-bold text-foreground">
                         {s.score}/10
                       </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {s.teacher_score != null
-                          ? `teacher · AI was ${s.ai_score}`
-                          : `AI · grade ${s.grade}`}
-                      </div>
                     </div>
                     <input
                       type="number"
@@ -187,6 +182,16 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
               </div>
             );
           })
+        )}
+
+        {hasFinal && (
+          <p className="text-[10px] text-muted-foreground leading-relaxed pt-1 border-t border-border">
+            Weighted final grade is{' '}
+            <span className="font-semibold text-foreground">
+              {finalGrade.score}/10
+            </span>
+            . Grades are rounded when exported to Progresso.
+          </p>
         )}
       </div>
     </div>
