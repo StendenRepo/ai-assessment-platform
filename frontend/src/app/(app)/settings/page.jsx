@@ -4,10 +4,6 @@ import { useState } from 'react';
 import {
   User,
   Brain,
-  Shield,
-  Plug,
-  CheckCircle,
-  XCircle,
   Sun,
   Moon,
   Loader2,
@@ -28,14 +24,10 @@ import {
 
 import { setPin as apiSetPin, removePin as apiRemovePin } from '@/lib/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
 const tabs = [
   { key: 'general', label: 'General', icon: User },
   { key: 'security', label: 'Security', icon: KeyRound },
   { key: 'ai', label: 'AI Configuration', icon: Brain },
-  { key: 'privacy', label: 'Privacy & GDPR', icon: Shield },
-  { key: 'integration', label: 'Integrations', icon: Plug },
   { key: 'data', label: 'Data Management', icon: FileSpreadsheet },
 ];
 
@@ -192,67 +184,10 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
     useNotifications();
-  const [integrationTestState, setIntegrationTestState] = useState({});
   const [templateDownloading, setTemplateDownloading] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [rubricDownloading, setRubricDownloading] = useState(false);
   const [rubricError, setRubricError] = useState('');
-
-  const connectedServices = [
-    {
-      id: 'ollama',
-      name: 'Ollama',
-      desc: 'Local LLM runtime for analysis and generation',
-      active: true,
-      detail: 'Configured via backend OLLAMA_BASE_URL',
-      canTest: true,
-    },
-    {
-      id: 'smtp',
-      name: 'Email Server (SMTP)',
-      desc: 'Send notifications and report exports',
-      active: true,
-      detail: 'smtp.university.edu:587',
-      canTest: false,
-    },
-  ];
-
-  const testOllamaConnection = async () => {
-    setIntegrationTestState((prev) => ({
-      ...prev,
-      ollama: { status: 'loading', message: 'Testing connection...' },
-    }));
-
-    try {
-      const res = await fetch(`${API_URL}/api/v1/health/ollama`);
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.reachable) {
-        throw new Error(data.detail || `Connection failed (${res.status})`);
-      }
-
-      const modelInfo =
-        data.model_count > 0
-          ? `${data.model_count} model(s) detected`
-          : 'Connected but no models found';
-
-      setIntegrationTestState((prev) => ({
-        ...prev,
-        ollama: {
-          status: 'success',
-          message: `Connected to ${data.base_url}. ${modelInfo}.`,
-        },
-      }));
-    } catch (err) {
-      setIntegrationTestState((prev) => ({
-        ...prev,
-        ollama: {
-          status: 'error',
-          message: err?.message || 'Connection test failed',
-        },
-      }));
-    }
-  };
 
   const handleDownloadTemplate = async () => {
     setTemplateDownloading(true);
@@ -513,194 +448,6 @@ export default function SettingsPage() {
                   projects will not be re-analyzed automatically.
                 </p>
               </div>
-            </>
-          )}
-
-          {activeTab === 'privacy' && (
-            <>
-              <SectionCard title="Data Storage">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Data Retention Period
-                  </label>
-                  <select className={`${inputClass} cursor-pointer`}>
-                    <option>30 days after project completion</option>
-                    <option>90 days after project completion</option>
-                    <option>180 days after project completion</option>
-                    <option>1 year after project completion</option>
-                    <option>Unlimited (manual deletion)</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Automatic Anonymization
-                  </label>
-                  <select className={`${inputClass} cursor-pointer`}>
-                    <option>Never</option>
-                    <option>After 30 days</option>
-                    <option>After 90 days</option>
-                    <option>After 180 days</option>
-                  </select>
-                </div>
-              </SectionCard>
-
-              <SectionCard title="GDPR Compliance">
-                <div className="space-y-4">
-                  {[
-                    {
-                      label: 'Log all data access',
-                      sub: 'Required by GDPR — cannot be disabled',
-                      on: true,
-                      locked: true,
-                    },
-                    {
-                      label: 'Require student consent for analysis',
-                      sub: 'Students must agree before AI analysis',
-                      on: true,
-                      locked: false,
-                    },
-                    {
-                      label: 'Anonymize data in exports',
-                      sub: 'Replace names with pseudonyms',
-                      on: false,
-                      locked: false,
-                    },
-                    {
-                      label: 'Store audit trail for 7 years',
-                      sub: 'Required for institutional compliance',
-                      on: true,
-                      locked: true,
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="flex items-start justify-between gap-4"
-                    >
-                      <div>
-                        <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                          {item.label}
-                          {item.locked && (
-                            <span className="text-[10px] rounded-full px-2 py-0.5 bg-secondary text-muted-foreground ring-1 ring-border">
-                              Required
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {item.sub}
-                        </div>
-                      </div>
-                      <Toggle defaultChecked={item.on} disabled={item.locked} />
-                    </div>
-                  ))}
-                </div>
-                <div className="pt-2 border-t border-border">
-                  <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                    Download GDPR Compliance Report
-                  </button>
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Data Deletion">
-                <p className="text-sm text-muted-foreground">
-                  Students have the right to request deletion of their personal
-                  data under GDPR.
-                </p>
-                <div className="flex gap-2">
-                  <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                    Process Deletion Request
-                  </button>
-                  <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                    Run Automatic Cleanup
-                  </button>
-                </div>
-              </SectionCard>
-            </>
-          )}
-
-          {activeTab === 'integration' && (
-            <>
-              <SectionCard title="Connected Services">
-                {connectedServices.map((svc) => (
-                  <div
-                    key={svc.name}
-                    className="rounded-lg border border-border p-4 space-y-3"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground">
-                          {svc.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {svc.desc}
-                        </div>
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 ${svc.active ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20' : 'bg-secondary text-muted-foreground ring-1 ring-border'}`}
-                      >
-                        {svc.active ? (
-                          <CheckCircle size={11} />
-                        ) : (
-                          <XCircle size={11} />
-                        )}
-                        {svc.active ? 'Active' : 'Not Active'}
-                      </span>
-                    </div>
-                    <div className="text-xs font-mono text-muted-foreground">
-                      {svc.detail}
-                    </div>
-                    {svc.id === 'ollama' && integrationTestState.ollama && (
-                      <div
-                        className={`text-xs rounded-md px-2.5 py-2 ${integrationTestState.ollama.status === 'success' ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20' : integrationTestState.ollama.status === 'error' ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20' : 'bg-secondary text-muted-foreground ring-1 ring-border'}`}
-                      >
-                        {integrationTestState.ollama.message}
-                      </div>
-                    )}
-                    <div className="flex gap-2">
-                      <button className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                        Configure
-                      </button>
-                      {svc.active && svc.canTest && (
-                        <button
-                          onClick={testOllamaConnection}
-                          disabled={
-                            integrationTestState.ollama?.status === 'loading'
-                          }
-                          className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
-                        >
-                          {integrationTestState.ollama?.status ===
-                            'loading' && (
-                            <Loader2 size={12} className="animate-spin" />
-                          )}
-                          Test Connection
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </SectionCard>
-
-              <SectionCard title="API Access">
-                <p className="text-sm text-muted-foreground">
-                  Generate API keys for external integrations and custom
-                  tooling.
-                </p>
-                <div className="rounded-lg bg-secondary border border-border p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-semibold text-foreground">
-                      Production API Key
-                    </span>
-                    <span className="text-[10px] rounded-full px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
-                      Active
-                    </span>
-                  </div>
-                  <div className="font-mono text-xs text-muted-foreground bg-background border border-border rounded-md px-3 py-2">
-                    api_prod_************************************************
-                  </div>
-                </div>
-                <button className="px-3 py-2 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
-                  + Generate New API Key
-                </button>
-              </SectionCard>
             </>
           )}
 
