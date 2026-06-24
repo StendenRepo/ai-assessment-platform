@@ -15,8 +15,10 @@ import {
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import ModuleFileCard from '@/components/modules/ModuleFileCard';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import { useDocumentPreview } from '@/lib/hooks/useDocumentPreview';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 import {
   getProject,
   listProjectGroups,
@@ -36,7 +38,6 @@ import { APP_PATHS } from '@/lib/routes';
 export default function ModulePage() {
   const { moduleId } = useParams();
   const router = useRouter();
-
   const [project, setProject] = useState(null);
   const [students, setStudents] = useState([]);
   const [studentSearch, setStudentSearch] = useState('');
@@ -257,6 +258,8 @@ export default function ModulePage() {
 
   // ── Grade export ──────────────────────────────────────────────────────
 
+  const viewOnly = useModuleViewOnly(project?.teacher_id);
+
   const handleExportGrades = async () => {
     setExportError('');
     setExporting(true);
@@ -319,7 +322,8 @@ export default function ModulePage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {viewOnly && <ViewModeBanner />}
+
       <div>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -327,7 +331,9 @@ export default function ModulePage() {
               {project?.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Overview of groups and students in this module
+              {viewOnly
+                ? 'Viewing module in read-only mode'
+                : 'Manage the students in this module to set up the assessment'}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -348,13 +354,15 @@ export default function ModulePage() {
               <Download size={14} />
               {exporting ? 'Exporting…' : 'Export Grades'}
             </button>
-            <button
-              type="button"
-              onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
-              className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-            >
-              Manage Groups & Students
-            </button>
+            {!viewOnly && (
+              <button
+                type="button"
+                onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
+                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              >
+                Manage Groups & Students
+              </button>
+            )}
           </div>
         </div>
         {exportError && (
@@ -621,6 +629,7 @@ export default function ModulePage() {
             onFileChange={handleRubricFile}
             onDelete={handleRubricDelete}
             docPreview={docPreview}
+            readOnly={viewOnly}
           />
 
           <ModuleFileCard
@@ -646,6 +655,7 @@ export default function ModulePage() {
             onFileChange={handleModuleBookFile}
             onDelete={handleModuleBookDelete}
             docPreview={docPreview}
+            readOnly={viewOnly}
           />
         </div>
       </div>

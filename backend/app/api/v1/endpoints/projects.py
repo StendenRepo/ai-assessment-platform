@@ -72,6 +72,18 @@ def _get_owned_project_or_404(db: Session, project_id: str, teacher: Teacher) ->
     return project
 
 
+def _assert_project_module_owner_or_403(project: Project, teacher: Teacher, db: Session) -> None:
+    """Block admins from mutating evidence in a project they don't own."""
+    if not teacher.is_admin:
+        return
+    module = db.query(Module).filter(Module.id == project.module_id).first()
+    if module and str(module.teacher_id) != str(teacher.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot modify modules owned by other teachers",
+        )
+
+
 def _student_count_for_project(db: Session, project_id) -> int:
     return (
         db.query(student_projects)
@@ -118,6 +130,7 @@ def upload_project_evidence(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
+    _assert_project_module_owner_or_403(project, current_teacher, db)
     evidence = EvidenceService.upload_file_for_project(str(project.id), file, db)
     audit_service.log_action(
         db,
