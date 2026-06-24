@@ -3,7 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Scale, Sparkles, AlertTriangle, RefreshCw } from 'lucide-react';
 import { listModuleRubrics } from '@/lib/api/modulesApi';
-import { listRubricScores, generateRubricScore } from '@/lib/api/rubricScores';
+import {
+  listRubricScores,
+  generateRubricScore,
+  getFinalGrade,
+} from '@/lib/api/rubricScores';
 
 export default function RubricScoresPanel({ studentId, moduleId }) {
   const [rubrics, setRubrics] = useState([]);
@@ -11,13 +15,15 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [scoringId, setScoringId] = useState(null);
+  const [finalGrade, setFinalGrade] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, s] = await Promise.all([
+      const [r, s, fg] = await Promise.all([
         moduleId ? listModuleRubrics(moduleId) : Promise.resolve([]),
         listRubricScores(studentId),
+        getFinalGrade(studentId),
       ]);
       setRubrics(r ?? []);
       const map = {};
@@ -25,6 +31,7 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
         map[x.rubric_id] = x;
       });
       setScores(map);
+      setFinalGrade(fg ?? null);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -42,6 +49,7 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
     try {
       const result = await generateRubricScore(studentId, rubric.id);
       setScores((prev) => ({ ...prev, [rubric.id]: result }));
+      setFinalGrade(await getFinalGrade(studentId));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -49,19 +57,7 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
     }
   };
 
-  const scored = rubrics
-    .map((r) => ({ r, s: scores[r.id] }))
-    .filter((x) => x.s && x.s.score != null);
-  const totalWeight = scored.reduce(
-    (sum, x) => sum + (Number(x.r.weight) || 0),
-    0
-  );
-  let weighted = null;
-  if (scored.length && totalWeight > 0) {
-    weighted =
-      scored.reduce((sum, x) => sum + x.s.score * (Number(x.r.weight) || 0), 0) /
-      totalWeight;
-  }
+  const hasFinal = finalGrade && finalGrade.score != null;
 
   return (
     <div className="rounded-lg bg-card border border-border overflow-hidden">
@@ -78,12 +74,12 @@ export default function RubricScoresPanel({ studentId, moduleId }) {
             grade
           </div>
         </div>
-        {weighted != null && (
+        {hasFinal && (
           <span
             className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold bg-primary/10 text-primary ring-1 ring-primary/20"
-            title="Weighted average of scored rubrics (preview)"
+            title="Weighted final grade across all rubrics (used for export)"
           >
-            Final ≈ {weighted.toFixed(1)}/10
+            Final {finalGrade.grade} · {finalGrade.score}/10
           </span>
         )}
       </div>

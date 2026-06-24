@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.teacher import Teacher
-from app.schemas.rubric_score import RubricScoreOut
+from app.schemas.rubric_score import FinalGradeOut, RubricScoreOut
 from app.services import rubric_scoring_service
 
 router = APIRouter()
@@ -54,3 +54,19 @@ def list_rubric_scores(
             db, student_id=student_id, teacher=teacher
         )
     ]
+
+
+@router.get(
+    "/{student_id}/final-grade",
+    response_model=FinalGradeOut,
+    summary="Combined weighted final grade across all rubrics",
+)
+def final_grade(
+    student_id: str,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    result = rubric_scoring_service.final_grade_for_student(
+        db, student_id=student_id, teacher=teacher
+    )
+    return result or FinalGradeOut()

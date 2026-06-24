@@ -126,3 +126,56 @@ def list_rubric_scores(db: Session, *, student_id: str, teacher: Teacher):
         .filter(RubricScore.assessment_id == assessment.id)
         .all()
     )
+
+
+def compute_final_grade(db: Session, *, assessment: Assessment) -> dict | None:
+    rows = (
+        db.query(RubricScore, ModuleRubric)
+        .join(ModuleRubric, RubricScore.rubric_id == ModuleRubric.id)
+        .filter(RubricScore.assessment_id == assessment.id)
+        .all()
+    )
+    components = []
+    weighted_sum = 0.0
+    total_weight = 0.0
+    for score_row, rubric in rows:
+        components.append(
+            {
+                "rubric_id": rubric.id,
+                "rubric_name": rubric.name,
+                "weight": rubric.weight,
+                "score": score_row.score,
+                "grade": score_row.grade,
+            }
+        )
+        if score_row.score is not None and rubric.weight:
+            weighted_sum += float(score_row.score) * float(rubric.weight)
+            total_weight += float(rubric.weight)
+
+    if total_weight <= 0:
+        return None
+
+    final_score = round(weighted_sum / total_weight, 2)
+    return {
+        "score": final_score,
+        "grade": _score_to_grade(final_score, _MAX_SCORE),
+        "total_weight": round(total_weight, 4),
+        "components": components,
+    }
+
+
+def final_grade_for_student(
+    db: Session, *, student_id: str, teacher: Teacher
+) -> dict | None:
+    student = db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found")
+    assessment = (
+        db.query(Assessment)
+        .filter_by(student_id=student_id, teacher_id=teacher.id)
+        .order_by(Assessment.created_at.desc())
+        .first()
+    )
+    if assessment is None:
+        return None
+    return compute_final_grade(db, assessment=assessment)

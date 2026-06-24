@@ -49,6 +49,7 @@ export const API_PATHS = {
   studentRubricScores: (studentId) => `/students/${studentId}/rubric-scores`,
   studentRubricScore: (studentId, rubricId) =>
     `/students/${studentId}/rubric-scores/${rubricId}`,
+  studentFinalGrade: (studentId) => `/students/${studentId}/final-grade`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
   reportsOverview: '/reports',

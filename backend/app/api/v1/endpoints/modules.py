@@ -37,7 +37,7 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
-from app.services import audit_service
+from app.services import audit_service, rubric_scoring_service
 from app.services.module_service import (
     MODULE_BOOK_UPLOAD_DIR,
     RUBRIC_UPLOAD_DIR,
@@ -124,7 +124,14 @@ def _collect_grade_rows(
     rows = []
     for student in students:
         assessment = latest_assessment.get(student.student_number)
-        grade = _assessment_grade(assessment) or "—"
+        combined = (
+            rubric_scoring_service.compute_final_grade(db, assessment=assessment)
+            if assessment
+            else None
+        )
+        grade = (
+            (combined["grade"] if combined else _assessment_grade(assessment)) or "—"
+        )
         ast_status = _assessment_status(assessment)
         group_pid = student_project_map.get(student.student_number)
         group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
