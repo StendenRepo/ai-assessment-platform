@@ -35,6 +35,7 @@ export default function ModuleFileCard({
   onFileChange,
   onDelete,
   docPreview,
+  readOnly = false,
 }) {
   return (
     <div className="space-y-3">
@@ -95,35 +96,41 @@ export default function ModuleFileCard({
               >
                 <Download size={14} />
               </button>
-              <button
-                type="button"
-                onClick={() => inputRef.current?.click()}
-                disabled={uploading}
-                title="Replace"
-                className="flex-1 flex items-center justify-center p-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-50"
-              >
-                <RefreshCw size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={deleting}
-                title="Remove"
-                className="flex-1 flex items-center justify-center p-2 rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
-              >
-                <Trash2 size={14} />
-              </button>
+              {!readOnly && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    disabled={uploading}
+                    title="Replace"
+                    className="flex-1 flex items-center justify-center p-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    disabled={deleting}
+                    title="Remove"
+                    className="flex-1 flex items-center justify-center p-2 rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
             </div>
 
-            <input
-              ref={inputRef}
-              type="file"
-              accept={accept}
-              onChange={(e) => onFileChange(e.target.files?.[0])}
-              className="hidden"
-            />
+            {!readOnly && (
+              <input
+                ref={inputRef}
+                type="file"
+                accept={accept}
+                onChange={(e) => onFileChange(e.target.files?.[0])}
+                className="hidden"
+              />
+            )}
           </div>
-        ) : (
+        ) : !readOnly ? (
           <div>
             <input
               ref={inputRef}
@@ -142,6 +149,10 @@ export default function ModuleFileCard({
               {uploading ? 'Uploading…' : 'Choose file'}
             </button>
           </div>
+        ) : (
+          <p className="text-xs text-muted-foreground italic">
+            No file attached.
+          </p>
         )}
 
         {error && (

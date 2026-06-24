@@ -39,8 +39,10 @@ services:
             - ./backend/data:/app/data
         command: >
             sh -c "
-            alembic upgrade head &&
-            uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+                if [ \"$RUN_MIGRATIONS\" = \"true\" ]; then
+                    alembic upgrade head || echo 'Alembic failed, backend will still start'
+                fi
+                uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
             "
         restart: unless-stopped
     stt:

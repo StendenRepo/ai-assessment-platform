@@ -150,6 +150,7 @@ class ModuleStatusUpdate(BaseModel):
 
 class ModuleOut(BaseModel):
     id: str
+    teacher_id: str
     name: str
     academic_year: Optional[str] = None
     deadline: Optional[str] = None
