@@ -73,6 +73,7 @@ BOOLEAN_COLUMNS = {
 
 # Columns that contain encrypted data and should be skipped during import
 # These are encrypted strings that won't parse as JSON and can be regenerated
+# If adding new encrypted columns, add them here to prevent import failures
 ENCRYPTED_COLUMNS_TO_SKIP = {
     "assessments": {"draft_form_json", "final_form_json", "questions_cache_json"},
     "chat_messages": {"metadata_json"},
@@ -206,6 +207,49 @@ def ensure_postgres_schema(engine) -> None:
     
     # Now create tables
     Base.metadata.create_all(bind=engine)
+    
+    # Verify and add any missing columns that might not have been created
+    # (this can happen with existing tables that are missing new columns)
+    _ensure_missing_columns(engine)
+
+
+def _ensure_missing_columns(engine) -> None:
+    """Add missing columns to existing tables based on SQLAlchemy models.
+    
+    This is needed when columns are added to models after tables have been created
+    in the database. It's especially important for encrypted columns that need to
+    exist before data is imported. 
+    
+    If you add new encrypted columns to the models, add them to the required_columns
+    dict below and to ENCRYPTED_COLUMNS_TO_SKIP above.
+    """
+    inspector = sa_inspect(engine)
+    
+    # Define which columns should exist in each table
+    # Format: table_name -> {column_name: column_type}
+    # Use "TEXT" for encrypted columns (EncryptedJSON, EncryptedText, EncryptedString)
+    required_columns = {
+        "assessments": {
+            "questions_cache_json": "TEXT",
+        },
+        "audit_events": {
+            "details_json": "TEXT",
+        },
+        "chat_messages": {
+            "metadata_json": "TEXT",
+        },
+    }
+    
+    with engine.begin() as connection:
+        for table_name, columns_needed in required_columns.items():
+            existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+            
+            for col_name, col_type in columns_needed.items():
+                if col_name not in existing_columns:
+                    print(f"Adding missing column {table_name}.{col_name}")
+                    connection.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+                    )
 
 
 def main() -> None:

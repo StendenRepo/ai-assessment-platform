@@ -26,9 +26,9 @@ def get_or_create_preferences(
     if pref is None:
         pref = TeacherPreference(
             teacher_id=teacher_id,
-            theme=Theme.light,
-            date_format=DateFormat.dd_mm_yyyy,
-            language=Language.en,
+            theme=Theme.light.value,
+            date_format=DateFormat.dd_mm_yyyy.value,
+            language=Language.en.value,
         )
         db.add(pref)
         db.commit()
