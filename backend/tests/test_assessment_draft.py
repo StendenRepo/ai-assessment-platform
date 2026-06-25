@@ -206,6 +206,32 @@ class TestChatRefineFlow:
 
     @patch("app.services.ollama_client.chat")
     @patch("app.services.ollama_client.generate")
+    def test_propose_infers_bulk_all_criteria_to_score(
+        self, mock_gen, mock_chat, db, assessment, teacher
+    ):
+        mock_gen.return_value = '{"score": 3, "comment": "Initial.", "confidence": 0.6}'
+        draft_assessment_service.generate_suggestions(
+            db, assessment=assessment, teacher=teacher
+        )
+        mock_chat.side_effect = [
+            "Understood — all criteria should have a score of 10.",
+            '{"reply": "All criteria updated to 10", "updates": [{"criterion_key": "crit-2", "score": 2, "comment": "wrong"}]}',
+        ]
+        draft_assessment_service.chat_discuss(
+            db,
+            assessment=assessment,
+            teacher=teacher,
+            message="all the criteria should have a score of 10",
+        )
+        proposal = draft_assessment_service.chat_propose_refine(
+            db, assessment=assessment, teacher=teacher
+        )
+        assert len(proposal["proposed_changes"]) == 5
+        assert all(c["after_score"] == 10.0 for c in proposal["proposed_changes"])
+        assert proposal["reply"].startswith("Proposed updates:")
+
+    @patch("app.services.ollama_client.chat")
+    @patch("app.services.ollama_client.generate")
     def test_propose_skips_overridden_criterion(self, mock_gen, mock_chat, db, assessment, teacher):
         mock_gen.return_value = '{"score": 5, "comment": "Initial.", "confidence": 0.6}'
         draft_assessment_service.generate_suggestions(

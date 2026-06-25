@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -20,8 +21,10 @@ from app.models.teacher import Teacher
 from app.schemas.evidence import EvidenceOut
 from app.services import audit_service
 from app.services.evidence_service import EvidenceService, run_vision_background, _evidence_upload_dir
+from app.services.progress_trail_pdf import build_progress_trail_pdf
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _assert_student_module_owner_or_403(student_id: str, teacher: Teacher, db: Session) -> None:
@@ -140,6 +143,7 @@ def export_student_dossier(
     """Return an archive containing:
     - All evidence files uploaded for the student (in an ``evidence/`` folder).
     - A ``dossier.txt`` summary file with student info and assessment details.
+    - A ``progress-trail.pdf`` full transparency record (scroll in browser or use PDF outline).
 
     Use ``?format=tar`` if ZIP is blocked by school IT.
     All entries are stored with read-only permissions (0o444).
@@ -233,6 +237,23 @@ def export_student_dossier(
     else:
         lines.append("No evidence files uploaded.")
 
+    progress_trail_pdf = None
+    pdf_warning = None
+    try:
+        progress_trail_pdf = build_progress_trail_pdf(
+            db, student=student, assessment=latest_assessment
+        )
+    except Exception:
+        logger.exception(
+            "Failed to generate progress trail PDF for student %s dossier export",
+            student.student_number,
+        )
+        pdf_warning = (
+            "WARNING: Progress trail PDF could not be generated for this export."
+        )
+
+    if pdf_warning:
+        lines += ["", pdf_warning]
     lines += ["", "=" * 60]
     summary_text = "\n".join(lines) + "\n"
 
@@ -253,6 +274,12 @@ def export_student_dossier(
             txt_info.size = len(summary_bytes)
             txt_info.mode = 0o444
             tf.addfile(txt_info, io.BytesIO(summary_bytes))
+
+            if progress_trail_pdf:
+                pt_info = tarfile.TarInfo(name="progress-trail.pdf")
+                pt_info.size = len(progress_trail_pdf)
+                pt_info.mode = 0o444
+                tf.addfile(pt_info, io.BytesIO(progress_trail_pdf))
 
             # evidence files
             seen_names: set[str] = set()
@@ -286,6 +313,12 @@ def export_student_dossier(
             meta_info = zipfile.ZipInfo("dossier.txt")
             meta_info.external_attr = 0o444 << 16
             zf.writestr(meta_info, summary_bytes)
+
+            if progress_trail_pdf:
+                pt_info = zipfile.ZipInfo("progress-trail.pdf")
+                pt_info.external_attr = 0o444 << 16
+                pt_info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(pt_info, progress_trail_pdf)
 
             for ev in evidence_records:
                 full_path = upload_dir / ev.file_path
