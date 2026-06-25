@@ -52,6 +52,13 @@ class Settings:
     ASSESSMENT_OLLAMA_TIMEOUT_SECONDS: float = float(
         os.getenv("ASSESSMENT_OLLAMA_TIMEOUT_SECONDS", "120")
     )
+    ASSESSMENT_OLLAMA_TEMPERATURE: float = float(
+        os.getenv("ASSESSMENT_OLLAMA_TEMPERATURE", "0.0")
+    )
+    ASSESSMENT_OLLAMA_SEED: int = int(os.getenv("ASSESSMENT_OLLAMA_SEED", "7"))
+    ASSESSMENT_OLLAMA_FALLBACK_TO_GENERAL: bool = (
+        os.getenv("ASSESSMENT_OLLAMA_FALLBACK_TO_GENERAL", "true").lower() == "true"
+    )
 
     VISION_MODEL: str = os.getenv("VISION_MODEL", "llava:7b")
     VISION_TIMEOUT_SECONDS: float = float(os.getenv("VISION_TIMEOUT_SECONDS", "180"))
