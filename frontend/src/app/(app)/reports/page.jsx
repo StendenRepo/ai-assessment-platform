@@ -224,12 +224,22 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
                       : '— Choose a student —'}
               </option>
               {students.map((s) => (
-                <option key={s.id} value={s.id}>
+                <option key={s.id} value={s.id} disabled={!s.has_evidence}>
                   {s.name}
                   {s.student_number ? ` (${s.student_number})` : ''}
+                  {!s.has_evidence ? ' — no evidence' : ''}
                 </option>
               ))}
             </select>
+            {selectedStudentId &&
+              !students.find((s) => s.id === selectedStudentId)?.has_evidence && (
+                <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2">
+                  <p className="text-xs text-amber-400">
+                    This student has no uploaded evidence files and cannot be
+                    exported.
+                  </p>
+                </div>
+              )}
           </div>
 
           {/* Archive format */}
@@ -287,7 +297,11 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
           </button>
           <button
             onClick={handleExport}
-            disabled={!selectedStudentId || exporting}
+            disabled={
+              !selectedStudentId ||
+              exporting ||
+              !students.find((s) => s.id === selectedStudentId)?.has_evidence
+            }
             className="flex items-center gap-2 px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {exporting ? (
