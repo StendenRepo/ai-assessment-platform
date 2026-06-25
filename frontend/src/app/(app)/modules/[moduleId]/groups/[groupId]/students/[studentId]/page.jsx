@@ -27,6 +27,7 @@ import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
+import { getAssessmentDraft } from '@/lib/api/assessmentsApi';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import {
   deleteEvidence,
@@ -45,6 +46,7 @@ import {
 import { APP_PATHS } from '@/lib/routes';
 import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 import AssessmentFormPanel from '@/components/assessment/AssessmentFormPanel';
+import ChatHistoryPanel from '@/components/assessment/ChatHistoryPanel';
 import FloatingAssessmentChat from '@/components/assessment/FloatingAssessmentChat';
 import TransparencyPanel from '@/components/assessment/TransparencyPanel';
 import EmailDraftModal from '@/components/assessment/EmailDraftModal';
@@ -836,6 +838,22 @@ export default function StudentAssessmentPage() {
     };
   }, [studentId]);
 
+  // Load the draft once at page level so the floating AI chat has correct
+  // locked/can_chat state on every tab — not only after the Assessment tab has
+  // mounted the form panel. Won't clobber fresher state set later by the panel.
+  useEffect(() => {
+    if (!assessmentId) return;
+    let active = true;
+    getAssessmentDraft(assessmentId)
+      .then((draft) => {
+        if (active) setDraftSnapshot((prev) => prev ?? draft);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [assessmentId]);
+
   const handleDraftChange = useCallback((draft) => {
     setDraftSnapshot(draft);
     setAuditRefresh((k) => k + 1);
@@ -875,7 +893,7 @@ export default function StudentAssessmentPage() {
         />
       )}
 
-      {currentTab === 1 && assessmentId && (
+      {assessmentId && (
         <FloatingAssessmentChat
           ref={chatRef}
           assessmentId={assessmentId}
@@ -932,15 +950,17 @@ export default function StudentAssessmentPage() {
         <div className="col-span-2">
           <div className="rounded-lg bg-card border border-border overflow-hidden">
             <div className="flex border-b border-border">
-              {['Contributions & Evidence', 'Assessment'].map((tab, i) => (
-                <button
-                  key={tab}
-                  onClick={() => setCurrentTab(i)}
-                  className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 cursor-pointer ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-                >
-                  {tab}
-                </button>
-              ))}
+              {['Contributions & Evidence', 'Assessment', 'Chat History'].map(
+                (tab, i) => (
+                  <button
+                    key={tab}
+                    onClick={() => setCurrentTab(i)}
+                    className={`px-6 py-3.5 text-sm font-medium transition-all border-b-2 cursor-pointer ${currentTab === i ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {tab}
+                  </button>
+                )
+              )}
             </div>
 
             <div className="p-6">
@@ -975,6 +995,15 @@ export default function StudentAssessmentPage() {
                 />
               )}
               {currentTab === 1 && !assessmentId && (
+                <div className="text-sm text-muted-foreground py-8 text-center">
+                  Resolving assessment...
+                </div>
+              )}
+
+              {currentTab === 2 && assessmentId && (
+                <ChatHistoryPanel assessmentId={assessmentId} />
+              )}
+              {currentTab === 2 && !assessmentId && (
                 <div className="text-sm text-muted-foreground py-8 text-center">
                   Resolving assessment...
                 </div>

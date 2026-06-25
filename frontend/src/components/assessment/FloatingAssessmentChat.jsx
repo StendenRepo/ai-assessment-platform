@@ -11,9 +11,15 @@ const FloatingAssessmentChat = forwardRef(function FloatingAssessmentChat(
   const [open, setOpen] = useState(false);
   const chatRef = useRef(null);
 
+  function openChat() {
+    setOpen(true);
+    // Focus the composer once it has mounted/painted.
+    requestAnimationFrame(() => chatRef.current?.focus());
+  }
+
   useImperativeHandle(ref, () => ({
     open() {
-      setOpen(true);
+      openChat();
     },
     focusCriterion(criterionKey, criterionName, score) {
       setOpen(true);
@@ -45,7 +51,7 @@ const FloatingAssessmentChat = forwardRef(function FloatingAssessmentChat(
 
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => (open ? setOpen(false) : openChat())}
         aria-label={open ? 'Close AI chat' : 'Open AI chat'}
         aria-expanded={open}
         className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors cursor-pointer"
