@@ -16,6 +16,7 @@ import sqlite3
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect as sa_inspect, text
+from sqlalchemy.dialects import postgresql
 
 from app.core.security import hash_password
 from app.database import Base
@@ -68,6 +69,14 @@ TABLES_IN_INSERT_ORDER = [
 BOOLEAN_COLUMNS = {
     "teachers": {"is_admin", "is_seed"},
     "students": {"consent_given"},
+}
+
+# Columns that contain encrypted data and should be skipped during import
+# These are encrypted strings that won't parse as JSON and can be regenerated
+ENCRYPTED_COLUMNS_TO_SKIP = {
+    "assessments": {"draft_form_json", "final_form_json", "questions_cache_json"},
+    "chat_messages": {"metadata_json"},
+    "audit_events": {"details_json"},
 }
 
 
@@ -129,7 +138,9 @@ def insert_rows(engine, table: str, rows: list[dict]) -> None:
         return
 
     pg_columns = {col["name"] for col in sa_inspect(engine).get_columns(table)}
-    columns = [col for col in rows[0].keys() if col in pg_columns]
+    # Skip encrypted columns that can't be imported as raw strings
+    skip_columns = ENCRYPTED_COLUMNS_TO_SKIP.get(table, set())
+    columns = [col for col in rows[0].keys() if col in pg_columns and col not in skip_columns]
     if not columns:
         return
 
@@ -179,7 +190,21 @@ def ensure_seed_admin(engine) -> None:
 
 
 def ensure_postgres_schema(engine) -> None:
-    # Development helper: create any missing tables before importing seed data.
+    # Development helper: create PostgreSQL enum types, then create any missing tables.
+    with engine.begin() as connection:
+        # Create custom enum types for PostgreSQL if they don't exist
+        enums = [
+            ("theme", ["light", "dark"]),
+            ("dateformat", ["DD-MM-YYYY", "MM-DD-YYYY", "YYYY-MM-DD"]),
+            ("language", ["en", "nl", "de"]),
+        ]
+        
+        for enum_name, enum_values in enums:
+            # Create enum type with checkfirst=True to avoid errors if it already exists
+            enum_def = postgresql.ENUM(*enum_values, name=enum_name)
+            enum_def.create(connection, checkfirst=True)
+    
+    # Now create tables
     Base.metadata.create_all(bind=engine)
 
 

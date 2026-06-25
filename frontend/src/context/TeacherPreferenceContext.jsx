@@ -12,11 +12,13 @@ import {
   updateTeacherPreferences,
 } from '@/lib/api/teacherPreferences';
 import { useTheme } from './ThemeContext';
+import { useAuth } from './AuthContext';
 
 const TeacherPreferenceContext = createContext(null);
 
 export function TeacherPreferenceProvider({ children }) {
   const { setTheme } = useTheme();
+  const { user, ready } = useAuth();
   const [preferences, setPreferences] = useState({
     theme: 'light',
     date_format: 'DD-MM-YYYY',
@@ -25,6 +27,12 @@ export function TeacherPreferenceProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadPreferences = useCallback(async () => {
+    // Only load preferences if user is authenticated
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const data = await getTeacherPreferences();
       // Convert snake_case from API to camelCase for frontend
@@ -41,11 +49,14 @@ export function TeacherPreferenceProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [setTheme]);
+  }, [setTheme, user]);
 
   useEffect(() => {
-    loadPreferences();
-  }, [loadPreferences]);
+    // Only load preferences once auth is ready and user is authenticated
+    if (ready) {
+      loadPreferences();
+    }
+  }, [ready, user, loadPreferences]);
 
   const updatePreference = useCallback(
     async (updates) => {
