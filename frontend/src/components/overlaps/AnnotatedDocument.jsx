@@ -134,8 +134,7 @@ function parseLegacyParts(text, studentFlags) {
         type: 'student',
         text: part,
         matchId: flag?.match_id ?? legacyIndex,
-        confidence:
-          flag?.confidence != null ? Math.round(flag.confidence * 100) : null,
+        confidence: flag?.confidence != null ? Math.round(flag.confidence * 100) : null,
         reason: flag?.reason ?? `Match ${legacyIndex}`,
       });
     } else if (part) {
@@ -217,9 +216,8 @@ export function IntegrityLegend({
         )}
         {hasStudentMatches && (
           <span className="text-muted-foreground">
-            {studentMatches.length} linked pair
-            {studentMatches.length !== 1 ? 's' : ''} — click a match to jump to
-            both sides
+            {studentMatches.length} linked pair{studentMatches.length !== 1 ? 's' : ''} — click a
+            match to jump to both sides
           </span>
         )}
       </div>
@@ -333,11 +331,7 @@ export default function AnnotatedDocument({
         const isHovered = isStudentMatch && hoveredMatchId === seg.matchId;
         const interactive = isStudentMatch && onMatchActivate;
         const isDimmed =
-          dimInactive &&
-          isStudentMatch &&
-          activeMatchId != null &&
-          !isActive &&
-          !isHovered;
+          dimInactive && isStudentMatch && activeMatchId != null && !isActive && !isHovered;
 
         return (
           <span key={i} className="inline">
@@ -353,7 +347,9 @@ export default function AnnotatedDocument({
               role={interactive ? 'button' : undefined}
               tabIndex={interactive ? 0 : undefined}
               onClick={
-                interactive ? () => onMatchActivate(seg.matchId) : undefined
+                interactive
+                  ? () => onMatchActivate(seg.matchId)
+                  : undefined
               }
               onKeyDown={
                 interactive

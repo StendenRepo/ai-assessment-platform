@@ -5,14 +5,13 @@ import mimetypes
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.config import settings
-from app.core import crypto
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
 from app.models.enums import AuditSource, ModuleStatus, ProjectStatus, StudentStatus
@@ -1280,7 +1279,7 @@ def _serve_module_document(
     missing_detail: str,
     request: Request,
     teacher: Teacher,
-) -> Response:
+) -> FileResponse:
     """Return the stored module document inline, logging a 'document.viewed'
     audit entry. Visibility has already been enforced by the caller via
     ``_get_visible_module_or_404``."""
@@ -1314,15 +1313,11 @@ def _serve_module_document(
         ip_address=request.client.host if request.client else None,
     )
 
-    # Files are encrypted at rest (G2-162); decrypt in-process and serve the
-    # plaintext from memory rather than streaming the ciphertext on disk.
-    data = crypto.read_encrypted_file(full_path)
-    return Response(
-        content=data,
+    return FileResponse(
+        path=str(full_path),
         media_type=media_type or "application/octet-stream",
-        headers={
-            "Content-Disposition": f'inline; filename="{record.file_name}"'
-        },
+        filename=record.file_name,
+        content_disposition_type="inline",
     )
 
 
@@ -2508,7 +2503,7 @@ def export_module_archive(
             if rubric_rec:
                 rubric_path = RUBRIC_UPLOAD_DIR / str(module.id) / rubric_rec.path
                 if rubric_path.exists():
-                    entries.append((f"rubric/{rubric_rec.file_name or rubric_rec.path}", crypto.read_encrypted_file(rubric_path)))
+                    entries.append((f"rubric/{rubric_rec.file_name or rubric_rec.path}", rubric_path.read_bytes()))
 
         # Module book
         if module.module_book_id:
@@ -2516,7 +2511,7 @@ def export_module_archive(
             if book_rec:
                 book_path = MODULE_BOOK_UPLOAD_DIR / str(module.id) / book_rec.path
                 if book_path.exists():
-                    entries.append((f"module_book/{book_rec.file_name or book_rec.path}", crypto.read_encrypted_file(book_path)))
+                    entries.append((f"module_book/{book_rec.file_name or book_rec.path}", book_path.read_bytes()))
 
         # Per-group / per-student folders
         for student in students:
@@ -2539,7 +2534,7 @@ def export_module_archive(
                     arcname = f"{folder}/evidence/{stem}_{counter}{suffix}"
                     counter += 1
                 seen_ev.add(arcname)
-                entries.append((arcname, crypto.read_encrypted_file(full_path)))
+                entries.append((arcname, full_path.read_bytes()))
 
             assessment = latest_assessment.get(student.student_number)
             if assessment:

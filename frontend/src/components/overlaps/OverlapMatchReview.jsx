@@ -6,17 +6,15 @@ import { matchStyle } from '@/components/overlaps/AnnotatedDocument';
 
 function pct(confidence) {
   if (confidence == null) return null;
-  const n =
-    confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
+  const n = confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
   return n;
 }
+
 
 function MatchExcerpt({ text, palette, label }) {
   if (!text) {
     return (
-      <p className="text-xs text-muted-foreground italic">
-        No excerpt available.
-      </p>
+      <p className="text-xs text-muted-foreground italic">No excerpt available.</p>
     );
   }
   return (
@@ -119,9 +117,7 @@ function StudentMatchPanel({
 
       <div
         className={`p-3 min-h-0 ${
-          compact
-            ? 'flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3'
-            : 'grid grid-cols-1 lg:grid-cols-2 gap-4'
+          compact ? 'flex-1 grid grid-cols-1 lg:grid-cols-2 gap-3' : 'grid grid-cols-1 lg:grid-cols-2 gap-4'
         }`}
       >
         <MatchExcerpt
@@ -158,9 +154,7 @@ function AiFlagCard({ flag, index }) {
           )}
         </div>
         {flag.reason && (
-          <p className="text-sm text-muted-foreground mt-2 pl-12">
-            {flag.reason}
-          </p>
+          <p className="text-sm text-muted-foreground mt-2 pl-12">{flag.reason}</p>
         )}
       </div>
       <div className="p-5">
@@ -223,16 +217,14 @@ export default function OverlapMatchReview({
   if (!student.length && !ai.length) {
     return (
       <p className="text-sm text-muted-foreground rounded-xl border border-dashed border-border px-6 py-10 text-center">
-        No matched passages were extracted for this signal. Switch to full
-        documents if submission text is available.
+        No matched passages were extracted for this signal. Switch to full documents
+        if submission text is available.
       </p>
     );
   }
 
   return (
-    <div
-      className={`${compact ? 'flex flex-col flex-1 min-h-0 gap-2' : 'space-y-4'}`}
-    >
+    <div className={`${compact ? 'flex flex-col flex-1 min-h-0 gap-2' : 'space-y-4'}`}>
       {student.length > 0 && activeEntry && (
         <>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -251,9 +243,7 @@ export default function OverlapMatchReview({
                 <ChevronLeft size={14} />
               </button>
               <span className="text-[10px] font-medium text-foreground px-1.5 min-w-[3.5rem] text-center">
-                {activeId != null
-                  ? `${activeId}/${student.length}`
-                  : student.length}
+                {activeId != null ? `${activeId}/${student.length}` : student.length}
               </span>
               <button
                 type="button"

@@ -38,20 +38,17 @@ export default function SyncedDocumentViewer({
   const ignoreLeftScrollRef = useRef(false);
   const ignoreRightScrollRef = useRef(false);
 
-  const syncFromTo = useCallback(
-    (source, target) => {
-      if (!syncScroll || !source || !target) return;
-      const sourceMax = source.scrollHeight - source.clientHeight;
-      const targetMax = target.scrollHeight - target.clientHeight;
-      if (sourceMax <= 0 || targetMax <= 0) return;
+  const syncFromTo = useCallback((source, target) => {
+    if (!syncScroll || !source || !target) return;
+    const sourceMax = source.scrollHeight - source.clientHeight;
+    const targetMax = target.scrollHeight - target.clientHeight;
+    if (sourceMax <= 0 || targetMax <= 0) return;
 
-      const ratio = source.scrollTop / sourceMax;
-      const next = ratio * targetMax;
-      if (Math.abs(target.scrollTop - next) < 1) return;
-      target.scrollTop = next;
-    },
-    [syncScroll]
-  );
+    const ratio = source.scrollTop / sourceMax;
+    const next = ratio * targetMax;
+    if (Math.abs(target.scrollTop - next) < 1) return;
+    target.scrollTop = next;
+  }, [syncScroll]);
 
   const onLeftScroll = useCallback(() => {
     if (ignoreLeftScrollRef.current) {
@@ -75,8 +72,8 @@ export default function SyncedDocumentViewer({
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Full document view — overlapping text highlighted in amber. Scroll
-          panes can be synced with the toggle.
+          Full document view — overlapping text highlighted in amber. Scroll panes
+          can be synced with the toggle.
         </p>
         <button
           type="button"

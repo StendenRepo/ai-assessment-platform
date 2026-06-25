@@ -16,8 +16,6 @@ import uuid
 import pytest
 from PIL import Image
 
-from app.core import crypto
-
 UPLOAD_URL = "/api/v1/students/{student_id}/evidence"
 LIST_URL = "/api/v1/students/{student_id}/evidence"
 CONTENT_URL = "/api/v1/evidence/{evidence_id}/content"
@@ -188,14 +186,12 @@ class TestEvidenceLinkedToStudent:
 
         saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
         assert saved_path.exists()
-        # Encrypted at rest (G2-162): ciphertext on disk, decrypts to the raw PNG.
-        assert not saved_path.read_bytes().startswith(b"\x89PNG")
-        assert crypto.decrypt_bytes(saved_path.read_bytes()).startswith(b"\x89PNG")
+        assert saved_path.read_bytes().startswith(b"\x89PNG")
 
         text_path = _evidence_text_root(tmp_path) / res.json()["file_path"]
         text_path = text_path.with_name(f"{text_path.name}.txt")
         assert text_path.exists()
-        assert crypto.read_encrypted_text(text_path) == "[Image evidence uploaded: proof.png]"
+        assert text_path.read_text(encoding="utf-8") == "[Image evidence uploaded: proof.png]"
 
     def test_upload_markdown_does_not_write_text_sidecar(self, client, teacher, student, tmp_path, monkeypatch):
         monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))
@@ -207,8 +203,7 @@ class TestEvidenceLinkedToStudent:
 
         saved_path = _evidence_root(tmp_path) / res.json()["file_path"]
         assert saved_path.exists()
-        # Encrypted at rest (G2-162): decrypts to the original markdown.
-        assert crypto.read_encrypted_text(saved_path) == "# Hello\n\nThis is evidence."
+        assert saved_path.read_text(encoding="utf-8") == "# Hello\n\nThis is evidence."
 
         text_path = saved_path.with_name(f"{saved_path.name}.txt")
         assert not text_path.exists()
@@ -288,7 +283,7 @@ class TestReadEvidenceContent:
 
         _, content = EvidenceService.reprocess_content(upload_res.json()["id"], db)
         assert content == "[Image evidence uploaded: board.png]"
-        assert crypto.read_encrypted_text(text_sidecar) == "[Image evidence uploaded: board.png]"
+        assert text_sidecar.read_text(encoding="utf-8") == "[Image evidence uploaded: board.png]"
 
     def test_vision_model_text_is_saved_when_available(self, client, teacher, student, tmp_path, monkeypatch):
         monkeypatch.setattr("app.services.evidence_service.settings.UPLOAD_DIR", str(tmp_path))

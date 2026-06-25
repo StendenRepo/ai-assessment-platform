@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.config import settings
-from app.core import crypto
 from app.core.security import create_access_token
 from app.models.assessment import Assessment
 from app.models.audit_event import AuditEvent
@@ -149,13 +148,8 @@ class TestRecordingService:
         # 3-month retention window
         expected = datetime.utcnow() + timedelta(days=settings.RECORDING_RETENTION_DAYS)
         assert abs((record.delete_after - expected).total_seconds()) < 60
-        # Audio is encrypted at rest (G2-162): the bytes on disk are ciphertext,
-        # not the original, but decrypt back to the original.
         with open(record.path, "rb") as fh:
-            on_disk = fh.read()
-        assert on_disk != b"fake-audio"
-        assert crypto.is_encrypted_bytes(on_disk)
-        assert crypto.decrypt_bytes(on_disk) == b"fake-audio"
+            assert fh.read() == b"fake-audio"
 
         assert (
             db.query(AuditEvent).filter(AuditEvent.action == "recording.uploaded").count()
@@ -243,10 +237,7 @@ class TestUploadEndpoint:
 
         files = list(tmp_path.iterdir())
         assert len(files) == 1
-        # Encrypted at rest (G2-162): ciphertext on disk, decrypts to original.
-        on_disk = files[0].read_bytes()
-        assert on_disk != b"binary-audio-bytes"
-        assert crypto.decrypt_bytes(on_disk) == b"binary-audio-bytes"
+        assert files[0].read_bytes() == b"binary-audio-bytes"
         assert db.query(FileRecord).count() == 1
 
 

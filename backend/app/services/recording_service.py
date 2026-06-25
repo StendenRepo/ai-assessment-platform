@@ -15,7 +15,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import crypto
 from app.models.assessment import Assessment
 from app.models.enums import AuditSource, TranscriptionStatus
 from app.models.file_record import FileRecord
@@ -61,8 +60,8 @@ def append_recording(
     ext = _ext_for(content_type, filename)
     stored_name = f"{uuid.uuid4().hex}{ext}"
     path = os.path.abspath(os.path.join(settings.RECORDING_DIR, stored_name))
-    # Audio is encrypted at rest (G2-162); only ciphertext touches the volume.
-    crypto.write_encrypted_file(path, audio_bytes)
+    with open(path, "wb") as fh:
+        fh.write(audio_bytes)
 
     sha256 = hashlib.sha256(audio_bytes).hexdigest()
     delete_after = datetime.utcnow() + timedelta(days=settings.RECORDING_RETENTION_DAYS)
@@ -149,7 +148,8 @@ def transcribe_recording(
     db.commit()
 
     try:
-        audio_bytes = crypto.read_encrypted_file(record.path)
+        with open(record.path, "rb") as fh:
+            audio_bytes = fh.read()
         result = stt_client.transcribe(
             audio_bytes, filename=os.path.basename(record.path), language=language
         )

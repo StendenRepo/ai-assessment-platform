@@ -11,7 +11,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Re
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_teacher, get_db
-from app.core import crypto
 from app.models.assessment import Assessment
 from app.models.enums import EmbeddingStatus
 from app.models.evidence import Evidence
@@ -298,7 +297,7 @@ def export_student_dossier(
                     counter += 1
                 seen_names.add(arcname)
 
-                data = crypto.read_encrypted_file(full_path)
+                data = full_path.read_bytes()
                 ev_info = tarfile.TarInfo(name=arcname)
                 ev_info.size = len(data)
                 ev_info.mode = 0o444
@@ -338,7 +337,7 @@ def export_student_dossier(
                 info = zipfile.ZipInfo(arcname)
                 info.external_attr = 0o444 << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                zf.writestr(info, crypto.read_encrypted_file(full_path))
+                zf.writestr(info, full_path.read_bytes())
 
         buf.seek(0)
         filename = f"dossier_{safe_student}_{today}.zip"

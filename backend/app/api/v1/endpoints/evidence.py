@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
-from app.core import crypto
 from app.models.teacher import Teacher
 from app.services import audit_service
 from app.services.evidence_service import SUPPORTED_EXTENSIONS, EvidenceService
@@ -99,13 +99,9 @@ def get_evidence_file(
         },
         ip_address=_client_ip(request),
     )
-    # Files are encrypted at rest (G2-162); decrypt in-process and serve the
-    # plaintext from memory rather than streaming the ciphertext on disk.
-    data = crypto.read_encrypted_file(full_path)
-    return Response(
-        content=data,
+    return FileResponse(
+        path=full_path,
         media_type=media_type,
-        headers={
-            "Content-Disposition": f'inline; filename="{evidence.file_name}"'
-        },
+        filename=str(evidence.file_name),
+        content_disposition_type="inline",
     )

@@ -22,13 +22,12 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_teacher, get_db
 from app.config import settings
-from app.core import crypto
 from app.core.security import decode_access_token
 from app.database import SessionLocal
 from app.models.assessment import Assessment
@@ -344,13 +343,10 @@ def get_recording_audio(
         ip_address=request.client.host if request.client else None,
     )
 
-    # Audio is encrypted at rest (G2-162); decrypt in-process and serve from
-    # memory rather than streaming the ciphertext on disk.
-    data = crypto.read_encrypted_file(record.path)
-    return Response(
-        content=data,
+    return FileResponse(
+        path=record.path,
         media_type=media_type,
-        headers={"Content-Disposition": "inline"},
+        content_disposition_type="inline",
     )
 
 

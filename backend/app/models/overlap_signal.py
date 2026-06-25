@@ -1,8 +1,7 @@
 import uuid
-from sqlalchemy import Column, Float, String, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Float, String, Text, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
-from app.core.encrypted_types import EncryptedText
 from app.database import Base
 from app.models.enums import OverlapType
 
@@ -17,5 +16,5 @@ class OverlapSignal(Base):
     evidence_b_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=False)
     overlap_type = Column(Enum(OverlapType), default=OverlapType.textual)
     confidence = Column(Float)
-    snippet = Column(EncryptedText)
+    snippet = Column(Text)
     detected_at = Column(DateTime, default=datetime.utcnow)

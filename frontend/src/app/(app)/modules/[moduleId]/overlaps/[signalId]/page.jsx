@@ -102,12 +102,8 @@ export default function OverlapDetailPage() {
   const metricRows = buildOverlapMetricRows(data);
 
   const leftText =
-    data.document_a ||
-    data.passage_a ||
-    data.snippet ||
-    'No document text available.';
-  const rightText =
-    data.document_b || data.passage_b || 'No document text available.';
+    data.document_a || data.passage_a || data.snippet || 'No document text available.';
+  const rightText = data.document_b || data.passage_b || 'No document text available.';
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-7rem)] -my-2">
@@ -181,15 +177,9 @@ export default function OverlapDetailPage() {
           )}
 
           <div className="space-y-1.5">
-            <StudentRow
-              name={data.student_a_name}
-              fileName={data.evidence_a_name}
-            />
+            <StudentRow name={data.student_a_name} fileName={data.evidence_a_name} />
             {!singlePane && (
-              <StudentRow
-                name={data.student_b_name}
-                fileName={data.evidence_b_name}
-              />
+              <StudentRow name={data.student_b_name} fileName={data.evidence_b_name} />
             )}
           </div>
 

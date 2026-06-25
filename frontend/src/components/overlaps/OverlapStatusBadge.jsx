@@ -1,6 +1,9 @@
 'use client';
 
-import { INTEGRITY_TYPE_LABELS, overlapStatusLabel } from '@/lib/overlapLabels';
+import {
+  INTEGRITY_TYPE_LABELS,
+  overlapStatusLabel,
+} from '@/lib/overlapLabels';
 
 const INTEGRITY_STYLES = {
   ai: 'bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20',

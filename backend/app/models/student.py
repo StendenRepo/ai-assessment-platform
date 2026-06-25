@@ -1,7 +1,6 @@
 from sqlalchemy import Column, String, Boolean, Enum, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from app.core.encrypted_types import EncryptedString
 from app.database import Base
 from app.models.enums import StudentStatus
 
@@ -18,7 +17,7 @@ class Student(Base):
     __tablename__ = "students"
 
     student_number = Column(String, primary_key=True)
-    name = Column(EncryptedString, nullable=False)
+    name = Column(String, nullable=False)
     github_repo_url = Column(String, nullable=True)
     github_branch = Column(String, nullable=True)
     status = Column(Enum(StudentStatus), default=StudentStatus.active)
