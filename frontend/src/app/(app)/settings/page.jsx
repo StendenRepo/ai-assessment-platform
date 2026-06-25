@@ -43,6 +43,26 @@ const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
 const selectClass = `${inputClass} cursor-pointer`;
 
+// Per-event-type notification preferences, persisted server-side (G2-220).
+// Keys must match the backend NotificationType enum values.
+const NOTIFICATION_PREFERENCES = [
+  {
+    type: 'deletion_reminder',
+    label: 'Data retention reminders',
+    sub: 'When a recording or AI analysis is approaching its deletion date',
+  },
+  {
+    type: 'ai_processing_complete',
+    label: 'AI processing completed',
+    sub: 'When AI finishes processing uploaded evidence',
+  },
+  {
+    type: 'ai_processing_failed',
+    label: 'AI processing failed',
+    sub: 'When AI processing of uploaded evidence fails',
+  },
+];
+
 function Toggle({ defaultChecked, checked, onChange, disabled }) {
   const controlled = typeof checked === 'boolean';
   const [internalOn, setInternalOn] = useState(defaultChecked ?? false);
@@ -190,8 +210,7 @@ function LoginPinSection() {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
-  const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
-    useNotifications();
+  const { preferences, setPreference } = useNotifications();
   const [integrationTestState, setIntegrationTestState] = useState({});
   const [templateDownloading, setTemplateDownloading] = useState(false);
   const [templateError, setTemplateError] = useState('');
@@ -371,32 +390,13 @@ export default function SettingsPage() {
               </SectionCard>
 
               <SectionCard title="Notifications">
+                <p className="text-xs text-muted-foreground">
+                  Choose which platform events appear in your notification bell.
+                </p>
                 <div className="space-y-4">
-                  {[
-                    {
-                      label: 'Email for new projects',
-                      sub: 'Get notified when a project is created',
-                      on: true,
-                    },
-                    {
-                      label: 'AI evidence processing updates',
-                      sub: 'When AI processing succeeds or fails for uploaded evidence',
-                      on: aiProcessingEnabled,
-                      controlled: true,
-                    },
-                    {
-                      label: 'Approaching deadlines',
-                      sub: '3 days before project deadline',
-                      on: true,
-                    },
-                    {
-                      label: 'Weekly summary',
-                      sub: 'Every Monday morning at 9 AM',
-                      on: false,
-                    },
-                  ].map((item) => (
+                  {NOTIFICATION_PREFERENCES.map((item) => (
                     <div
-                      key={item.label}
+                      key={item.type}
                       className="flex items-center justify-between"
                     >
                       <div>
@@ -408,13 +408,8 @@ export default function SettingsPage() {
                         </div>
                       </div>
                       <Toggle
-                        defaultChecked={item.on}
-                        checked={item.controlled ? item.on : undefined}
-                        onChange={
-                          item.label === 'AI evidence processing updates'
-                            ? setAiProcessingNotificationsEnabled
-                            : undefined
-                        }
+                        checked={preferences[item.type] !== false}
+                        onChange={(next) => setPreference(item.type, next)}
                       />
                     </div>
                   ))}

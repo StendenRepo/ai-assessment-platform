@@ -98,4 +98,7 @@ export const API_PATHS = {
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,
+  notificationPreferences: () => `/notification-preferences`,
+  notificationPreference: (notificationType) =>
+    `/notification-preferences/${notificationType}`,
 };
