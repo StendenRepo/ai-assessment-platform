@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     reports,
     rubric_scores,
     students,
+    teacher_preferences,
 )
 
 api_router = APIRouter()
@@ -38,3 +39,4 @@ api_router.include_router(recordings.router, tags=["Recording"])
 api_router.include_router(assessments.router, tags=["Assessment"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(github.router, prefix="/github", tags=["GitHub"])
+api_router.include_router(teacher_preferences.router, tags=["Teacher Preferences"])

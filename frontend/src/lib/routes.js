@@ -109,4 +109,5 @@ export const API_PATHS = {
   notificationPreferences: () => `/notification-preferences`,
   notificationPreference: (notificationType) =>
     `/notification-preferences/${notificationType}`,
+  teacherPreferences: () => `/teacher-preferences`,
 };

@@ -1,5 +1,6 @@
 import './globals.css';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { TeacherPreferenceProvider } from '@/context/TeacherPreferenceContext';
 import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata = {
@@ -19,7 +20,9 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <TeacherPreferenceProvider>{children}</TeacherPreferenceProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -13,6 +13,7 @@ import {
   Brain,
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { useTeacherPreference } from '@/context/TeacherPreferenceContext';
 
 const tabs = [
   { key: 'appearance', label: 'Appearance', icon: Palette },
@@ -63,7 +64,8 @@ function SectionCard({ title, children }) {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export function SettingsTab() {
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
+  const { preferences: teacherPrefs, updatePreference } = useTeacherPreference();
   const [activeTab, setActiveTab] = useState('appearance');
   const [integrationTestState, setIntegrationTestState] = useState({});
 
@@ -149,7 +151,41 @@ export function SettingsTab() {
             <h3 className="text-sm font-semibold text-foreground">
               Appearance
             </h3>
-            <div className="flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Language
+                </label>
+                <select
+                  value={teacherPrefs.language}
+                  onChange={(e) =>
+                    updatePreference({ language: e.target.value })
+                  }
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  <option value="en">English</option>
+                  <option value="nl">Nederlands</option>
+                  <option value="de">Deutsch</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Date Format
+                </label>
+                <select
+                  value={teacherPrefs.date_format}
+                  onChange={(e) =>
+                    updatePreference({ date_format: e.target.value })
+                  }
+                  className={`${inputClass} cursor-pointer`}
+                >
+                  <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                  <option value="MM-DD-YYYY">MM-DD-YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-4 border-t border-border">
               <div>
                 <div className="text-sm font-medium text-foreground">Theme</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
@@ -158,7 +194,7 @@ export function SettingsTab() {
               </div>
               <div className="flex rounded-md border border-border overflow-hidden">
                 <button
-                  onClick={() => setTheme('light')}
+                  onClick={() => updatePreference({ theme: 'light' })}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-all ${
                     theme === 'light'
                       ? 'bg-primary text-primary-foreground'
@@ -168,7 +204,7 @@ export function SettingsTab() {
                   <Sun size={13} /> Light
                 </button>
                 <button
-                  onClick={() => setTheme('dark')}
+                  onClick={() => updatePreference({ theme: 'dark' })}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-l border-border transition-all ${
                     theme === 'dark'
                       ? 'bg-primary text-primary-foreground'

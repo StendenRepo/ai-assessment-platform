@@ -77,3 +77,20 @@ class NotificationType(str, enum.Enum):
     deletion_reminder = "deletion_reminder"
     ai_processing_complete = "ai_processing_complete"
     ai_processing_failed = "ai_processing_failed"
+
+
+class Theme(str, enum.Enum):
+    light = "light"
+    dark = "dark"
+
+
+class DateFormat(str, enum.Enum):
+    dd_mm_yyyy = "DD-MM-YYYY"
+    mm_dd_yyyy = "MM-DD-YYYY"
+    yyyy_mm_dd = "YYYY-MM-DD"
+
+
+class Language(str, enum.Enum):
+    en = "en"
+    nl = "nl"
+    de = "de"
