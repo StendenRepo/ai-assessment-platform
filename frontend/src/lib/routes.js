@@ -60,6 +60,11 @@ export const API_PATHS = {
       : '';
     return `/modules/${moduleId}/students/import${query}`;
   },
+  moduleStudentsBulkMove: (moduleId) =>
+    `/modules/${moduleId}/students/bulk-move`,
+  moduleCoTeachers: (moduleId) => `/modules/${moduleId}/co-teachers`,
+  moduleCoTeacher: (moduleId, teacherId) =>
+    `/modules/${moduleId}/co-teachers/${teacherId}`,
   assessmentForStudent: (studentId) => `/assessments/for-student/${studentId}`,
   assessmentRecordingState: (assessmentId) =>
     `/assessments/${assessmentId}/recording`,

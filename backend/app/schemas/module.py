@@ -133,6 +133,43 @@ class StudentGroupUpdate(BaseModel):
         return _normalize_github_repo_url(value)
 
 
+class CoTeacherOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+
+class AddCoTeacherRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _trim(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class BulkMoveStudentsRequest(BaseModel):
+    student_ids: list[str]
+    target_project_id: str
+
+    @field_validator("student_ids")
+    @classmethod
+    def _non_empty(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("student_ids must not be empty")
+        if len(value) > 100:
+            raise ValueError("Cannot move more than 100 students at once")
+        return value
+
+
+class BulkMoveResult(BaseModel):
+    moved_count: int
+    skipped_count: int
+    skipped_ids: list[str]
+
+
 class ModuleOut(BaseModel):
     id: str
     teacher_id: str
