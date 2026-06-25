@@ -269,7 +269,9 @@ export function SettingsTab() {
                   <option value="conservative">
                     Conservative — Very likely matches only
                   </option>
-                  <option value="manual">Manual — No automatic linking</option>
+                  <option value="manual">
+                    Manual — No automatic linking
+                  </option>
                 </select>
               </div>
             </SectionCard>
@@ -454,7 +456,8 @@ export function SettingsTab() {
                         }
                         className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                       >
-                        {integrationTestState.ollama?.status === 'loading' && (
+                        {integrationTestState.ollama?.status ===
+                          'loading' && (
                           <Loader2 size={12} className="animate-spin" />
                         )}
                         Test Connection
@@ -467,7 +470,8 @@ export function SettingsTab() {
 
             <SectionCard title="API Access">
               <p className="text-sm text-muted-foreground">
-                Generate API keys for external integrations and custom tooling.
+                Generate API keys for external integrations and custom
+                tooling.
               </p>
               <div className="rounded-lg bg-secondary border border-border p-4">
                 <div className="flex justify-between items-center mb-2">

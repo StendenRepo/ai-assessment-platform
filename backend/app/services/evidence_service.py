@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from app.config import settings
-from app.core import crypto
 from app.models.enums import EmbeddingStatus, FileType, NotificationType, SourceType
 from app.models.evidence import Evidence
 from app.models.evidence_match import EvidenceMatch
@@ -440,13 +439,13 @@ def run_vision_background(
             db.commit()
             return
 
-        raw = crypto.read_encrypted_file(full_path)
+        raw = full_path.read_bytes()
         text = _extract_image_text_with_vision(raw, evidence.file_name)
         content = text.strip() or _image_placeholder_text(evidence.file_name)
 
         text_path = _text_path_for(full_path)
         text_path.parent.mkdir(parents=True, exist_ok=True)
-        crypto.write_encrypted_text(text_path, content)
+        text_path.write_text(content, encoding="utf-8")
 
         # Only mark completed when AI produced real text. Placeholder means the
         # vision call failed/unavailable and should be surfaced as failed.
@@ -623,11 +622,11 @@ class EvidenceService:
 
         unique_name = f"{_uuid.uuid4().hex}_{filename}"
         file_path = upload_dir / unique_name
-        crypto.write_encrypted_file(file_path, raw)
+        file_path.write_bytes(raw)
         if _should_store_text_sidecar(file_type) and sidecar_content is not None:
             text_path = _text_path_for(file_path)
             text_path.parent.mkdir(parents=True, exist_ok=True)
-            crypto.write_encrypted_text(text_path, sidecar_content)
+            text_path.write_text(sidecar_content, encoding="utf-8")
 
         relative_path = str(file_path.relative_to(_evidence_upload_dir()))
         evidence = Evidence(
@@ -808,7 +807,7 @@ class EvidenceService:
         file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
 
         if _should_store_text_sidecar(file_type) and text_path.exists():
-            sidecar_text = crypto.read_encrypted_text(text_path)
+            sidecar_text = text_path.read_text(encoding="utf-8")
             # Never run vision synchronously in a read/preview request.
             # Return whatever sidecar exists so the UI stays responsive.
             if file_type == FileType.image and _is_image_placeholder_text(sidecar_text):
@@ -817,7 +816,7 @@ class EvidenceService:
 
         if file_type == FileType.markdown:
             try:
-                return crypto.read_encrypted_text(full_path)
+                return full_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 return EvidenceService._extract_and_store_text(evidence, full_path)
 
@@ -826,10 +825,10 @@ class EvidenceService:
     @staticmethod
     def _extract_and_store_text(evidence: Evidence, full_path: Path) -> str:
         file_type = evidence.file_type or _resolve_file_type(evidence.file_name)
-        raw = crypto.read_encrypted_file(full_path)
+        raw = full_path.read_bytes()
         content = _extract_text(raw, file_type, evidence.file_name)
         if _should_store_text_sidecar(file_type):
             text_path = _text_path_for(full_path)
             text_path.parent.mkdir(parents=True, exist_ok=True)
-            crypto.write_encrypted_text(text_path, content)
+            text_path.write_text(content, encoding="utf-8")
         return content

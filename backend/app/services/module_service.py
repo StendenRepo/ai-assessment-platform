@@ -6,7 +6,6 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core import crypto
 from app.models.file_record import FileRecord
 from app.models.module import Module
 from app.models.module_rubric import ModuleRubric
@@ -72,8 +71,7 @@ def _store_uploaded_file(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     unique_name = f"{_uuid.uuid4().hex}_{filename}"
-    # Encrypted at rest (G2-162); only ciphertext touches the volume.
-    crypto.write_encrypted_file(upload_dir / unique_name, raw)
+    (upload_dir / unique_name).write_bytes(raw)
 
     record = FileRecord(
         file_name=filename,

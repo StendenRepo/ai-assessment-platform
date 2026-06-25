@@ -17,7 +17,6 @@ import csv
 import io
 from pathlib import Path
 
-from app.core import crypto
 from app.models.evidence import Evidence
 from app.models.enums import FileType
 
@@ -95,8 +94,7 @@ def read_stored_evidence_text(evidence: Evidence, upload_dir: Path) -> str:
     if not path.exists():
         return ""
     try:
-        # Evidence files are encrypted at rest (G2-162); decrypt before reading.
-        raw = crypto.read_encrypted_file(path)
+        raw = path.read_bytes()
     except OSError:
         return ""
     if not raw:

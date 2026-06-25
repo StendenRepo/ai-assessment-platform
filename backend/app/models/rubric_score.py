@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, String
+from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from app.core.encrypted_types import EncryptedText
 from app.database import Base
 
 
@@ -26,7 +25,7 @@ class RubricScore(Base):
     score = Column(Float, nullable=True)
     grade = Column(String, nullable=True)
     teacher_score = Column(Float, nullable=True)
-    summary = Column(EncryptedText, nullable=True)
+    summary = Column(Text, nullable=True)
     generated_at = Column(DateTime, default=datetime.utcnow)
 
     rubric = relationship("ModuleRubric")

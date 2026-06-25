@@ -26,18 +26,10 @@ export function buildOverlapMetricRows(signal) {
 
   if (type === 'ai' || type === 'both') {
     const aiPct = signal.ai_content_percent ?? confPct;
-    rows.push({
-      key: 'ai',
-      label: aiMetricLabel(),
-      value: aiScoreLabel(aiPct),
-    });
+    rows.push({ key: 'ai', label: aiMetricLabel(), value: aiScoreLabel(aiPct) });
     const peak = signal.peak_ai_section_percent ?? peakFlagPct(flags, 'ai');
     if (peak != null && peak > aiPct + 5) {
-      rows.push({
-        key: 'peak',
-        label: 'Peak section',
-        value: peakSectionLabel(peak),
-      });
+      rows.push({ key: 'peak', label: 'Peak section', value: peakSectionLabel(peak) });
     }
   }
 
@@ -51,11 +43,7 @@ export function buildOverlapMetricRows(signal) {
       });
     }
     const overlapPct = signal.overlap_confidence_percent ?? confPct;
-    rows.push({
-      key: 'overlap',
-      label: 'Similarity est.',
-      value: `${overlapPct}%`,
-    });
+    rows.push({ key: 'overlap', label: 'Similarity est.', value: `${overlapPct}%` });
   }
 
   return rows;
@@ -133,7 +121,9 @@ function CompactMetrics({ signal }) {
       <StatCell
         value={matches?.value ?? overlap?.value ?? '—'}
         label={
-          matches ? `${matches.label} matched` : (overlap?.label ?? 'Overlap')
+          matches
+            ? `${matches.label} matched`
+            : overlap?.label ?? 'Overlap'
         }
         sub={matches && overlap ? `${overlap.value} confidence` : undefined}
         tone="amber"
