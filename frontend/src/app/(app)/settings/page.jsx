@@ -207,8 +207,6 @@ export default function SettingsPage() {
     preferences,
     setPreference,
   } = useNotifications();
-
-  const { preferences, setPreference } = useNotifications();
   const [integrationTestState, setIntegrationTestState] = useState({});
   const [templateDownloading, setTemplateDownloading] = useState(false);
   const [templateError, setTemplateError] = useState('');
