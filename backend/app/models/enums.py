@@ -3,6 +3,8 @@ import enum
 
 class ModuleStatus(str, enum.Enum):
     active = "active"
+    inactive = "inactive"
+    completed = "completed"
     archived = "archived"
 
 
