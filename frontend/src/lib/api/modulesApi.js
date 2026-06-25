@@ -218,6 +218,12 @@ export const renameModule = (moduleId, name) =>
     body: JSON.stringify({ name }),
   });
 
+export const updateModuleStatus = (moduleId, status) =>
+  request(API_PATHS.moduleStatus(moduleId), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+
 export const deleteModule = (moduleId) =>
   request(API_PATHS.module(moduleId), { method: 'DELETE' });
 

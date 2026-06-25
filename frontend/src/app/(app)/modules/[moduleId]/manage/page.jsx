@@ -372,9 +372,7 @@ export default function ModuleManagePage() {
       // Update the project_id of moved students in local state
       setStudents((prev) =>
         prev.map((s) =>
-          selectedIds.has(s.id)
-            ? { ...s, project_id: bulkTargetGroupId }
-            : s
+          selectedIds.has(s.id) ? { ...s, project_id: bulkTargetGroupId } : s
         )
       );
 
@@ -905,7 +903,9 @@ export default function ModuleManagePage() {
                             : 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
                         }`}
                       >
-                        {student.status === 'inactive' ? 'Dropped out' : 'Active'}
+                        {student.status === 'inactive'
+                          ? 'Dropped out'
+                          : 'Active'}
                       </span>
                     </div>
                     <div className="w-14 text-right shrink-0">
@@ -927,64 +927,66 @@ export default function ModuleManagePage() {
                     </button>
                   )}
 
-                  {!selectMode && !viewOnly && editingStudentId === student.id && (
-                    <form
-                      onSubmit={handleSaveStudent}
-                      className="rounded-md bg-card border border-border p-3 space-y-2"
-                    >
-                      <input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Student name"
-                        className={inputClass}
-                      />
-                      <input
-                        value={editStudentNumber}
-                        onChange={(e) => setEditStudentNumber(e.target.value)}
-                        placeholder="Student number"
-                        className={`${inputClass} font-mono`}
-                      />
-                      <select
-                        value={editGroupId}
-                        onChange={(e) => setEditGroupId(e.target.value)}
-                        className={inputClass}
+                  {!selectMode &&
+                    !viewOnly &&
+                    editingStudentId === student.id && (
+                      <form
+                        onSubmit={handleSaveStudent}
+                        className="rounded-md bg-card border border-border p-3 space-y-2"
                       >
-                        <option value="">Default individual group</option>
-                        {groups.map((group) => (
-                          <option key={group.id} value={group.id}>
-                            {group.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={editStatus}
-                        onChange={(e) => setEditStatus(e.target.value)}
-                        className={inputClass}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Dropped out</option>
-                      </select>
-                      {editError && (
-                        <p className="text-xs text-red-400">{editError}</p>
-                      )}
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setEditingStudentId('')}
-                          className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Student name"
+                          className={inputClass}
+                        />
+                        <input
+                          value={editStudentNumber}
+                          onChange={(e) => setEditStudentNumber(e.target.value)}
+                          placeholder="Student number"
+                          className={`${inputClass} font-mono`}
+                        />
+                        <select
+                          value={editGroupId}
+                          onChange={(e) => setEditGroupId(e.target.value)}
+                          className={inputClass}
                         >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={editSaving}
-                          className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                          <option value="">Default individual group</option>
+                          {groups.map((group) => (
+                            <option key={group.id} value={group.id}>
+                              {group.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={editStatus}
+                          onChange={(e) => setEditStatus(e.target.value)}
+                          className={inputClass}
                         >
-                          {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                          <option value="active">Active</option>
+                          <option value="inactive">Dropped out</option>
+                        </select>
+                        {editError && (
+                          <p className="text-xs text-red-400">{editError}</p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingStudentId('')}
+                            className="px-3 py-1.5 rounded-md border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={editSaving}
+                            className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+                          >
+                            {editSaving ? UI_STATUS_LABELS.saving : 'Save'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                 </div>
               );
             })}
@@ -1041,7 +1043,10 @@ export default function ModuleManagePage() {
                 {/* Search input */}
                 <div className="p-2 border-b border-border">
                   <div className="flex items-center gap-2 bg-secondary rounded-md px-2.5 py-1.5">
-                    <Search size={13} className="text-muted-foreground shrink-0" />
+                    <Search
+                      size={13}
+                      className="text-muted-foreground shrink-0"
+                    />
                     <input
                       autoFocus
                       type="text"

@@ -232,7 +232,8 @@ function IndividualReportModal({ open, onClose, moduleId, moduleName }) {
               ))}
             </select>
             {selectedStudentId &&
-              !students.find((s) => s.id === selectedStudentId)?.has_evidence && (
+              !students.find((s) => s.id === selectedStudentId)
+                ?.has_evidence && (
                 <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2">
                   <p className="text-xs text-amber-400">
                     This student has no uploaded evidence files and cannot be

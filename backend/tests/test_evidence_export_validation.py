@@ -57,15 +57,15 @@ def _make_module_with_student(db, teacher, student_number="9900001"):
 def _add_evidence(db, student_number, file_name="report.pdf"):
     """Insert a minimal Evidence row for the given student."""
     from app.models.evidence import Evidence
-    from app.models.enums import EvidenceFileType, EvidenceSourceType, EmbeddingStatus
+    from app.models.enums import FileType, SourceType, EmbeddingStatus
 
     ev = Evidence(
         id=uuid.uuid4(),
         student_id=student_number,
         file_name=file_name,
         file_path=f"evidence/{student_number}/{file_name}",
-        file_type=EvidenceFileType.pdf,
-        source_type=EvidenceSourceType.upload,
+        file_type=FileType.pdf,
+        source_type=SourceType.upload,
         embedding_status=EmbeddingStatus.pending,
     )
     db.add(ev)

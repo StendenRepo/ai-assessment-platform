@@ -55,7 +55,8 @@ export default function ModulePage() {
   const [uploadingModuleBook, setUploadingModuleBook] = useState(false);
   const [deletingModuleBook, setDeletingModuleBook] = useState(false);
   const [moduleBookError, setModuleBookError] = useState('');
-  const [pendingModuleBookReplace, setPendingModuleBookReplace] = useState(null);
+  const [pendingModuleBookReplace, setPendingModuleBookReplace] =
+    useState(null);
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -296,7 +297,9 @@ export default function ModulePage() {
   if (loadError) {
     return (
       <div className="rounded-lg bg-card border border-border p-12 text-center">
-        <p className="text-sm font-medium text-red-400">Failed to load module</p>
+        <p className="text-sm font-medium text-red-400">
+          Failed to load module
+        </p>
         <p className="text-xs text-muted-foreground mt-1">{loadError}</p>
       </div>
     );
@@ -638,9 +641,8 @@ export default function ModulePage() {
             description={
               <>
                 Upload the module book so the AI understands the course content.
-                Only{' '}
-                <span className="font-semibold text-foreground">PDF</span> or{' '}
-                <span className="font-semibold text-foreground">Word</span>{' '}
+                Only <span className="font-semibold text-foreground">PDF</span>{' '}
+                or <span className="font-semibold text-foreground">Word</span>{' '}
                 (.docx) files are accepted.
               </>
             }

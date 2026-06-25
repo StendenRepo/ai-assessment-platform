@@ -1,7 +1,7 @@
 """add module co-teachers many-to-many
 
-Revision ID: s4t5u6v7w8x9
-Revises: r3s4t5u6v7w8
+Revision ID: t5u6v7w8x9y0
+Revises: s4t5u6v7w8x9
 Create Date: 2026-06-23
 
 """
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = "s4t5u6v7w8x9"
-down_revision = "r3s4t5u6v7w8"
+revision = "t5u6v7w8x9y0"
+down_revision = "s4t5u6v7w8x9"
 branch_labels = None
 depends_on = None
 
