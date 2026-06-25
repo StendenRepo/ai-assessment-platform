@@ -180,8 +180,15 @@ function LoginPinSection() {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
-  const { aiProcessingEnabled, setAiProcessingNotificationsEnabled } =
-    useNotifications();
+
+  const {
+    aiProcessingEnabled,
+    setAiProcessingNotificationsEnabled,
+    preferences,
+    setPreference,
+  } = useNotifications();
+
+  const [integrationTestState, setIntegrationTestState] = useState({});
   const [templateDownloading, setTemplateDownloading] = useState(false);
   const [templateError, setTemplateError] = useState('');
   const [rubricDownloading, setRubricDownloading] = useState(false);
