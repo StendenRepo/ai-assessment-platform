@@ -1,0 +1,434 @@
+{
+  "version": 1,
+  "description": "G2-218 benchmark for the AI assessment scoring step. Each case feeds a rubric criterion plus retrieved evidence chunks to the scoring model; gold_score/gold_grade are hand-labeled reference judgements. Synthetic, rubric-realistic, no student PII. gold_grade follows the single-criterion band of _score_to_grade(gold_score).",
+  "score_tolerance": 1.5,
+  "cases": [
+    {
+      "id": "code-quality-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Code Quality",
+        "description": "Readable, maintainable and well-structured code following clean-code principles",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: code is consistently well-structured, single-responsibility functions, meaningful names, no duplication. Sufficient: mostly readable with minor smells. Insufficient: large functions, unclear naming, heavy duplication.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "code_review.md",
+          "quote": "The service layer separates concerns cleanly: each handler is under 25 lines, functions have single responsibilities, and names like calculate_weighted_grade are self-documenting. No duplicated logic was found; shared helpers are extracted into utils. Linting passes with zero warnings.",
+          "confidence": 0.71
+        },
+        {
+          "file_name": "repo_snapshot.txt",
+          "quote": "src/services/grading.py: 9 small functions, average 14 lines. Consistent naming convention (snake_case). Type hints present on all public functions.",
+          "confidence": 0.58
+        }
+      ],
+      "gold_score": 9,
+      "gold_grade": "A"
+    },
+    {
+      "id": "code-quality-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Code Quality",
+        "description": "Readable, maintainable and well-structured code following clean-code principles",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: consistently well-structured. Sufficient: mostly readable with minor smells. Insufficient: large functions, unclear naming, heavy duplication.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "code_review.md",
+          "quote": "Core logic works but several functions exceed 60 lines and mix validation with persistence. Some variable names are unclear (tmp, data2, flag). There is duplicated date-parsing logic in three modules. Naming is otherwise consistent and the project structure is reasonable.",
+          "confidence": 0.55
+        }
+      ],
+      "gold_score": 6,
+      "gold_grade": "C"
+    },
+    {
+      "id": "code-quality-weak",
+      "tier": "weak",
+      "criterion": {
+        "name": "Code Quality",
+        "description": "Readable, maintainable and well-structured code following clean-code principles",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: consistently well-structured. Sufficient: mostly readable with minor smells. Insufficient: large functions, unclear naming, heavy duplication.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "code_review.md",
+          "quote": "A single 400-line file contains all logic. Functions are deeply nested with up to 6 levels of indentation, names are single letters, and the same database query is copy-pasted in eight places. No structure or separation of concerns.",
+          "confidence": 0.49
+        }
+      ],
+      "gold_score": 2.5,
+      "gold_grade": "F"
+    },
+    {
+      "id": "documentation-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Documentation",
+        "description": "Completeness and clarity of technical documentation",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: complete README, architecture diagram, API docs, setup steps reproducible by a newcomer. Sufficient: covers the basics. Insufficient: missing or stale.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "README.md",
+          "quote": "Includes a one-command Docker setup, an architecture diagram, an endpoint reference table, environment-variable documentation, and a troubleshooting section. A new team member reproduced the full stack from the README in under 15 minutes.",
+          "confidence": 0.68
+        }
+      ],
+      "gold_score": 8.5,
+      "gold_grade": "A-"
+    },
+    {
+      "id": "documentation-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Documentation",
+        "description": "Completeness and clarity of technical documentation",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: complete and reproducible. Sufficient: covers the basics. Insufficient: missing or stale.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "README.md",
+          "quote": "README explains how to install dependencies and start the dev server, but the architecture section is a TODO, several listed commands are out of date, and there is no API documentation.",
+          "confidence": 0.52
+        }
+      ],
+      "gold_score": 5.5,
+      "gold_grade": "C-"
+    },
+    {
+      "id": "documentation-missing",
+      "tier": "weak",
+      "criterion": {
+        "name": "Documentation",
+        "description": "Completeness and clarity of technical documentation",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: complete and reproducible. Sufficient: covers the basics. Insufficient: missing or stale.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "",
+          "quote": "",
+          "confidence": 0.0,
+          "missing_note": "No documentation file was uploaded for this student."
+        }
+      ],
+      "gold_score": 1.5,
+      "gold_grade": "F"
+    },
+    {
+      "id": "testing-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Testing",
+        "description": "Unit tests, integration tests and meaningful test coverage",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: comprehensive unit and integration tests, edge cases covered, coverage above 80%. Sufficient: core paths tested. Insufficient: little or no testing.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "test_report.txt",
+          "quote": "142 tests, 87% line coverage. Includes unit tests for the grading service, integration tests for the API endpoints, and edge cases for empty input, out-of-range scores, and concurrent updates. All tests pass in CI.",
+          "confidence": 0.7
+        }
+      ],
+      "gold_score": 9,
+      "gold_grade": "A"
+    },
+    {
+      "id": "testing-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Testing",
+        "description": "Unit tests, integration tests and meaningful test coverage",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: comprehensive, edge cases, >80% coverage. Sufficient: core paths tested. Insufficient: little or no testing.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "test_report.txt",
+          "quote": "23 unit tests covering the happy path of the main service. Coverage is 41%. No integration tests and no edge-case tests for invalid input.",
+          "confidence": 0.5
+        }
+      ],
+      "gold_score": 5,
+      "gold_grade": "D"
+    },
+    {
+      "id": "testing-weak",
+      "tier": "weak",
+      "criterion": {
+        "name": "Testing",
+        "description": "Unit tests, integration tests and meaningful test coverage",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: comprehensive. Sufficient: core paths tested. Insufficient: little or no testing.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "repo_snapshot.txt",
+          "quote": "The tests directory contains a single placeholder file with one assert True statement. Coverage tooling reports 3%.",
+          "confidence": 0.44
+        }
+      ],
+      "gold_score": 2,
+      "gold_grade": "F"
+    },
+    {
+      "id": "collaboration-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Collaboration",
+        "description": "Contribution to teamwork, communication and shared ownership",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: consistent contributions, active in reviews and planning, supports teammates. Sufficient: participates. Insufficient: absent or disruptive.",
+      "recording_text": "Interviewer: How did you support the team? Student: I ran the daily standups, reviewed most pull requests, and paired with two teammates who were stuck on the auth flow.",
+      "evidence": [
+        {
+          "file_name": "git_activity.txt",
+          "quote": "Authored 64 commits across 9 weeks, reviewed 38 pull requests, and opened 12 issues. Contributions are spread evenly across the sprint timeline rather than clustered before deadlines.",
+          "confidence": 0.62
+        }
+      ],
+      "gold_score": 8.5,
+      "gold_grade": "A-"
+    },
+    {
+      "id": "collaboration-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Collaboration",
+        "description": "Contribution to teamwork, communication and shared ownership",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: consistent contributions and reviews. Sufficient: participates. Insufficient: absent.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "git_activity.txt",
+          "quote": "Authored 18 commits, most of them in the final two weeks. Reviewed 3 pull requests. Attendance at standups was irregular according to the retrospective notes.",
+          "confidence": 0.48
+        }
+      ],
+      "gold_score": 5,
+      "gold_grade": "D"
+    },
+    {
+      "id": "presentation-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Presentation",
+        "description": "Oral presentation, structure and communication skills",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: clear structure, confident delivery, handles questions well. Sufficient: understandable. Insufficient: unclear or unprepared.",
+      "recording_text": "Student presented for 12 minutes with a clear agenda, demoed the feature live without errors, and answered all four examiner questions with concrete references to the implementation.",
+      "evidence": [
+        {
+          "file_name": "presentation_notes.md",
+          "quote": "Slides followed a problem-solution-demo-reflection structure. The live demo succeeded on the first attempt. The examiner noted strong handling of follow-up questions on the database schema.",
+          "confidence": 0.6
+        }
+      ],
+      "gold_score": 8,
+      "gold_grade": "B+"
+    },
+    {
+      "id": "presentation-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Presentation",
+        "description": "Oral presentation, structure and communication skills",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: clear and confident. Sufficient: understandable. Insufficient: unclear or unprepared.",
+      "recording_text": "Student read directly from notes for most of the talk and ran over time. The demo partially worked. Two of four questions were answered vaguely.",
+      "evidence": [
+        {
+          "file_name": "presentation_notes.md",
+          "quote": "Content was present but delivery was hesitant and the structure was hard to follow. The reflection section was rushed.",
+          "confidence": 0.46
+        }
+      ],
+      "gold_score": 5.5,
+      "gold_grade": "C-"
+    },
+    {
+      "id": "system-analysis-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "System Analysis",
+        "description": "Quality of requirements analysis, modelling and justified design decisions",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: thorough stakeholder and requirements analysis, justified models, traceable decisions. Sufficient: basic analysis present. Insufficient: missing or unjustified.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "analysis_report.pdf",
+          "quote": "Functional and non-functional requirements are derived from three stakeholder interviews, prioritised with MoSCoW, and mapped to a domain model and sequence diagrams. Each major design decision is recorded with alternatives considered and a rationale.",
+          "confidence": 0.66
+        }
+      ],
+      "gold_score": 9,
+      "gold_grade": "A"
+    },
+    {
+      "id": "system-analysis-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "System Analysis",
+        "description": "Quality of requirements analysis, modelling and justified design decisions",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: thorough and justified. Sufficient: basic analysis present. Insufficient: missing or unjustified.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "analysis_report.pdf",
+          "quote": "A list of requirements is provided and a single class diagram is included. There is no prioritisation, the diagram is not explained, and design decisions are stated without justification or alternatives.",
+          "confidence": 0.5
+        }
+      ],
+      "gold_score": 5.5,
+      "gold_grade": "C-"
+    },
+    {
+      "id": "programming-principles-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Programming Principles",
+        "description": "Correct application of OOP, SOLID and design patterns where appropriate",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: principles applied correctly and deliberately with justification. Sufficient: mostly applied. Insufficient: misapplied or absent.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "design_doc.md",
+          "quote": "The repository pattern abstracts persistence, dependency injection is used for the grading service, and the strategy pattern handles the different export formats. Each choice is justified against the single-responsibility and open-closed principles.",
+          "confidence": 0.64
+        }
+      ],
+      "gold_score": 8.5,
+      "gold_grade": "A-"
+    },
+    {
+      "id": "programming-principles-weak",
+      "tier": "weak",
+      "criterion": {
+        "name": "Programming Principles",
+        "description": "Correct application of OOP, SOLID and design patterns where appropriate",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: principles applied deliberately. Sufficient: mostly applied. Insufficient: misapplied or absent.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "design_doc.md",
+          "quote": "All state is held in global variables and logic lives in one procedural script. Classes are not used. The document claims to use the singleton pattern but the example shown is simply a global dictionary.",
+          "confidence": 0.42
+        }
+      ],
+      "gold_score": 3,
+      "gold_grade": "F"
+    },
+    {
+      "id": "development-street-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Development Street",
+        "description": "CI/CD pipeline, version control hygiene and automated quality gates",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: full CI/CD with automated tests, linting and deployment gates. Sufficient: basic CI present. Insufficient: none.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "ci_config.yml",
+          "quote": "A GitHub Actions workflow runs the test suite on push to main. There is no linting stage, no coverage gate, and deployment is manual. Branch protection is not enabled.",
+          "confidence": 0.5
+        }
+      ],
+      "gold_score": 6,
+      "gold_grade": "C"
+    },
+    {
+      "id": "development-street-no-evidence",
+      "tier": "weak",
+      "criterion": {
+        "name": "Development Street",
+        "description": "CI/CD pipeline, version control hygiene and automated quality gates",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: full CI/CD. Sufficient: basic CI present. Insufficient: none.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "",
+          "quote": "",
+          "confidence": 0.0,
+          "missing_note": "No CI configuration or pipeline evidence was uploaded."
+        }
+      ],
+      "gold_score": 1.5,
+      "gold_grade": "F"
+    },
+    {
+      "id": "draft-advice-strong",
+      "tier": "strong",
+      "criterion": {
+        "name": "Draft Advice Report",
+        "description": "Clarity, completeness and professionalism of the written advisory report",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: well-structured, evidence-backed recommendations, professional tone. Sufficient: readable advice. Insufficient: incomplete or unprofessional.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "advice_report.pdf",
+          "quote": "The report opens with a management summary, presents three options with cost-benefit analysis, backs each recommendation with the gathered data, and closes with a clear implementation roadmap. Tone is professional and consistent throughout.",
+          "confidence": 0.67
+        }
+      ],
+      "gold_score": 8.5,
+      "gold_grade": "A-"
+    },
+    {
+      "id": "draft-advice-partial",
+      "tier": "partial",
+      "criterion": {
+        "name": "Draft Advice Report",
+        "description": "Clarity, completeness and professionalism of the written advisory report",
+        "max_score": 10
+      },
+      "rubric_excerpt": "Excellent: structured and evidence-backed. Sufficient: readable advice. Insufficient: incomplete or unprofessional.",
+      "recording_text": "",
+      "evidence": [
+        {
+          "file_name": "advice_report.pdf",
+          "quote": "The report gives a single recommendation but does not compare alternatives or reference the collected data. Structure is loose and there are several informal phrasings, though the core advice is understandable.",
+          "confidence": 0.49
+        }
+      ],
+      "gold_score": 5.5,
+      "gold_grade": "C-"
+    }
+  ]
+}

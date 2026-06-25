@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any, Optional
@@ -23,6 +24,8 @@ from app.services.evidence_matcher import match_criterion_to_evidence, persist_m
 from app.lib.llm_json import parse_json_response
 from app.services import ollama_client
 from app.services.overlap.service import OverlapService, parse_signal_detail
+
+logger = logging.getLogger(__name__)
 
 DRAFT_VERSION = 1
 
@@ -200,6 +203,24 @@ def _score_to_grade(avg: float, max_score: float = 10) -> str:
     if pct >= 50:
         return "D"
     return "F"
+
+
+def _scoring_band_guide(max_score: float) -> str:
+    bands = [
+        (0.90, "fully and clearly demonstrated, no significant gaps"),
+        (0.70, "mostly demonstrated with minor gaps"),
+        (0.50, "partially demonstrated, notable gaps"),
+        (0.30, "weakly addressed, largely insufficient"),
+        (0.0, "absent, not addressed, or no evidence"),
+    ]
+    lines = []
+    prev_low = None
+    for frac, label in bands:
+        low = round(frac * max_score, 1)
+        high = max_score if prev_low is None else round(prev_low - 0.1, 1)
+        prev_low = low
+        lines.append(f"- {low:g}-{high:g}: {label}")
+    return "\n".join(lines)
 
 
 def _get_module_for_student(db: Session, student_id: str) -> Optional[Module]:
@@ -673,12 +694,12 @@ def _heuristic_suggestion(
     if not matches or (matches[0].missing_note and not matches[0].quote):
         note = matches[0].missing_note if matches else "No evidence available."
         return {
-            "score": round(max_score * 0.4, 1),
+            "score": round(max_score * 0.15, 1),
             "comment": (
-                f"Insufficient grounded evidence for {criterion['name']}. "
+                f"No grounded evidence found for {criterion['name']}. "
                 f"{note} Manual review recommended."
             ),
-            "confidence": 0.35,
+            "confidence": 0.2,
         }
 
     best = matches[0]
@@ -867,12 +888,23 @@ def _llm_assess_criterion(
     rubric_excerpt: str,
     recording_text: str,
 ) -> dict[str, Any]:
+    max_score = float(criterion["max_score"])
     evidence_block = json.dumps(_build_evidence_refs(matches), indent=2)
+    has_evidence = any((m.quote or "").strip() for m in matches)
+    scoring_guide = _scoring_band_guide(max_score)
     prompt = f"""Assess ONE rubric criterion for a student submission.
 
 Criterion: {criterion['name']}
 Description: {criterion['description']}
-Max score: {criterion['max_score']}
+Max score: {max_score:g}
+
+Score ONLY on how strongly the retrieved evidence demonstrates this criterion.
+Scoring bands (out of {max_score:g}):
+{scoring_guide}
+Rules:
+- If no evidence is present or the evidence does not address this criterion, score in the lowest band — never award a middle score to "play it safe".
+- Reserve the top band for evidence that clearly and fully demonstrates the criterion.
+- Quote the evidence that justifies the score; do not assume facts that are not in the evidence.
 
 Rubric context (excerpt):
 {rubric_excerpt[:1500] or 'No rubric text uploaded.'}
@@ -883,28 +915,39 @@ Interview / recording context:
 Retrieved evidence chunks (READ ONLY — do not rewrite):
 {evidence_block}
 
+Evidence present: {"yes" if has_evidence else "no"}
+
 Return JSON:
 {{
-  "score": <number 0-{criterion['max_score']}>,
+  "score": <number 0-{max_score:g}>,
   "comment": "<2-4 sentences citing specific evidence file names and quotes>",
   "confidence": <0.0-1.0>,
   "missing_gaps": "<optional note if evidence is thin>"
 }}"""
-    raw = ollama_client.generate(
-        prompt,
-        system=_ASSESSMENT_SYSTEM_PROMPT,
-        temperature=0.15,
-        **ollama_client.assessment_llm_options(),
-    )
-    parsed = parse_json_response(raw or "")
-    if parsed and parsed.get("score") is not None:
-        return {
-            "score": float(parsed["score"]),
-            "comment": str(parsed.get("comment") or ""),
-            "confidence": float(parsed.get("confidence") or 0.7),
-            "missing_gaps": parsed.get("missing_gaps"),
-        }
-    return _heuristic_suggestion(criterion, matches, float(criterion["max_score"]))
+    for attempt in range(2):
+        raw = ollama_client.generate(
+            prompt,
+            system=_ASSESSMENT_SYSTEM_PROMPT,
+            **ollama_client.assessment_llm_options(),
+            **ollama_client.assessment_sampling(),
+        )
+        parsed = parse_json_response(raw or "")
+        if parsed and parsed.get("score") is not None:
+            return {
+                "score": max(0.0, min(max_score, float(parsed["score"]))),
+                "comment": str(parsed.get("comment") or ""),
+                "confidence": float(parsed.get("confidence") or 0.7),
+                "missing_gaps": parsed.get("missing_gaps"),
+            }
+        if raw is None:
+            break
+        logger.warning(
+            "assessment scoring: unparseable JSON for criterion '%s' on attempt %d/2; %s",
+            criterion.get("name"),
+            attempt + 1,
+            "retrying" if attempt == 0 else "falling back to heuristic",
+        )
+    return _heuristic_suggestion(criterion, matches, max_score)
 
 
 def _llm_summary(criteria_results: list[dict], defs: list[dict]) -> str:
@@ -922,8 +965,8 @@ Return JSON: {{"summary": "<paragraph>"}}"""
     raw = ollama_client.generate(
         prompt,
         system=_ASSESSMENT_SYSTEM_PROMPT,
-        temperature=0.2,
         **ollama_client.assessment_llm_options(),
+        **ollama_client.assessment_sampling(),
     )
     parsed = parse_json_response(raw or "")
     if parsed and parsed.get("summary"):

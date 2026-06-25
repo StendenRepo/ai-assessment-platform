@@ -17,10 +17,13 @@ def default_models() -> tuple[str, ...]:
 
 
 def assessment_models() -> tuple[str, ...]:
-    return _dedupe_models(
+    names = [
         settings.ASSESSMENT_OLLAMA_MODEL,
         settings.ASSESSMENT_OLLAMA_MODEL_BACKUP,
-    )
+    ]
+    if settings.ASSESSMENT_OLLAMA_FALLBACK_TO_GENERAL:
+        names.extend([settings.OLLAMA_MODEL, settings.OLLAMA_MODEL_BACKUP])
+    return _dedupe_models(*names)
 
 
 def _dedupe_models(*names: str) -> tuple[str, ...]:
@@ -40,6 +43,13 @@ def assessment_llm_options() -> dict[str, Any]:
     }
 
 
+def assessment_sampling() -> dict[str, Any]:
+    return {
+        "temperature": settings.ASSESSMENT_OLLAMA_TEMPERATURE,
+        "seed": settings.ASSESSMENT_OLLAMA_SEED,
+    }
+
+
 def generate(
     prompt: str,
     *,
@@ -47,6 +57,7 @@ def generate(
     temperature: float = 0.2,
     models: tuple[str, ...] | None = None,
     timeout_seconds: float | None = None,
+    seed: int | None = None,
 ) -> Optional[str]:
     """Single-turn text generation. Returns None if all models fail."""
     chain = models or default_models()
@@ -57,15 +68,18 @@ def generate(
     )
     for model in chain:
         try:
+            options: dict[str, Any] = {
+                "temperature": temperature,
+                "num_predict": settings.OLLAMA_NUM_PREDICT,
+                "num_ctx": settings.OLLAMA_NUM_CTX,
+            }
+            if seed is not None:
+                options["seed"] = seed
             payload: dict[str, Any] = {
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "num_predict": settings.OLLAMA_NUM_PREDICT,
-                    "num_ctx": settings.OLLAMA_NUM_CTX,
-                },
+                "options": options,
             }
             if system:
                 payload["system"] = system
@@ -133,6 +147,7 @@ def chat(
 
 __all__ = [
     "assessment_llm_options",
+    "assessment_sampling",
     "assessment_models",
     "chat",
     "default_models",
