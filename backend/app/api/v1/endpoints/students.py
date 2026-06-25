@@ -159,6 +159,13 @@ def export_student_dossier(
         .all()
     )
 
+    # Reject export when the student has no evidence at all
+    if not evidence_records:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot export dossier: this student has no uploaded evidence files.",
+        )
+
     # Fetch latest assessment (if any)
     latest_assessment: Assessment | None = (
         db.query(Assessment)

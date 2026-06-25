@@ -1,7 +1,7 @@
 """add inactive and completed to module status
 
-Revision ID: s4t5u6v7w8x9
-Revises: r3s4t5u6v7w8
+Revision ID: u6v7w8x9y0z1
+Revises: t5u6v7w8x9y0
 Create Date: 2026-06-23 00:00:00.000000
 
 """
@@ -9,8 +9,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "s4t5u6v7w8x9"
-down_revision: Union[str, None] = "r3s4t5u6v7w8"
+revision: str = "u6v7w8x9y0z1"
+down_revision: Union[str, None] = "t5u6v7w8x9y0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

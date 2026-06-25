@@ -81,6 +81,38 @@ export const updateModuleStudent = (moduleId, studentId, payload) =>
 export const moveStudentToGroup = (moduleId, studentId, projectId) =>
   updateModuleStudent(moduleId, studentId, { project_id: projectId });
 
+/**
+ * Move multiple students to a target group in one request.
+ * @param {string} moduleId
+ * @param {string[]} studentIds  - array of student_number strings
+ * @param {string} targetProjectId
+ */
+export async function listCoTeachers(moduleId) {
+  return request(API_PATHS.moduleCoTeachers(moduleId));
+}
+
+export async function addCoTeacher(moduleId, email) {
+  return request(API_PATHS.moduleCoTeachers(moduleId), {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function removeCoTeacher(moduleId, teacherId) {
+  return request(API_PATHS.moduleCoTeacher(moduleId, teacherId), {
+    method: 'DELETE',
+  });
+}
+
+export const bulkMoveStudents = (moduleId, studentIds, targetProjectId) =>
+  request(API_PATHS.moduleStudentsBulkMove(moduleId), {
+    method: 'POST',
+    body: JSON.stringify({
+      student_ids: studentIds,
+      target_project_id: targetProjectId,
+    }),
+  });
+
 export const setStudentGithubRepo = (moduleId, studentId, githubRepoUrl) =>
   updateModuleStudent(moduleId, studentId, {
     github_repo_url: githubRepoUrl || null,

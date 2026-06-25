@@ -20,6 +20,10 @@ from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.module import (
+    AddCoTeacherRequest,
+    BulkMoveResult,
+    BulkMoveStudentsRequest,
+    CoTeacherOut,
     ModuleCreate,
     ModuleGroupCreate,
     ModuleGroupUpdate,
@@ -143,6 +147,7 @@ def _student_to_out(
     assessment_status: str = "not-started",
     grade: Optional[str] = None,
     project_id: Optional[str] = None,
+    has_evidence: bool = False,
 ) -> StudentOut:
     return StudentOut(
         id=s.student_number,
@@ -155,6 +160,7 @@ def _student_to_out(
         assessment_status=assessment_status,
         grade=grade,
         project_id=project_id,
+        has_evidence=has_evidence,
     )
 
 
@@ -208,9 +214,18 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
 
 
 def _visible_modules_query(db: Session, teacher: Teacher):
+    from app.models.module import module_teachers
     if teacher.is_admin:
         return db.query(Module)
-    return db.query(Module).filter(Module.teacher_id == teacher.id)
+    # Owner OR co-teacher
+    return db.query(Module).filter(
+        (Module.teacher_id == teacher.id) |
+        Module.id.in_(
+            db.query(module_teachers.c.module_id).filter(
+                module_teachers.c.teacher_id == teacher.id
+            )
+        )
+    )
 
 
 def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
@@ -1646,12 +1661,22 @@ def list_module_students(
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
+
+    # Build a set of student IDs that have at least one evidence file
+    students_with_evidence: set[str] = set()
+    if students:
+        for sid, in db.query(Evidence.student_id).filter(
+            Evidence.student_id.in_([s.student_number for s in students])
+        ).distinct().all():
+            students_with_evidence.add(sid)
+
     return [
         _student_to_out(
             s,
             _assessment_status(latest_assessment.get(s.student_number)),
             _assessment_grade(latest_assessment.get(s.student_number)),
             project_id=str(student_project_map[s.student_number]) if s.student_number in student_project_map else None,
+            has_evidence=s.student_number in students_with_evidence,
         )
         for s in students
     ]
@@ -1897,6 +1922,116 @@ def move_student_to_group(
         if row:
             current_project_id = str(row.project_id)
     return _student_to_out(student, project_id=current_project_id)
+
+
+@router.post(
+    "/{module_id}/students/bulk-move",
+    response_model=BulkMoveResult,
+    summary="Move multiple students to another group in one action",
+)
+def bulk_move_students(
+    module_id: str,
+    payload: BulkMoveStudentsRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Move a list of students to a target project group within the same module.
+
+    - Permission: teacher must own the module (or be admin).
+    - All student_ids must belong to this module; unknown IDs are skipped.
+    - The target_project_id must belong to this module.
+    - Duplicate IDs in the request are deduplicated automatically.
+    - GitHub repo/branch of the target group is applied to moved students.
+    """
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    project_ids = _module_project_ids(db, module.id)
+
+    # Validate target group belongs to this module
+    target = (
+        db.query(Project)
+        .filter(Project.id == payload.target_project_id, Project.module_id == module.id)
+        .first()
+    )
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target group not found in this module",
+        )
+
+    # Deduplicate requested student IDs
+    requested_ids = list(dict.fromkeys(payload.student_ids))
+
+    # Fetch students that actually belong to this module
+    students_in_module = (
+        db.query(Student)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(
+            Student.student_number.in_(requested_ids),
+            student_projects.c.project_id.in_(project_ids),
+        )
+        .all()
+    ) if project_ids else []
+
+    found_ids = {s.student_number for s in students_in_module}
+    skipped_ids = [sid for sid in requested_ids if sid not in found_ids]
+
+    if not students_in_module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="None of the provided student IDs belong to this module",
+        )
+
+    moved_count = 0
+    for student in students_in_module:
+        # Remove student from all current groups in this module
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.student_id == student.student_number,
+                student_projects.c.project_id.in_(project_ids),
+            )
+        )
+        # Add to target group
+        db.execute(
+            student_projects.insert().values(
+                student_id=student.student_number,
+                project_id=target.id,
+            )
+        )
+        # Sync GitHub repo/branch from target group
+        if target.github_repo_url is not None:
+            student.github_repo_url = target.github_repo_url
+        if target.github_branch is not None:
+            student.github_branch = target.github_branch
+
+        moved_count += 1
+
+    audit_service.log_action(
+        db,
+        action="students.bulk_moved",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "target_group_id": str(target.id),
+            "target_group_name": target.group_name or target.name,
+            "moved_count": moved_count,
+            "skipped_count": len(skipped_ids),
+            "skipped_ids": skipped_ids,
+            "student_ids": [s.student_number for s in students_in_module],
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+
+    return BulkMoveResult(
+        moved_count=moved_count,
+        skipped_count=len(skipped_ids),
+        skipped_ids=skipped_ids,
+    )
 
 
 @router.post("/{module_id}/students/import", response_model=StudentImportResult)
@@ -2456,3 +2591,138 @@ def export_module_archive(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Co-teachers
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{module_id}/co-teachers",
+    response_model=List[CoTeacherOut],
+    summary="List co-teachers of a module",
+)
+def list_co_teachers(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return [
+        CoTeacherOut(id=str(t.id), name=t.name, email=t.email)
+        for t in module.co_teachers
+    ]
+
+
+@router.post(
+    "/{module_id}/co-teachers",
+    response_model=CoTeacherOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a co-teacher to a module by email",
+)
+def add_co_teacher(
+    module_id: str,
+    payload: AddCoTeacherRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may add co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can add co-teachers",
+        )
+
+    invitee = db.query(Teacher).filter(Teacher.email == payload.email).first()
+    if not invitee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No teacher account found with that email address",
+        )
+
+    if invitee.id == module.teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The module owner is already a teacher of this module",
+        )
+
+    if any(t.id == invitee.id for t in module.co_teachers):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This teacher is already a co-teacher of this module",
+        )
+
+    module.co_teachers.append(invitee)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_added",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(invitee.id),
+            "co_teacher_name": invitee.name,
+            "co_teacher_email": invitee.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return CoTeacherOut(id=str(invitee.id), name=invitee.name, email=invitee.email)
+
+
+@router.delete(
+    "/{module_id}/co-teachers/{teacher_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a co-teacher from a module",
+)
+def remove_co_teacher(
+    module_id: str,
+    teacher_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may remove co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can remove co-teachers",
+        )
+
+    target = next((t for t in module.co_teachers if str(t.id) == teacher_id), None)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This teacher is not a co-teacher of this module",
+        )
+
+    module.co_teachers.remove(target)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_removed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(target.id),
+            "co_teacher_name": target.name,
+            "co_teacher_email": target.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
