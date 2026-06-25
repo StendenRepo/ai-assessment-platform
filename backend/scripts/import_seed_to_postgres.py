@@ -16,6 +16,7 @@ import sqlite3
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect as sa_inspect, text
+from sqlalchemy.dialects import postgresql
 
 from app.core.security import hash_password
 from app.database import Base
@@ -68,6 +69,15 @@ TABLES_IN_INSERT_ORDER = [
 BOOLEAN_COLUMNS = {
     "teachers": {"is_admin", "is_seed"},
     "students": {"consent_given"},
+}
+
+# Columns that contain encrypted data and should be skipped during import
+# These are encrypted strings that won't parse as JSON and can be regenerated
+# If adding new encrypted columns, add them here to prevent import failures
+ENCRYPTED_COLUMNS_TO_SKIP = {
+    "assessments": {"draft_form_json", "final_form_json", "questions_cache_json"},
+    "chat_messages": {"metadata_json"},
+    "audit_events": {"details_json"},
 }
 
 
@@ -129,7 +139,9 @@ def insert_rows(engine, table: str, rows: list[dict]) -> None:
         return
 
     pg_columns = {col["name"] for col in sa_inspect(engine).get_columns(table)}
-    columns = [col for col in rows[0].keys() if col in pg_columns]
+    # Skip encrypted columns that can't be imported as raw strings
+    skip_columns = ENCRYPTED_COLUMNS_TO_SKIP.get(table, set())
+    columns = [col for col in rows[0].keys() if col in pg_columns and col not in skip_columns]
     if not columns:
         return
 
@@ -179,8 +191,65 @@ def ensure_seed_admin(engine) -> None:
 
 
 def ensure_postgres_schema(engine) -> None:
-    # Development helper: create any missing tables before importing seed data.
+    # Development helper: create PostgreSQL enum types, then create any missing tables.
+    with engine.begin() as connection:
+        # Create custom enum types for PostgreSQL if they don't exist
+        enums = [
+            ("theme", ["light", "dark"]),
+            ("dateformat", ["DD-MM-YYYY", "MM-DD-YYYY", "YYYY-MM-DD"]),
+            ("language", ["en", "nl", "de"]),
+        ]
+        
+        for enum_name, enum_values in enums:
+            # Create enum type with checkfirst=True to avoid errors if it already exists
+            enum_def = postgresql.ENUM(*enum_values, name=enum_name)
+            enum_def.create(connection, checkfirst=True)
+    
+    # Now create tables
     Base.metadata.create_all(bind=engine)
+    
+    # Verify and add any missing columns that might not have been created
+    # (this can happen with existing tables that are missing new columns)
+    _ensure_missing_columns(engine)
+
+
+def _ensure_missing_columns(engine) -> None:
+    """Add missing columns to existing tables based on SQLAlchemy models.
+    
+    This is needed when columns are added to models after tables have been created
+    in the database. It's especially important for encrypted columns that need to
+    exist before data is imported. 
+    
+    If you add new encrypted columns to the models, add them to the required_columns
+    dict below and to ENCRYPTED_COLUMNS_TO_SKIP above.
+    """
+    inspector = sa_inspect(engine)
+    
+    # Define which columns should exist in each table
+    # Format: table_name -> {column_name: column_type}
+    # Use "TEXT" for encrypted columns (EncryptedJSON, EncryptedText, EncryptedString)
+    required_columns = {
+        "assessments": {
+            "questions_cache_json": "TEXT",
+        },
+        "audit_events": {
+            "details_json": "TEXT",
+        },
+        "chat_messages": {
+            "metadata_json": "TEXT",
+        },
+    }
+    
+    with engine.begin() as connection:
+        for table_name, columns_needed in required_columns.items():
+            existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+            
+            for col_name, col_type in columns_needed.items():
+                if col_name not in existing_columns:
+                    print(f"Adding missing column {table_name}.{col_name}")
+                    connection.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+                    )
 
 
 def main() -> None:
