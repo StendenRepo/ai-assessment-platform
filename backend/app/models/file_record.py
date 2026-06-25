@@ -1,7 +1,8 @@
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text
+from sqlalchemy import Column, String, Integer, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
+from app.core.encrypted_types import EncryptedText
 from app.database import Base
 
 
@@ -29,4 +30,4 @@ class FileRecord(Base):
     # This is what the AI retrieval (TF-IDF) reads — keeping it current on
     # replace is the point of G2-105. Nullable: extraction is best-effort, so
     # an unparseable file leaves this empty rather than blocking the upload.
-    extracted_text = Column(Text, nullable=True)
+    extracted_text = Column(EncryptedText, nullable=True)

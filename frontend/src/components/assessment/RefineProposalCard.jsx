@@ -57,7 +57,9 @@ export default function RefineProposalCard({
               key={c.criterion_key}
               className="rounded-md bg-background/60 border border-border px-3 py-2 text-[11px]"
             >
-              <p className="font-semibold text-foreground">{c.criterion_name}</p>
+              <p className="font-semibold text-foreground">
+                {c.criterion_name}
+              </p>
               <p className="text-muted-foreground mt-0.5">
                 Score:{' '}
                 <span className="font-mono">

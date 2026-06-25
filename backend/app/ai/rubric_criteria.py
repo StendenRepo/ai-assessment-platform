@@ -1,7 +1,10 @@
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import load_workbook
+
+from app.core import crypto
 
 _MAX_CRITERIA = 300
 _FALLBACK_MIN_WORDS = 3
@@ -47,7 +50,12 @@ def _looks_like_header(cells: list[str]) -> bool:
 
 def _from_xlsx(path: Path) -> list[Criterion]:
     try:
-        workbook = load_workbook(filename=path, read_only=True, data_only=True)
+        # Files are encrypted at rest (G2-162); decrypt into memory before
+        # openpyxl reads the workbook.
+        raw = crypto.read_encrypted_file(path)
+        workbook = load_workbook(
+            filename=io.BytesIO(raw), read_only=True, data_only=True
+        )
     except Exception:
         return []
     try:

@@ -2,7 +2,9 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { BookOpen, Layers } from 'lucide-react';
-import OverlapMatchReview, { buildMatchEntries } from '@/components/overlaps/OverlapMatchReview';
+import OverlapMatchReview, {
+  buildMatchEntries,
+} from '@/components/overlaps/OverlapMatchReview';
 import FlaggedDocumentViewer from '@/components/overlaps/FlaggedDocumentViewer';
 
 const TABS = [
@@ -40,7 +42,9 @@ export default function OverlapDetailViewer({
   };
 
   return (
-    <div className={`flex flex-col min-h-0 ${fillHeight ? 'flex-1 h-full' : 'space-y-4'}`}>
+    <div
+      className={`flex flex-col min-h-0 ${fillHeight ? 'flex-1 h-full' : 'space-y-4'}`}
+    >
       <div className="inline-flex shrink-0 rounded-lg border border-border bg-secondary/20 p-0.5 mb-3">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -65,35 +69,38 @@ export default function OverlapDetailViewer({
       </div>
 
       <div className={`min-h-0 ${fillHeight ? 'flex-1 flex flex-col' : ''}`}>
-      {tab === 'matches' ? (
-        <OverlapMatchReview
-          flags={flags}
-          leftLabel={leftTitle}
-          rightLabel={rightTitle}
-          singlePane={singlePane}
-          onViewInDocument={openInDocument}
-          compact={fillHeight}
-        />
-      ) : (
-        <div ref={docViewerRef} className={fillHeight ? 'flex-1 flex flex-col min-h-0' : ''}>
-          <FlaggedDocumentViewer
-            key={docViewerKey}
-            viewMode={singlePane ? 'single' : 'side_by_side'}
-            integrityType={integrityType}
+        {tab === 'matches' ? (
+          <OverlapMatchReview
             flags={flags}
-            leftTitle={leftTitle}
-            leftFileName={leftFileName}
-            leftText={leftText}
-            rightTitle={rightTitle}
-            rightFileName={rightFileName}
-            rightText={rightText}
-            initialMatchId={scrollToMatchId}
-            inlineBadges={false}
-            compactChrome
-            fillHeight={fillHeight}
+            leftLabel={leftTitle}
+            rightLabel={rightTitle}
+            singlePane={singlePane}
+            onViewInDocument={openInDocument}
+            compact={fillHeight}
           />
-        </div>
-      )}
+        ) : (
+          <div
+            ref={docViewerRef}
+            className={fillHeight ? 'flex-1 flex flex-col min-h-0' : ''}
+          >
+            <FlaggedDocumentViewer
+              key={docViewerKey}
+              viewMode={singlePane ? 'single' : 'side_by_side'}
+              integrityType={integrityType}
+              flags={flags}
+              leftTitle={leftTitle}
+              leftFileName={leftFileName}
+              leftText={leftText}
+              rightTitle={rightTitle}
+              rightFileName={rightFileName}
+              rightText={rightText}
+              initialMatchId={scrollToMatchId}
+              inlineBadges={false}
+              compactChrome
+              fillHeight={fillHeight}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

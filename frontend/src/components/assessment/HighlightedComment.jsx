@@ -5,9 +5,7 @@ export default function HighlightedComment({ text, className = '' }) {
   if (!text) return null;
   const parts = text.split(/(\[\[[^\]]+\]\])/g);
   return (
-    <p
-      className={`text-xs text-muted-foreground leading-relaxed ${className}`}
-    >
+    <p className={`text-xs text-muted-foreground leading-relaxed ${className}`}>
       {parts.map((part, i) =>
         part.startsWith('[[') && part.endsWith(']]') ? (
           <mark

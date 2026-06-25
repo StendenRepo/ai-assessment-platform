@@ -1,8 +1,9 @@
 import uuid
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.core.encrypted_types import EncryptedJSON
 from app.database import Base
 from app.models.enums import AssessmentStatus, ConsentStatus
 
@@ -15,9 +16,9 @@ class Assessment(Base):
     teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
     module_id = Column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True)
     status = Column(Enum(AssessmentStatus), default=AssessmentStatus.draft)
-    draft_form_json = Column(JSONB, nullable=True)
-    final_form_json = Column(JSONB, nullable=True)
-    questions_cache_json = Column(JSONB, nullable=True)
+    draft_form_json = Column(EncryptedJSON, nullable=True)
+    final_form_json = Column(EncryptedJSON, nullable=True)
+    questions_cache_json = Column(EncryptedJSON, nullable=True)
     # Oral consent captured once per assessment, confirmed by the teacher.
     # Transcript/status/file now live on the recordings table (one assessment,
     # many recordings).

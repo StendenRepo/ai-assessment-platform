@@ -33,7 +33,11 @@ export function getAssessmentChat(assessmentId) {
   return assessmentRequest(API_PATHS.assessmentChat(assessmentId));
 }
 
-export function postAssessmentChat(assessmentId, message, { criterionKey } = {}) {
+export function postAssessmentChat(
+  assessmentId,
+  message,
+  { criterionKey } = {}
+) {
   return assessmentRequest(API_PATHS.assessmentChat(assessmentId), {
     method: 'POST',
     json: {

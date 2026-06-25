@@ -16,7 +16,10 @@ import OverlapSignalMetrics, {
   integrityAccentClass,
 } from '@/components/overlaps/OverlapSignalMetrics';
 import ScanProgressBar from '@/components/overlaps/ScanProgressBar';
-import { OVERLAP_REVIEW_DISCLAIMER, overlapStatusLabel } from '@/lib/overlapLabels';
+import {
+  OVERLAP_REVIEW_DISCLAIMER,
+  overlapStatusLabel,
+} from '@/lib/overlapLabels';
 
 const selectCls =
   'h-9 bg-secondary border border-border rounded-md pl-3 pr-8 text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring';
@@ -72,8 +75,9 @@ export default function ModuleOverlapsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Overlap review</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Classifier and similarity indicators to support manual review — not definitive findings.
-            Scores are estimates; always verify before academic action.
+            Classifier and similarity indicators to support manual review — not
+            definitive findings. Scores are estimates; always verify before
+            academic action.
           </p>
         </div>
         <button

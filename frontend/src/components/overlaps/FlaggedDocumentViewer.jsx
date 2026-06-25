@@ -31,7 +31,9 @@ function DocumentPanel({
       }`}
     >
       <div className="px-3 py-2 border-b border-border bg-secondary/15 shrink-0">
-        <p className="text-xs font-semibold text-foreground truncate">{title}</p>
+        <p className="text-xs font-semibold text-foreground truncate">
+          {title}
+        </p>
         <p className="text-[10px] text-muted-foreground font-mono truncate">
           {fileName}
         </p>
@@ -123,13 +125,16 @@ export default function FlaggedDocumentViewer({
     (direction) => {
       if (!studentMatches.length) return;
       const ids = studentMatches.map((m) => m.matchId);
-      const currentIndex = activeMatchId != null ? ids.indexOf(activeMatchId) : -1;
+      const currentIndex =
+        activeMatchId != null ? ids.indexOf(activeMatchId) : -1;
       let nextIndex;
       if (direction < 0) {
         nextIndex = currentIndex <= 0 ? ids.length - 1 : currentIndex - 1;
       } else {
         nextIndex =
-          currentIndex < 0 || currentIndex >= ids.length - 1 ? 0 : currentIndex + 1;
+          currentIndex < 0 || currentIndex >= ids.length - 1
+            ? 0
+            : currentIndex + 1;
       }
       scrollToMatch(ids[nextIndex]);
     },

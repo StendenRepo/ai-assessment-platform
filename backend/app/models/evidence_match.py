@@ -1,7 +1,8 @@
 import uuid
-from sqlalchemy import Column, String, Float, Text, Integer, ForeignKey
+from sqlalchemy import Column, String, Float, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from app.core.encrypted_types import EncryptedText
 from app.database import Base
 
 
@@ -19,9 +20,9 @@ class EvidenceMatch(Base):
     evidence_id = Column(UUID(as_uuid=True), ForeignKey("evidence.id"), nullable=True)
     chunk_index = Column(Integer)
     confidence_score = Column(Float)
-    supporting_quote = Column(Text)
-    missing_note = Column(Text, nullable=True)
-    rationale = Column(Text, nullable=True)
+    supporting_quote = Column(EncryptedText)
+    missing_note = Column(EncryptedText, nullable=True)
+    rationale = Column(EncryptedText, nullable=True)
 
     # Relationships
     assessment = relationship("Assessment", back_populates="evidence_matches")

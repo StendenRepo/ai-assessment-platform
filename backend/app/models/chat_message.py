@@ -1,8 +1,9 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.core.encrypted_types import EncryptedJSON, EncryptedText
 from app.database import Base
 
 
@@ -12,9 +13,9 @@ class ChatMessage(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     assessment_id = Column(UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=False)
     role = Column(String, nullable=False)  # "teacher" or "assistant"
-    content = Column(Text, nullable=False)
+    content = Column(EncryptedText, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    metadata_json = Column(JSONB, nullable=True)
+    metadata_json = Column(EncryptedJSON, nullable=True)
 
     # Relationships
     assessment = relationship("Assessment", back_populates="chat_messages")
