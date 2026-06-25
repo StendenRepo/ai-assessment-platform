@@ -1,14 +1,6 @@
 'use client';
 
-// Order matters: links first, then bold/code/italic.
-// Groups: 2=link text, 3=link url, 4=bold, 5=code, 6=italic.
-const INLINE_PATTERN =
-  /(\[([^\]]+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*)/g;
-
-// Only allow safe schemes so AI-supplied text can't inject javascript: URLs.
-function safeHref(url) {
-  return /^(https?:|mailto:)/i.test(url) ? url : null;
-}
+const INLINE_PATTERN = /(\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*)/g;
 
 function renderInline(text) {
   const parts = [];
@@ -21,42 +13,25 @@ function renderInline(text) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    if (match[2] && match[3]) {
-      const href = safeHref(match[3]);
-      parts.push(
-        href ? (
-          <a
-            key={key++}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline underline-offset-2 hover:text-primary/80 break-words"
-          >
-            {match[2]}
-          </a>
-        ) : (
-          match[2]
-        )
-      );
-    } else if (match[4]) {
+    if (match[2]) {
       parts.push(
         <strong key={key++} className="font-semibold text-foreground">
-          {match[4]}
+          {match[2]}
         </strong>
       );
-    } else if (match[5]) {
+    } else if (match[3]) {
       parts.push(
         <code
           key={key++}
           className="rounded bg-background/80 px-1 py-0.5 font-mono text-[10px]"
         >
-          {match[5]}
+          {match[3]}
         </code>
       );
-    } else if (match[6]) {
+    } else if (match[4]) {
       parts.push(
         <em key={key++} className="italic">
-          {match[6]}
+          {match[4]}
         </em>
       );
     }

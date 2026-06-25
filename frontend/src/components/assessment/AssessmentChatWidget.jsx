@@ -73,25 +73,9 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
   const [error, setError] = useState(null);
   const [activeCriterionKey, setActiveCriterionKey] = useState(null);
   const [typing, setTyping] = useState({ id: null, text: '' });
+  const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  const scrollRef = useRef(null);
-  // Whether the user is parked near the bottom; if they scrolled up to read
-  // history we leave them there instead of yanking the view down.
-  const autoScrollRef = useRef(true);
   const seenIdsRef = useRef(new Set());
-
-  function handleScroll() {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    autoScrollRef.current = distanceFromBottom < 80;
-  }
-
-  function scrollToBottom(behavior) {
-    if (!autoScrollRef.current) return;
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
-  }
 
   useEffect(() => {
     if (!assessmentId) return;
@@ -144,20 +128,11 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
     return () => clearInterval(interval);
   }, [messages, loading]);
 
-  // A new message arrived: glide to the bottom.
   useEffect(() => {
-    scrollToBottom('smooth');
-  }, [messages]);
-
-  // Streaming text reveal: keep pace instantly so it doesn't stutter.
-  useEffect(() => {
-    scrollToBottom('auto');
-  }, [typing]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, typing]);
 
   useImperativeHandle(ref, () => ({
-    focus() {
-      inputRef.current?.focus();
-    },
     focusCriterion(criterionKey, criterionName, score) {
       setActiveCriterionKey(criterionKey);
       const prefix = criterionName
@@ -187,22 +162,6 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
       setSending(false);
     }
   }
-
-  function handleKeyDown(e) {
-    // Enter sends; Shift+Enter inserts a newline.
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend(e);
-    }
-  }
-
-  // Grow the composer with its content, capped so it never eats the transcript.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
-  }, [input]);
 
   async function handleRefine() {
     if (refining || chatDisabled) return;
@@ -345,11 +304,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
         )}
       </div>
 
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px]"
-      >
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px]">
         {loading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="animate-spin text-muted-foreground" size={20} />
@@ -381,6 +336,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
           messages.map(renderMessage)
         )}
         {(sending || refining) && <TypingDots />}
+        <div ref={bottomRef} />
       </div>
 
       {error && <p className="px-4 pb-2 text-xs text-red-400">{error}</p>}
@@ -407,14 +363,13 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
 
       <form
         onSubmit={handleSend}
-        className="border-t border-border p-3 flex items-end gap-2 shrink-0"
+        className="border-t border-border p-3 flex gap-2 shrink-0"
       >
-        <textarea
+        <input
           ref={inputRef}
-          rows={1}
+          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
           disabled={chatDisabled || sending}
           placeholder={
             disabled
@@ -423,7 +378,7 @@ const AssessmentChatWidget = forwardRef(function AssessmentChatWidget(
                 ? 'Generate AI suggestions first...'
                 : 'Ask about scores, evidence, or rubric...'
           }
-          className="flex-1 resize-none max-h-32 bg-secondary border border-border rounded-md px-3 py-2 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          className="flex-1 bg-secondary border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
         />
         <button
           type="submit"
