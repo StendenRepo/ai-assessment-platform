@@ -132,6 +132,8 @@ class TestEvidenceMatchingRoutes:
         assert best["confidence_score"] >= settings.MATCH_CONFIDENCE_THRESHOLD
         normalized = " ".join(EVIDENCE_TEXT.split())
         assert best["supporting_quote"] in normalized
+        assert best["evidence_id"]
+        assert best["file_type"] == "markdown"
         assert best["rationale"] and best["rationale"].startswith("AI:")
 
         deployment = _criterion(body, "deployment")

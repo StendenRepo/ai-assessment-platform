@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.core.encrypted_types import EncryptedText
+from app.core.encrypted_types import EncryptedJSON, EncryptedText
 from app.database import Base
 
 
@@ -15,6 +15,7 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)  # "teacher" or "assistant"
     content = Column(EncryptedText, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    metadata_json = Column(EncryptedJSON, nullable=True)
 
     # Relationships
     assessment = relationship("Assessment", back_populates="chat_messages")

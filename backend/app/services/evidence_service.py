@@ -13,14 +13,18 @@ from fastapi import HTTPException, UploadFile, status
 from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.config import settings
 from app.core import crypto
 from app.models.enums import EmbeddingStatus, FileType, NotificationType, SourceType
 from app.models.evidence import Evidence
+from app.models.evidence_match import EvidenceMatch
+from app.models.overlap_signal import OverlapSignal
 from app.models.project import Project
 from app.models.student import Student
 from app.services import notification_service
+from app.services.text_extraction import extract_document_text_strict
 
 
 logger = logging.getLogger(__name__)
@@ -87,6 +91,9 @@ def _evidence_upload_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence"
 
 
+EVIDENCE_UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "evidence"
+
+
 def _evidence_text_dir() -> Path:
     return Path(settings.UPLOAD_DIR) / "evidence_text"
 
@@ -142,8 +149,11 @@ def _project_storage_key(project_id: str) -> str:
 # ---------------------------------------------------------------------------
 SUPPORTED_EXTENSIONS: dict[str, FileType] = {
     ".md": FileType.markdown,
+    ".txt": FileType.other,
     ".docx": FileType.docx,
     ".pdf": FileType.pdf,
+    ".xlsx": FileType.xlsx,
+    ".csv": FileType.other,
     ".png": FileType.image,
     ".jpg": FileType.image,
     ".jpeg": FileType.image,
@@ -196,6 +206,15 @@ def _extract_text(raw: bytes, file_type: FileType, filename: str) -> str:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Could not parse '{filename}' as a valid PDF",
             )
+
+    if file_type in (FileType.xlsx, FileType.other):
+        try:
+            return extract_document_text_strict(raw, filename)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
 
     if file_type == FileType.image:
         return _extract_image_text(raw, filename)
@@ -487,8 +506,21 @@ class EvidenceService:
             pass
 
     @staticmethod
+    def _purge_overlap_associations(evidence_id, db: Session) -> None:
+        db.query(OverlapSignal).filter(
+            or_(
+                OverlapSignal.evidence_a_id == evidence_id,
+                OverlapSignal.evidence_b_id == evidence_id,
+            )
+        ).delete(synchronize_session=False)
+        db.query(EvidenceMatch).filter(
+            EvidenceMatch.evidence_id == evidence_id
+        ).delete(synchronize_session=False)
+
+    @staticmethod
     def _delete_evidence_rows(evidence_items: list[Evidence], db: Session) -> None:
         for evidence in evidence_items:
+            EvidenceService._purge_overlap_associations(evidence.id, db)
             db.delete(evidence)
 
     @staticmethod
@@ -689,6 +721,7 @@ class EvidenceService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evidence not found",
             )
+        EvidenceService._purge_overlap_associations(evidence.id, db)
         EvidenceService._delete_evidence_artifacts(evidence)
         _purge_generation_runs_for_student(db, evidence.student_id)
         db.delete(evidence)

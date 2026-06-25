@@ -18,6 +18,7 @@ class Assessment(Base):
     status = Column(Enum(AssessmentStatus), default=AssessmentStatus.draft)
     draft_form_json = Column(EncryptedJSON, nullable=True)
     final_form_json = Column(EncryptedJSON, nullable=True)
+    questions_cache_json = Column(EncryptedJSON, nullable=True)
     # Oral consent captured once per assessment, confirmed by the teacher.
     # Transcript/status/file now live on the recordings table (one assessment,
     # many recordings).

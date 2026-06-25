@@ -5,6 +5,8 @@
 This script is intended for development only. It reads the SQLite seed file at
 backend/database/database.db, truncates the matching Postgres tables, copies the
 seed rows across, and resets the audit_events identity sequence.
+backend/database/database.db, truncates the matching Postgres tables, and copies
+the seed rows across.
 """
 
 from __future__ import annotations
@@ -13,9 +15,11 @@ import os
 import sqlite3
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect as sa_inspect, text
 
 from app.core.security import hash_password
+from app.database import Base
+from app import models as _models  # noqa: F401
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -64,7 +68,6 @@ TABLES_IN_INSERT_ORDER = [
 BOOLEAN_COLUMNS = {
     "teachers": {"is_admin", "is_seed"},
     "students": {"consent_given"},
-    "assessments": {"consent_recorded"},
 }
 
 
@@ -98,6 +101,26 @@ def load_sqlite_rows(sqlite_conn: sqlite3.Connection, table: str):
 def truncate_postgres(engine) -> None:
     statement = "TRUNCATE TABLE " + ", ".join(TABLES_IN_TRUNCATE_ORDER) + " RESTART IDENTITY CASCADE"
     with engine.begin() as connection:
+        existing_tables = set(
+            connection.execute(
+                text(
+                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                )
+            ).scalars()
+        )
+
+        tables_to_truncate = [
+            table for table in TABLES_IN_TRUNCATE_ORDER if table in existing_tables
+        ]
+
+        if not tables_to_truncate:
+            return
+
+        statement = (
+            "TRUNCATE TABLE "
+            + ", ".join(tables_to_truncate)
+            + " RESTART IDENTITY CASCADE"
+        )
         connection.execute(text(statement))
 
 
@@ -105,14 +128,18 @@ def insert_rows(engine, table: str, rows: list[dict]) -> None:
     if not rows:
         return
 
-    columns = list(rows[0].keys())
+    pg_columns = {col["name"] for col in sa_inspect(engine).get_columns(table)}
+    columns = [col for col in rows[0].keys() if col in pg_columns]
+    if not columns:
+        return
+
     column_sql = ", ".join(columns)
-    value_sql = ", ".join(f":{column}" for column in columns)
+    value_sql = ", ".join(f":{col}" for col in columns)
     statement = text(f"INSERT INTO {table} ({column_sql}) VALUES ({value_sql})")
 
     with engine.begin() as connection:
         for row in rows:
-            connection.execute(statement, row)
+            connection.execute(statement, {col: row[col] for col in columns})
 
 
 def reset_audit_sequence(engine) -> None:
@@ -126,8 +153,6 @@ def reset_audit_sequence(engine) -> None:
                 ")"
             )
         )
-
-
 def ensure_seed_admin(engine) -> None:
     with engine.begin() as connection:
         existing = connection.execute(
@@ -153,6 +178,11 @@ def ensure_seed_admin(engine) -> None:
         )
 
 
+def ensure_postgres_schema(engine) -> None:
+    # Development helper: create any missing tables before importing seed data.
+    Base.metadata.create_all(bind=engine)
+
+
 def main() -> None:
     if not SQLITE_DB.exists():
         raise SystemExit(f"SQLite seed database not found: {SQLITE_DB}")
@@ -161,6 +191,7 @@ def main() -> None:
     postgres_engine = create_engine(POSTGRES_URL)
 
     print(f"Importing seed DB from {SQLITE_DB}")
+    ensure_postgres_schema(postgres_engine)
     truncate_postgres(postgres_engine)
 
     for table in TABLES_IN_INSERT_ORDER:

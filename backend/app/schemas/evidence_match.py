@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class MatchedEvidence(BaseModel):
     evidence_id: UUID
     file_name: str | None
+    file_type: str | None = None
     chunk_index: int | None
     supporting_quote: str | None
     confidence_score: float | None

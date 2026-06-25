@@ -32,6 +32,8 @@ def _student_to_out(s: Student, project_id: str = None) -> StudentOut:
         id=s.student_number,
         name=s.name,
         student_number=s.student_number,
+        github_repo_url=s.github_repo_url,
+        github_branch=s.github_branch,
         status=s.status.value if s.status else "active",
         consent_given=bool(s.consent_given),
         project_id=project_id,
@@ -43,6 +45,8 @@ def _project_to_out(p: Project, student_count: int) -> ProjectOut:
         id=str(p.id),
         name=p.name,
         group_name=p.group_name,
+        github_repo_url=p.github_repo_url,
+        github_branch=p.github_branch,
         module_id=str(p.module_id),
         status=p.status.value if p.status else "active",
         created_at=p.created_at,
@@ -66,6 +70,18 @@ def _get_owned_project_or_404(db: Session, project_id: str, teacher: Teacher) ->
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return project
+
+
+def _assert_project_module_owner_or_403(project: Project, teacher: Teacher, db: Session) -> None:
+    """Block admins from mutating evidence in a project they don't own."""
+    if not teacher.is_admin:
+        return
+    module = db.query(Module).filter(Module.id == project.module_id).first()
+    if module and str(module.teacher_id) != str(teacher.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot modify modules owned by other teachers",
+        )
 
 
 def _student_count_for_project(db: Session, project_id) -> int:
@@ -114,6 +130,7 @@ def upload_project_evidence(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
+    _assert_project_module_owner_or_403(project, current_teacher, db)
     evidence = EvidenceService.upload_file_for_project(str(project.id), file, db)
     audit_service.log_action(
         db,
@@ -191,6 +208,16 @@ def add_project_student(
 ):
     project = _get_owned_project_or_404(db, project_id, current_teacher)
 
+    if (
+        payload.github_repo_url
+        and project.github_repo_url
+        and payload.github_repo_url != project.github_repo_url
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This group already has a GitHub repository. Use the group repository instead.",
+        )
+
     # Check if this student is already linked to this project
     existing = db.query(Student).filter(Student.student_number == payload.student_number).first()
     if existing:
@@ -204,14 +231,38 @@ def add_project_student(
         )
         if already_in_project:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
+        if payload.github_repo_url:
+            existing.github_repo_url = payload.github_repo_url
+        elif project.github_repo_url:
+            existing.github_repo_url = project.github_repo_url
+        if payload.github_branch:
+            existing.github_branch = payload.github_branch
+        elif project.github_branch:
+            existing.github_branch = project.github_branch
         existing.projects.append(project)
         db.commit()
         db.refresh(existing)
+        audit_service.log_action(
+            db,
+            action="student.created",
+            teacher_id=current_teacher.id,
+            teacher_name=current_teacher.name,
+            details={
+                "project_id": str(project.id),
+                "project_name": project.name,
+                "student_id": existing.student_number,
+                "student_name": existing.name,
+                "github_repo_url": existing.github_repo_url,
+                "github_branch": existing.github_branch,
+            },
+        )
         return _student_to_out(existing, project_id=str(project.id))
 
     student = Student(
         name=payload.name,
         student_number=payload.student_number,
+        github_repo_url=payload.github_repo_url or project.github_repo_url,
+        github_branch=payload.github_branch or project.github_branch,
     )
     student.projects.append(project)
     db.add(student)
@@ -221,6 +272,20 @@ def add_project_student(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_DUPLICATE_DETAIL)
     db.refresh(student)
+    audit_service.log_action(
+        db,
+        action="student.created",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "student_id": student.student_number,
+            "student_name": student.name,
+            "github_repo_url": student.github_repo_url,
+            "github_branch": student.github_branch,
+        },
+    )
     return _student_to_out(student, project_id=str(project.id))
 
 
@@ -282,6 +347,8 @@ async def import_project_students(
         if student is None:
             student = Student(name=name, student_number=number)
             db.add(student)
+        if project.github_repo_url:
+            student.github_repo_url = project.github_repo_url
         student.projects.append(project)
         to_add.append(student)
 
@@ -296,6 +363,20 @@ async def import_project_students(
 
     for student in to_add:
         db.refresh(student)
+
+    audit_service.log_action(
+        db,
+        action="students.imported",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "project_id": str(project.id),
+            "project_name": project.name,
+            "imported_count": len(to_add),
+            "error_count": len(errors),
+            "total_rows": len(rows),
+        },
+    )
 
     return StudentImportResult(
         imported_count=len(to_add),

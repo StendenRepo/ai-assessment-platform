@@ -90,6 +90,15 @@ export async function removePin(password) {
   return res.json();
 }
 
+export async function apiLogout() {
+  try {
+    await fetch(`${API_URL}/api/v1${API_PATHS.authLogout}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+  } catch {}
+}
+
 export async function apiGetLoginUsers(isAdmin = false) {
   const url = isAdmin
     ? `${API_URL}/api/v1${API_PATHS.authUsers}?is_admin=true`
