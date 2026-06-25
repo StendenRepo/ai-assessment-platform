@@ -4,6 +4,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, field_validator
 
+from app.models.enums import ModuleStatus
+
 
 def _normalize_github_repo_url(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -147,6 +149,56 @@ class StudentGroupUpdate(BaseModel):
     @classmethod
     def _normalize_student_repo_url(cls, value: Optional[str]) -> Optional[str]:
         return _normalize_github_repo_url(value)
+
+
+class ModuleStatusUpdate(BaseModel):
+    status: ModuleStatus
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value):
+        # Accept case-insensitive strings ("Active" -> "active") before the
+        # enum coercion runs; invalid values still raise a 422.
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+
+class CoTeacherOut(BaseModel):
+    id: str
+    name: str
+    email: str
+
+    model_config = {"from_attributes": True}
+
+
+class AddCoTeacherRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _trim(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class BulkMoveStudentsRequest(BaseModel):
+    student_ids: list[str]
+    target_project_id: str
+
+    @field_validator("student_ids")
+    @classmethod
+    def _non_empty(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("student_ids must not be empty")
+        if len(value) > 100:
+            raise ValueError("Cannot move more than 100 students at once")
+        return value
+
+
+class BulkMoveResult(BaseModel):
+    moved_count: int
+    skipped_count: int
+    skipped_ids: list[str]
 
 
 class ModuleOut(BaseModel):

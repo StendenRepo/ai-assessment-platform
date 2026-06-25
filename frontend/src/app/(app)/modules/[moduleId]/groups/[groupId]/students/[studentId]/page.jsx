@@ -651,7 +651,6 @@ export default function StudentAssessmentPage() {
   const [draftSnapshot, setDraftSnapshot] = useState(null);
   const [formKey, setFormKey] = useState(0);
   const [auditRefresh, setAuditRefresh] = useState(0);
-  const [externalDraft, setExternalDraft] = useState(null);
   const [draftRefreshToken, setDraftRefreshToken] = useState(0);
   const [highlightedCriteria, setHighlightedCriteria] = useState([]);
   const chatRef = useRef(null);
@@ -671,7 +670,6 @@ export default function StudentAssessmentPage() {
 
   function handleChatDraftUpdated(draft) {
     setDraftSnapshot(draft);
-    setExternalDraft(draft);
     setDraftRefreshToken((k) => k + 1);
     setAuditRefresh((k) => k + 1);
   }
@@ -680,8 +678,8 @@ export default function StudentAssessmentPage() {
     const keys = (changes || []).map((c) => c.criterion_key).filter(Boolean);
     if (keys.length) {
       setHighlightedCriteria(keys);
-      setDraftRefreshToken((k) => k + 1);
     }
+    setDraftRefreshToken((k) => k + 1);
     setAuditRefresh((k) => k + 1);
   }
 
@@ -975,13 +973,11 @@ export default function StudentAssessmentPage() {
                   key={formKey}
                   assessmentId={assessmentId}
                   moduleId={moduleId}
-                  externalDraft={externalDraft}
                   refreshToken={draftRefreshToken}
                   highlightedCriteria={highlightedCriteria}
                   onDiscussCriterion={handleDiscussCriterion}
                   onDraftChange={handleDraftChange}
                   onFinalized={() => {
-                    setFormKey((k) => k + 1);
                     setAuditRefresh((k) => k + 1);
                   }}
                 />

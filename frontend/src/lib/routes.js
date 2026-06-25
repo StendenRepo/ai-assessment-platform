@@ -14,6 +14,7 @@ export const APP_PATHS = {
 
 export const API_PATHS = {
   authLogin: '/auth/login',
+  authLogout: '/auth/logout',
   authMe: '/auth/me',
   authPin: '/auth/pin',
   authUsers: '/auth/users',
@@ -23,6 +24,7 @@ export const API_PATHS = {
   evidenceFile: (evidenceId) => `/evidence/${evidenceId}/file`,
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
+  moduleStatus: (moduleId) => `/modules/${moduleId}/status`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
   moduleRubrics: (moduleId) => `/modules/${moduleId}/rubrics`,
   moduleRubricEntry: (moduleId, rubricId) =>
@@ -66,6 +68,11 @@ export const API_PATHS = {
       : '';
     return `/modules/${moduleId}/students/import${query}`;
   },
+  moduleStudentsBulkMove: (moduleId) =>
+    `/modules/${moduleId}/students/bulk-move`,
+  moduleCoTeachers: (moduleId) => `/modules/${moduleId}/co-teachers`,
+  moduleCoTeacher: (moduleId, teacherId) =>
+    `/modules/${moduleId}/co-teachers/${teacherId}`,
   assessmentForStudent: (studentId) => `/assessments/for-student/${studentId}`,
   assessmentRecordingState: (assessmentId) =>
     `/assessments/${assessmentId}/recording`,
@@ -99,4 +106,7 @@ export const API_PATHS = {
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,
+  notificationPreferences: () => `/notification-preferences`,
+  notificationPreference: (notificationType) =>
+    `/notification-preferences/${notificationType}`,
 };

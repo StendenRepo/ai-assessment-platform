@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,7 @@ from app.config import settings
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.services import evidence_match_service
+from app.services.assessment_service import get_or_create_for_student
 
 _ORDER = {"gap": 0, "unclear": 1, "covered": 2}
 
@@ -69,8 +72,25 @@ def generate_questions(
         )
 
     results.sort(key=lambda r: _ORDER[r["basis"]])
-    return {
+
+    payload = {
         "student_id": student_id,
         "module_id": report["module_id"],
         "questions": results,
     }
+
+    assessment = get_or_create_for_student(
+        db,
+        student_id=student_id,
+        teacher=teacher,
+        module_id=module_id or report["module_id"],
+    )
+    if assessment is not None:
+        assessment.questions_cache_json = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "module_id": str(report["module_id"]),
+            "questions": results,
+        }
+        db.commit()
+
+    return payload

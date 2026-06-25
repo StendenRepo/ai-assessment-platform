@@ -162,3 +162,30 @@ class FinalFormOut(BaseModel):
 class GenerateDraftOut(BaseModel):
     draft: DraftFormOut
     message: str
+
+
+class AiItemOut(BaseModel):
+    type: str
+    timestamp: Optional[datetime] = None
+    source: str = "ai"
+    summary: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProgressStageOut(BaseModel):
+    key: str
+    label: str
+    status: str
+    timestamp: Optional[datetime] = None
+    source: Optional[str] = None
+    summary: str = ""
+    content: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProgressTrailOut(BaseModel):
+    assessment_id: Optional[str] = None
+    student_name: str
+    student_number: str
+    module_name: str = ""
+    exported_at: datetime
+    stages: list[ProgressStageOut] = Field(default_factory=list)

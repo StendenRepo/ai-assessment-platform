@@ -25,4 +25,7 @@ from app.models.file_record import FileRecord as FileRecord
 from app.models.evidence_match import EvidenceMatch as EvidenceMatch
 from app.models.generation_run import GenerationRun as GenerationRun
 from app.models.notification import Notification as Notification
+from app.models.notification_preference import (
+    NotificationPreference as NotificationPreference,
+)
 from app.models.recording import Recording as Recording

@@ -31,11 +31,15 @@ from app.config import settings
 from app.core.security import decode_access_token
 from app.database import SessionLocal
 from app.models.assessment import Assessment
-from app.models.enums import ConsentStatus
+from app.models.enums import ConsentStatus, NotificationType
 from app.models.file_record import FileRecord
 from app.models.notification import Notification
 from app.models.recording import Recording
 from app.models.teacher import Teacher
+from app.schemas.notification_preference import (
+    NotificationPreferenceOut,
+    NotificationPreferenceUpdate,
+)
 from app.schemas.recording import (
     ConsentStateOut,
     ConsentUpdate,
@@ -47,6 +51,7 @@ from app.schemas.recording import (
 from app.services import (
     assessment_service,
     audit_service,
+    notification_preference_service,
     notification_service,
     recording_service,
     stt_client,
@@ -459,6 +464,54 @@ def mark_notification_read(
         due_date=notification.due_date,
         created_at=notification.created_at,
         read_at=notification.read_at,
+    )
+
+
+# ── notification preferences (G2-220) ─────────────────────────────────────────
+
+@router.get("/notification-preferences", response_model=list[NotificationPreferenceOut])
+def list_notification_preferences(
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    """Effective per-event-type preferences for the current teacher.
+
+    Every NotificationType is returned; types without a stored override default
+    to enabled (preferences are opt-out).
+    """
+    effective = notification_preference_service.get_effective_preferences(
+        db, teacher_id=teacher.id
+    )
+    return [
+        NotificationPreferenceOut(notification_type=ntype, enabled=enabled)
+        for ntype, enabled in effective.items()
+    ]
+
+
+@router.put(
+    "/notification-preferences/{notification_type}",
+    response_model=NotificationPreferenceOut,
+)
+def update_notification_preference(
+    notification_type: NotificationType,
+    body: NotificationPreferenceUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    """Toggle one notification type on/off for the current teacher.
+
+    The preference write and its audit entry share one transaction (NFR-02).
+    """
+    pref = notification_preference_service.set_preference(
+        db,
+        teacher=teacher,
+        notification_type=notification_type,
+        enabled=body.enabled,
+        ip_address=request.client.host if request.client else None,
+    )
+    return NotificationPreferenceOut(
+        notification_type=pref.notification_type, enabled=pref.enabled
     )
 
 

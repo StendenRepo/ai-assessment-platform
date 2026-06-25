@@ -7,7 +7,13 @@ import {
   useCallback,
   useEffect,
 } from 'react';
-import { getStoredUser, getToken, clearSession, saveSession } from '@/lib/auth';
+import {
+  getStoredUser,
+  getToken,
+  clearSession,
+  saveSession,
+  apiLogout,
+} from '@/lib/auth';
 import { API_PATHS } from '@/lib/routes';
 
 const AuthContext = createContext(null);
@@ -69,6 +75,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
+    apiLogout();
     clearSession();
     setUser(null);
   }, []);
