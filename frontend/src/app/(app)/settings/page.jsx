@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { useTheme } from '@/context/ThemeContext';
+import { useTeacherPreference } from '@/context/TeacherPreferenceContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuth } from '@/context/AuthContext';
 import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
@@ -200,6 +201,7 @@ function LoginPinSection() {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('general');
   const { theme, setTheme } = useTheme();
+  const { preferences: teacherPrefs, updatePreference } = useTeacherPreference();
 
   const {
     aiProcessingEnabled,
@@ -286,7 +288,13 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Language
                     </label>
-                    <select className={`${inputClass} cursor-pointer`}>
+                    <select
+                      value={teacherPrefs.language}
+                      onChange={(e) =>
+                        updatePreference({ language: e.target.value })
+                      }
+                      className={`${inputClass} cursor-pointer`}
+                    >
                       <option value="en">English</option>
                       <option value="nl">Nederlands</option>
                       <option value="de">Deutsch</option>
@@ -296,10 +304,16 @@ export default function SettingsPage() {
                     <label className="text-xs font-medium text-muted-foreground">
                       Date Format
                     </label>
-                    <select className={`${inputClass} cursor-pointer`}>
-                      <option>DD-MM-YYYY</option>
-                      <option>MM-DD-YYYY</option>
-                      <option>YYYY-MM-DD</option>
+                    <select
+                      value={teacherPrefs.date_format}
+                      onChange={(e) =>
+                        updatePreference({ date_format: e.target.value })
+                      }
+                      className={`${inputClass} cursor-pointer`}
+                    >
+                      <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                      <option value="MM-DD-YYYY">MM-DD-YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
                     </select>
                   </div>
                 </div>
@@ -314,13 +328,13 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex rounded-md border border-border overflow-hidden">
                     <button
-                      onClick={() => setTheme('light')}
+                      onClick={() => updatePreference({ theme: 'light' })}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-all ${theme === 'light' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
                     >
                       <Sun size={13} /> Light
                     </button>
                     <button
-                      onClick={() => setTheme('dark')}
+                      onClick={() => updatePreference({ theme: 'dark' })}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-l border-border transition-all ${theme === 'dark' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
                     >
                       <Moon size={13} /> Dark
