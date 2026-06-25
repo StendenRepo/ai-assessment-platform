@@ -5,7 +5,7 @@ import mimetypes
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
