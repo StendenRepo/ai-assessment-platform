@@ -200,6 +200,33 @@ export const uploadRubric = (moduleId, file) => {
 export const deleteRubric = (moduleId) =>
   request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });
 
+export const listModuleRubrics = (moduleId) =>
+  request(API_PATHS.moduleRubrics(moduleId));
+
+export const addModuleRubric = (moduleId, file, name, weight) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const params = new URLSearchParams();
+  if (name) params.set('name', name);
+  if (weight != null && weight !== '') params.set('weight', String(weight));
+  const query = params.toString();
+  const path = query
+    ? `${API_PATHS.moduleRubrics(moduleId)}?${query}`
+    : API_PATHS.moduleRubrics(moduleId);
+  return request(path, { method: 'POST', body: formData });
+};
+
+export const updateModuleRubric = (moduleId, rubricId, payload) =>
+  request(API_PATHS.moduleRubricEntry(moduleId, rubricId), {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteModuleRubric = (moduleId, rubricId) =>
+  request(API_PATHS.moduleRubricEntry(moduleId, rubricId), {
+    method: 'DELETE',
+  });
+
 export const uploadModuleBook = (moduleId, file) => {
   const formData = new FormData();
   formData.append('file', file);

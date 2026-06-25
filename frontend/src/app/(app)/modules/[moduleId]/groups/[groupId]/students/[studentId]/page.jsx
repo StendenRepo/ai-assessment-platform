@@ -22,6 +22,7 @@ import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import SuggestedQuestionsPanel from '@/components/evidence/SuggestedQuestionsPanel';
+import RubricScoresPanel from '@/components/evidence/RubricScoresPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
@@ -955,6 +956,13 @@ export default function StudentAssessmentPage() {
                     studentId={studentId}
                     moduleId={moduleId}
                   />
+
+                  {!viewOnly && (
+                    <RubricScoresPanel
+                      studentId={studentId}
+                      moduleId={moduleId}
+                    />
+                  )}
 
                   {!viewOnly && <EvidenceUpload studentId={studentId} />}
                 </div>

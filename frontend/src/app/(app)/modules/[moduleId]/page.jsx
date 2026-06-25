@@ -15,6 +15,7 @@ import {
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
 import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import ModuleFileCard from '@/components/modules/ModuleFileCard';
+import ModuleRubricsPanel from '@/components/modules/ModuleRubricsPanel';
 import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useDeleteConfirm } from '@/lib/hooks/useDeleteConfirm';
 import { useDocumentPreview } from '@/lib/hooks/useDocumentPreview';
@@ -634,6 +635,8 @@ export default function ModulePage() {
             docPreview={docPreview}
             readOnly={viewOnly}
           />
+
+          <ModuleRubricsPanel moduleId={moduleId} />
 
           <ModuleFileCard
             title="Module Book"

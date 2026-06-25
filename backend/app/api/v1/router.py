@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     projects,
     recordings,
     reports,
+    rubric_scores,
     students,
 )
 
@@ -29,6 +30,9 @@ api_router.include_router(
 )
 api_router.include_router(
     assessment_questions.router, prefix="/students", tags=["Assessment Questions"]
+)
+api_router.include_router(
+    rubric_scores.router, prefix="/students", tags=["Rubric Scores"]
 )
 api_router.include_router(recordings.router, tags=["Recording"])
 api_router.include_router(assessments.router, tags=["Assessment"])

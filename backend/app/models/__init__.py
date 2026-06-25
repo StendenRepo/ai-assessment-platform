@@ -12,6 +12,8 @@ from app.models.enums import (
 from app.models.department import Department as Department
 from app.models.teacher import Teacher as Teacher
 from app.models.module import Module as Module
+from app.models.module_rubric import ModuleRubric as ModuleRubric
+from app.models.rubric_score import RubricScore as RubricScore
 from app.models.project import Project as Project
 from app.models.student import Student as Student
 from app.models.evidence import Evidence as Evidence

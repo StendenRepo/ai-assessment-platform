@@ -26,6 +26,9 @@ export const API_PATHS = {
   module: (moduleId) => `/modules/${moduleId}`,
   moduleStatus: (moduleId) => `/modules/${moduleId}/status`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleRubrics: (moduleId) => `/modules/${moduleId}/rubrics`,
+  moduleRubricEntry: (moduleId, rubricId) =>
+    `/modules/${moduleId}/rubrics/${rubricId}`,
   moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
   moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
@@ -45,6 +48,10 @@ export const API_PATHS = {
     `/students/${studentId}/evidence-matches/runs/${runId}`,
   studentAssessmentQuestions: (studentId) =>
     `/students/${studentId}/assessment-questions`,
+  studentRubricScores: (studentId) => `/students/${studentId}/rubric-scores`,
+  studentRubricScore: (studentId, rubricId) =>
+    `/students/${studentId}/rubric-scores/${rubricId}`,
+  studentFinalGrade: (studentId) => `/students/${studentId}/final-grade`,
   moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
   moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
   reportsOverview: '/reports',

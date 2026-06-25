@@ -29,6 +29,8 @@ from app.schemas.module import (
     ModuleGroupCreate,
     ModuleGroupUpdate,
     ModuleOut,
+    ModuleRubricOut,
+    ModuleRubricUpdate,
     ModuleStatusUpdate,
     RubricFileOut,
     StudentGroupUpdate,
@@ -41,7 +43,7 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
-from app.services import audit_service
+from app.services import audit_service, rubric_scoring_service
 from app.services.module_service import (
     MODULE_BOOK_UPLOAD_DIR,
     RUBRIC_UPLOAD_DIR,
@@ -130,7 +132,14 @@ def _collect_grade_rows(
     rows = []
     for student in students:
         assessment = latest_assessment.get(student.student_number)
-        grade = _assessment_grade(assessment) or "—"
+        combined = (
+            rubric_scoring_service.compute_final_grade(db, assessment=assessment)
+            if assessment
+            else None
+        )
+        grade = (
+            (combined["grade"] if combined else _assessment_grade(assessment)) or "—"
+        )
         ast_status = _assessment_status(assessment)
         group_pid = student_project_map.get(student.student_number)
         group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
@@ -1064,6 +1073,89 @@ def delete_rubric(
         ip_address=request.client.host if request.client else None,
     )
 
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# Multiple rubrics per module (G2-211)
+# ---------------------------------------------------------------------------
+
+def _rubric_entry_out(rubric) -> ModuleRubricOut:
+    return ModuleRubricOut(
+        id=str(rubric.id),
+        name=rubric.name,
+        weight=rubric.weight,
+        position=rubric.position,
+        file_id=str(rubric.file_id),
+        file_name=rubric.file.file_name if rubric.file else None,
+    )
+
+
+@router.get("/{module_id}/rubrics", response_model=List[ModuleRubricOut])
+def list_rubrics(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubrics = ModuleService.list_rubrics(
+        module_id, current_teacher.id, db, is_admin=current_teacher.is_admin
+    )
+    return [_rubric_entry_out(r) for r in rubrics]
+
+
+@router.post("/{module_id}/rubrics", response_model=ModuleRubricOut, status_code=status.HTTP_201_CREATED)
+def add_rubric(
+    module_id: str,
+    file: UploadFile = File(...),
+    name: Optional[str] = None,
+    weight: Optional[float] = None,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubric = ModuleService.add_rubric(
+        module_id,
+        file,
+        current_teacher.id,
+        db,
+        name=name,
+        weight=weight,
+        is_admin=current_teacher.is_admin,
+    )
+    return _rubric_entry_out(rubric)
+
+
+@router.patch("/{module_id}/rubrics/{rubric_id}", response_model=ModuleRubricOut)
+def update_rubric(
+    module_id: str,
+    rubric_id: str,
+    payload: ModuleRubricUpdate,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubric = ModuleService.update_rubric(
+        module_id,
+        rubric_id,
+        current_teacher.id,
+        db,
+        name=payload.name,
+        weight=payload.weight,
+        is_admin=current_teacher.is_admin,
+    )
+    return _rubric_entry_out(rubric)
+
+
+@router.delete(
+    "/{module_id}/rubrics/{rubric_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_rubric_entry(
+    module_id: str,
+    rubric_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    ModuleService.delete_rubric_entry(
+        module_id, rubric_id, current_teacher.id, db, is_admin=current_teacher.is_admin
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
