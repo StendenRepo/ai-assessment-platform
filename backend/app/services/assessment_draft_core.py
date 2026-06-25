@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Any, Optional
@@ -23,6 +24,8 @@ from app.services.evidence_matcher import match_criterion_to_evidence, persist_m
 from app.lib.llm_json import parse_json_response
 from app.services import ollama_client
 from app.services.overlap.service import OverlapService, parse_signal_detail
+
+logger = logging.getLogger(__name__)
 
 DRAFT_VERSION = 1
 
@@ -874,7 +877,7 @@ Return JSON:
   "confidence": <0.0-1.0>,
   "missing_gaps": "<optional note if evidence is thin>"
 }}"""
-    for _ in range(2):
+    for attempt in range(2):
         raw = ollama_client.generate(
             prompt,
             system=_ASSESSMENT_SYSTEM_PROMPT,
@@ -891,6 +894,12 @@ Return JSON:
             }
         if raw is None:
             break
+        logger.warning(
+            "assessment scoring: unparseable JSON for criterion '%s' on attempt %d/2; %s",
+            criterion.get("name"),
+            attempt + 1,
+            "retrying" if attempt == 0 else "falling back to heuristic",
+        )
     return _heuristic_suggestion(criterion, matches, max_score)
 
 
