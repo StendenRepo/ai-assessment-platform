@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, EmailStr
+
+from app.models.enums import AuditSource
 
 
 class DepartmentOut(BaseModel):
@@ -49,3 +51,15 @@ class TeacherUpdate(BaseModel):
     password: Optional[str] = None
     department_id: Optional[str] = None
     is_admin: bool
+
+
+class AuditEventOut(BaseModel):
+    id: int
+    timestamp: datetime
+    action: str
+    source: Optional[AuditSource] = None
+    teacher_id: Optional[str] = None
+    teacher_name: Optional[str] = None
+    assessment_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    details_json: Optional[dict[str, Any]] = None

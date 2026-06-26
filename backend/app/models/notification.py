@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, DateTime, Text, Enum, ForeignKey
+from sqlalchemy import Column, DateTime, Text, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -20,8 +20,12 @@ class Notification(Base):
     recording_id = Column(
         UUID(as_uuid=True), ForeignKey("recordings.id"), nullable=True
     )
+    generation_run_id = Column(
+        UUID(as_uuid=True), ForeignKey("generation_runs.id"), nullable=True
+    )
     type = Column(Enum(NotificationType), nullable=False)
     message = Column(Text, nullable=False)
+    target_path = Column(String, nullable=True)
     due_date = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     read_at = Column(DateTime, nullable=True)
@@ -29,3 +33,4 @@ class Notification(Base):
     teacher = relationship("Teacher")
     assessment = relationship("Assessment")
     recording = relationship("Recording")
+    generation_run = relationship("GenerationRun")

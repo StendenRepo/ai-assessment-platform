@@ -37,7 +37,17 @@ def project(db, teacher):
     from app.models.project import Project
     from app.models.student import Student
 
-    db.query(Student).filter(Student.project_id == project.id).delete()
+    from app.models.student import student_projects
+    student_ids = [
+        row.student_id
+        for row in db.execute(
+            student_projects.select().where(student_projects.c.project_id == project.id)
+        ).all()
+    ]
+    db.execute(student_projects.delete().where(student_projects.c.project_id == project.id))
+    for sid in student_ids:
+        if not db.execute(student_projects.select().where(student_projects.c.student_id == sid)).first():
+            db.query(Student).filter(Student.student_number == sid).delete()
     db.query(Project).filter(Project.id == project.id).delete()
     db.query(Module).filter(Module.id == module.id).delete()
     db.commit()
@@ -70,7 +80,7 @@ def _upload(client, project, headers, data, filename="students.xlsx"):
 class TestImportXlsx:
     def test_valid_rows_all_imported(self, client, project):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa Anderson", "S1001"), ("Tom Johnson", "S1002")])
+        data = _xlsx_bytes([("Lisa Anderson", "1001"), ("Tom Johnson", "1002")])
         res = _upload(client, project, headers, data)
         assert res.status_code == 200
         body = res.json()
@@ -79,11 +89,11 @@ class TestImportXlsx:
 
         listed = client.get(f"{PROJECTS_URL}/{project.id}/students", headers=headers)
         numbers = [s["student_number"] for s in listed.json()]
-        assert "S1001" in numbers and "S1002" in numbers
+        assert "1001" in numbers and "1002" in numbers
 
     def test_sixty_rows_import_all_sixty(self, client, project):
         headers = _auth_headers(client)
-        rows = [(f"Student {i}", f"S{i:04d}") for i in range(1, 61)]
+        rows = [(f"Student {i}", f"{i:07d}") for i in range(1, 61)]
         res = _upload(client, project, headers, _xlsx_bytes(rows))
         assert res.status_code == 200
         assert res.json()["imported_count"] == 60
@@ -93,7 +103,7 @@ class TestImportXlsx:
 
     def test_missing_name_reported_others_imported(self, client, project):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa", "S1"), ("", "S2"), ("Tom", "S3")])
+        data = _xlsx_bytes([("Lisa", "1"), ("", "2"), ("Tom", "3")])
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 2
         assert body["error_count"] == 1
@@ -101,14 +111,14 @@ class TestImportXlsx:
 
     def test_missing_number_reported(self, client, project):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa", "S1"), ("NoNumber", "")])
+        data = _xlsx_bytes([("Lisa", "1"), ("NoNumber", "")])
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 1
         assert any("Missing student number" in e["message"] for e in body["errors"])
 
     def test_duplicate_in_file_reported(self, client, project):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa", "S1"), ("Other", "S1")])
+        data = _xlsx_bytes([("Lisa", "1"), ("Other", "1")])
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 1
         assert any("Duplicate" in e["message"] for e in body["errors"])
@@ -117,17 +127,17 @@ class TestImportXlsx:
         headers = _auth_headers(client)
         client.post(
             f"{PROJECTS_URL}/{project.id}/students",
-            json={"name": "Existing", "student_number": "S1"},
+            json={"name": "Existing", "student_number": "1"},
             headers=headers,
         )
-        data = _xlsx_bytes([("New", "S2"), ("Clash", "S1")])
+        data = _xlsx_bytes([("New", "2"), ("Clash", "1")])
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 1
         assert any("already exists" in e["message"] for e in body["errors"])
 
     def test_blank_rows_skipped(self, client, project):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa", "S1"), ("", ""), ("Tom", "S2")])
+        data = _xlsx_bytes([("Lisa", "1"), ("", ""), ("Tom", "2")])
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 2
         assert body["error_count"] == 0
@@ -136,7 +146,7 @@ class TestImportXlsx:
     def test_tolerant_headers(self, client, project):
         headers = _auth_headers(client)
         data = _xlsx_bytes(
-            [("Lisa", "S1")], headers=("studentname", "student_nr")
+            [("Lisa", "1")], headers=("studentname", "student_nr")
         )
         body = _upload(client, project, headers, data).json()
         assert body["imported_count"] == 1
@@ -163,14 +173,14 @@ class TestImportXlsx:
 class TestImportCsv:
     def test_valid_csv_imported(self, client, project):
         headers = _auth_headers(client)
-        csv_data = b"Name,Student Number\nLisa Anderson,S1001\nTom Johnson,S1002\n"
+        csv_data = b"Name,Student Number\nLisa Anderson,1001\nTom Johnson,1002\n"
         res = _upload(client, project, headers, csv_data, filename="students.csv")
         assert res.status_code == 200
         assert res.json()["imported_count"] == 2
 
     def test_semicolon_csv_imported(self, client, project):
         headers = _auth_headers(client)
-        csv_data = b"Name;Student Number\nLisa;S1\nTom;S2\n"
+        csv_data = b"Name;Student Number\nLisa;1\nTom;2\n"
         res = _upload(client, project, headers, csv_data, filename="students.csv")
         assert res.json()["imported_count"] == 2
 
@@ -178,7 +188,7 @@ class TestImportCsv:
 class TestImportAuthAndProject:
     def test_unknown_project_returns_404(self, client, teacher):
         headers = _auth_headers(client)
-        data = _xlsx_bytes([("Lisa", "S1")])
+        data = _xlsx_bytes([("Lisa", "1")])
         res = client.post(
             f"{PROJECTS_URL}/{uuid.uuid4()}/students/import",
             files={"file": ("students.xlsx", io.BytesIO(data), "application/octet-stream")},
@@ -187,7 +197,7 @@ class TestImportAuthAndProject:
         assert res.status_code == 404
 
     def test_import_without_token_returns_401(self, client, project):
-        data = _xlsx_bytes([("Lisa", "S1")])
+        data = _xlsx_bytes([("Lisa", "1")])
         res = client.post(
             f"{PROJECTS_URL}/{project.id}/students/import",
             files={"file": ("students.xlsx", io.BytesIO(data), "application/octet-stream")},

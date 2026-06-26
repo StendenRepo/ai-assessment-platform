@@ -305,16 +305,16 @@ class TestDeleteModule:
         db.commit()
 
         student = Student(
-            id=uuid.uuid4(),
-            project_id=project.id,
             name="Test Student",
-            student_number="S999",
+            student_number="999",
         )
         db.add(student)
+        db.flush()
+        student.projects.append(project)
         db.commit()
 
         # Write a fake evidence file to disk
-        student_dir = fake_evidence_dir / str(student.id)
+        student_dir = fake_evidence_dir / str(student.student_number)
         student_dir.mkdir(parents=True)
         fake_file = student_dir / "abc123_report.md"
         fake_file.write_text("# Evidence content")
@@ -322,7 +322,7 @@ class TestDeleteModule:
         relative_path = str(fake_file.relative_to(fake_evidence_dir))
         ev = Evidence(
             id=uuid.uuid4(),
-            student_id=student.id,
+            student_id=student.student_number,
             file_name="report.md",
             file_type=FileType.markdown,
             file_path=relative_path,
@@ -340,8 +340,8 @@ class TestDeleteModule:
 
         assert not fake_file.exists(), "Evidence file must be removed from disk after module delete"
 
-def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db, teacher):
-    from app.models.file_record import FileRecord
+def test_admin_cannot_upload_rubric_for_other_teachers_module(client, db, teacher):
+    """Admins are blocked (403) from uploading a rubric to a module they don't own."""
     from app.models.module import Module
     from app.models.teacher import Teacher
 
@@ -369,20 +369,8 @@ def test_admin_can_upload_and_delete_rubric_for_other_teachers_module(client, db
             files={"file": ("rubric.pdf", b"%PDF-1.4 test rubric", "application/pdf")},
             headers=headers,
         )
-        assert upload.status_code == 200
-        body = upload.json()
-        assert body["id"] == str(module.id)
-        assert body["rubric_file"] is not None
-        assert body["rubric_file"]["file_name"] == "rubric.pdf"
-
-        remove = client.delete(f"{MODULES_URL}/{module.id}/rubric", headers=headers)
-        assert remove.status_code == 204
-
-        db.refresh(module)
-        assert module.rubric_file_id is None
-        assert db.query(FileRecord).count() == 0
+        assert upload.status_code == 403
     finally:
-        db.query(FileRecord).delete()
         db.query(Module).filter(Module.id == module.id).delete()
         db.query(Teacher).filter(Teacher.id == admin.id).delete()
         db.commit()
@@ -616,3 +604,655 @@ class TestModuleDocumentTextExtraction:
             assert record.extracted_text is None
         finally:
             self._cleanup(db, module)
+
+
+class TestModuleGithubRepos:
+    def test_can_set_and_remove_student_repo(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Student")
+
+        created = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Repo User", "student_number": "3001001"},
+            headers=headers,
+        )
+        assert created.status_code == 201, created.text
+        student_id = created.json()["id"]
+
+        set_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": "github.com/octocat/hello-world"},
+            headers=headers,
+        )
+        assert set_repo.status_code == 200, set_repo.text
+        assert set_repo.json()["github_repo_url"] == "https://github.com/octocat/hello-world"
+
+        clear_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/students/{student_id}",
+            json={"github_repo_url": None},
+            headers=headers,
+        )
+        assert clear_repo.status_code == 200, clear_repo.text
+        assert clear_repo.json()["github_repo_url"] is None
+
+    def test_group_repo_syncs_all_students(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers, name="Repo Group")
+
+        group_res = client.post(
+            f"{MODULES_URL}/{module['id']}/groups",
+            json={"name": "Group Repo"},
+            headers=headers,
+        )
+        assert group_res.status_code == 201, group_res.text
+        group_id = group_res.json()["id"]
+
+        first = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "One", "student_number": "3002001", "project_id": group_id},
+            headers=headers,
+        )
+        assert first.status_code == 201, first.text
+
+        second = client.post(
+            f"{MODULES_URL}/{module['id']}/students",
+            json={"name": "Two", "student_number": "3002002", "project_id": group_id},
+            headers=headers,
+        )
+        assert second.status_code == 201, second.text
+
+        set_group_repo = client.patch(
+            f"{MODULES_URL}/{module['id']}/groups/{group_id}",
+            json={"github_repo_url": "https://github.com/example/team-project"},
+            headers=headers,
+        )
+        assert set_group_repo.status_code == 200, set_group_repo.text
+        assert (
+            set_group_repo.json()["github_repo_url"]
+            == "https://github.com/example/team-project"
+        )
+
+        students = client.get(f"{MODULES_URL}/{module['id']}/students", headers=headers)
+        assert students.status_code == 200, students.text
+        repo_urls = {
+            s["student_number"]: s["github_repo_url"] for s in students.json() if s["project_id"] == group_id
+        }
+        assert repo_urls["3002001"] == "https://github.com/example/team-project"
+        assert repo_urls["3002002"] == "https://github.com/example/team-project"
+# ---------------------------------------------------------------------------
+# FR-03: serve module documents (rubric / module book) for in-app viewing
+# ---------------------------------------------------------------------------
+
+
+class TestServeModuleDocuments:
+    def _module(self, db, teacher, name):
+        from app.models.module import Module
+
+        module = Module(id=uuid.uuid4(), teacher_id=teacher.id, name=name)
+        db.add(module)
+        db.commit()
+        db.refresh(module)
+        return module
+
+    def _cleanup(self, db, module):
+        from app.models.file_record import FileRecord
+        from app.models.module import Module
+
+        db.query(FileRecord).delete()
+        db.query(Module).filter(Module.id == module.id).delete()
+        db.commit()
+
+    def test_view_rubric_pdf_returns_inline_bytes(self, client, db, teacher):
+        module = self._module(db, teacher, "View rubric pdf")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            body = b"%PDF-1.4 viewable rubric"
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.pdf", body, "application/pdf")},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 200, res.text
+            assert res.content == body
+            assert res.headers["content-type"].startswith("application/pdf")
+            assert "inline" in res.headers.get("content-disposition", "")
+        finally:
+            self._cleanup(db, module)
+
+    def test_rubric_content_returns_extracted_text(self, client, db, teacher):
+        module = self._module(db, teacher, "View rubric content")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            xlsx = _xlsx_bytes([["Criterion", "Weight"], ["database design", "40"]])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.xlsx", xlsx, _XLSX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            res = client.get(
+                f"{MODULES_URL}/{module.id}/rubric/content", headers=headers
+            )
+            assert res.status_code == 200, res.text
+            assert "database design" in res.json()["content"]
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_module_book_file_and_content(self, client, db, teacher):
+        module = self._module(db, teacher, "View module book")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            docx = _docx_bytes(["Course intro", "Assessment outline"])
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/module-book",
+                files={"file": ("book.docx", docx, _DOCX_MIME)},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            file_res = client.get(
+                f"{MODULES_URL}/{module.id}/module-book/file", headers=headers
+            )
+            assert file_res.status_code == 200
+            assert file_res.content == docx
+
+            content_res = client.get(
+                f"{MODULES_URL}/{module.id}/module-book/content", headers=headers
+            )
+            assert content_res.status_code == 200
+            assert "Assessment outline" in content_res.json()["content"]
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_rubric_when_none_attached_returns_404(self, client, db, teacher):
+        module = self._module(db, teacher, "No rubric")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 404
+        finally:
+            self._cleanup(db, module)
+
+    def test_view_other_teachers_rubric_returns_404(self, client, db, teacher):
+        """A teacher must not be able to view a rubric on a module they don't own."""
+        from app.models.module import Module
+        from app.models.teacher import Teacher
+
+        owner = Teacher(
+            id=uuid.uuid4(),
+            name="Doc Owner",
+            email=f"doc_owner_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(owner)
+        db.commit()
+        owner_module = Module(id=uuid.uuid4(), teacher_id=owner.id, name="Owner module")
+        db.add(owner_module)
+        db.commit()
+        db.refresh(owner_module)
+
+        # Owner uploads a rubric.
+        owner_headers = _auth(client, owner.email, "password123")
+        up = client.post(
+            f"{MODULES_URL}/{owner_module.id}/rubric",
+            files={"file": ("rubric.pdf", b"%PDF-1.4 private", "application/pdf")},
+            headers=owner_headers,
+        )
+        assert up.status_code == 200, up.text
+
+        try:
+            # A different teacher must get 404 (module not visible to them).
+            other_headers = _auth(client, "teacher@test.com", "password123")
+            res = client.get(
+                f"{MODULES_URL}/{owner_module.id}/rubric/file", headers=other_headers
+            )
+            assert res.status_code == 404
+        finally:
+            from app.models.file_record import FileRecord
+
+            db.query(FileRecord).delete()
+            db.query(Module).filter(Module.id == owner_module.id).delete()
+            db.query(Teacher).filter(Teacher.id == owner.id).delete()
+            db.commit()
+
+    def test_viewing_document_writes_audit_event(self, client, db, teacher):
+        from app.models.audit_event import AuditEvent
+
+        module = self._module(db, teacher, "Audited view")
+        try:
+            headers = _auth(client, "teacher@test.com", "password123")
+            up = client.post(
+                f"{MODULES_URL}/{module.id}/rubric",
+                files={"file": ("rubric.pdf", b"%PDF-1.4 audited", "application/pdf")},
+                headers=headers,
+            )
+            assert up.status_code == 200, up.text
+
+            before = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .count()
+            )
+            res = client.get(f"{MODULES_URL}/{module.id}/rubric/file", headers=headers)
+            assert res.status_code == 200
+
+            events = (
+                db.query(AuditEvent)
+                .filter(AuditEvent.action == "document.viewed")
+                .all()
+            )
+            assert len(events) == before + 1
+            latest = events[-1]
+            assert latest.details_json["kind"] == "rubric"
+            assert latest.details_json["module_id"] == str(module.id)
+        finally:
+            db.query(AuditEvent).filter(
+                AuditEvent.action == "document.viewed"
+            ).delete()
+            self._cleanup(db, module)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /modules/{module_id}/status — module status lifecycle (G2-216)
+# ---------------------------------------------------------------------------
+
+class TestUpdateModuleStatus:
+    def test_owner_can_change_status(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers)
+        assert module["status"] == "active"  # sensible default
+
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "archived"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["status"] == "archived"
+
+    def test_status_changes_are_reversible(self, client, modules_teacher):
+        """Any status can move to any other status, including back to active."""
+        headers = _auth(client)
+        module = _create_module(client, headers)
+        for target in ["inactive", "completed", "archived", "active"]:
+            res = client.patch(
+                f"{MODULES_URL}/{module['id']}/status",
+                json={"status": target},
+                headers=headers,
+            )
+            assert res.status_code == 200, res.text
+            assert res.json()["status"] == target
+
+    def test_status_accepts_case_insensitive_value(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers)
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "Inactive"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["status"] == "inactive"
+
+    def test_status_change_writes_audit_event(self, client, db, modules_teacher):
+        """NFR-02: every status change writes an audit_log entry (same txn)."""
+        from app.models.audit_event import AuditEvent
+        from app.models.module import Module
+
+        headers = _auth(client)
+        module = _create_module(client, headers)
+
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "completed"},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+
+        events = (
+            db.query(AuditEvent)
+            .filter(AuditEvent.action == "module.status_changed")
+            .all()
+        )
+        assert len(events) == 1
+        ev = events[0]
+        assert ev.details_json["module_id"] == module["id"]
+        assert ev.details_json["old_status"] == "active"
+        assert ev.details_json["new_status"] == "completed"
+        assert ev.teacher_id == modules_teacher.id
+
+        # The module update committed in the same transaction as the audit row.
+        persisted = db.query(Module).filter(Module.id == module["id"]).first()
+        assert persisted.status.value == "completed"
+
+    def test_noop_status_change_writes_no_audit(self, client, db, modules_teacher):
+        from app.models.audit_event import AuditEvent
+
+        headers = _auth(client)
+        module = _create_module(client, headers)  # active by default
+
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "active"},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        assert res.json()["status"] == "active"
+        assert (
+            db.query(AuditEvent)
+            .filter(AuditEvent.action == "module.status_changed")
+            .count()
+            == 0
+        )
+
+    def test_invalid_status_returns_422(self, client, modules_teacher):
+        headers = _auth(client)
+        module = _create_module(client, headers)
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "bogus"},
+            headers=headers,
+        )
+        assert res.status_code == 422
+
+    def test_non_owner_teacher_gets_404(self, client, db, modules_teacher):
+        from app.models.module import Module
+        from app.models.teacher import Teacher
+
+        other = Teacher(
+            id=uuid.uuid4(),
+            name="Other Teacher",
+            email=f"other_status_{uuid.uuid4().hex[:8]}@test.com",
+            password_hash=hash_password("password123"),
+        )
+        db.add(other)
+        db.commit()
+        other_module = Module(id=uuid.uuid4(), teacher_id=other.id, name="Not yours")
+        db.add(other_module)
+        db.commit()
+
+        headers = _auth(client)  # logged in as modules_teacher
+        res = client.patch(
+            f"{MODULES_URL}/{other_module.id}/status",
+            json={"status": "archived"},
+            headers=headers,
+        )
+        assert res.status_code == 404
+
+    def test_admin_non_owner_gets_403(self, client, db, modules_teacher):
+        """Admins can view every module but are not owners — status is owner-only."""
+        from app.models.audit_event import AuditEvent
+        from app.models.teacher import Teacher
+
+        admin_email = f"admin_status_{uuid.uuid4().hex[:8]}@test.com"
+        admin = Teacher(
+            id=uuid.uuid4(),
+            name="Admin Teacher",
+            email=admin_email,
+            password_hash=hash_password("password123"),
+            is_admin=True,
+        )
+        db.add(admin)
+        db.commit()
+
+        owner_headers = _auth(client)
+        module = _create_module(client, owner_headers)  # owned by modules_teacher
+
+        admin_headers = _auth(client, admin_email, "password123")
+        res = client.patch(
+            f"{MODULES_URL}/{module['id']}/status",
+            json={"status": "archived"},
+            headers=admin_headers,
+        )
+        assert res.status_code == 403
+        assert (
+            db.query(AuditEvent)
+            .filter(AuditEvent.action == "module.status_changed")
+            .count()
+            == 0
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /modules?status=... — status filtering (G2-216)
+# ---------------------------------------------------------------------------
+
+class TestListModulesStatusFilter:
+    def test_filter_by_status(self, client, modules_teacher):
+        headers = _auth(client)
+        m_active = _create_module(client, headers, name="Active one")
+        m_arch = _create_module(client, headers, name="Archived one")
+        client.patch(
+            f"{MODULES_URL}/{m_arch['id']}/status",
+            json={"status": "archived"},
+            headers=headers,
+        )
+
+        archived = client.get(f"{MODULES_URL}?status=archived", headers=headers)
+        assert archived.status_code == 200
+        archived_ids = [m["id"] for m in archived.json()]
+        assert m_arch["id"] in archived_ids
+        assert m_active["id"] not in archived_ids
+
+        active = client.get(f"{MODULES_URL}?status=active", headers=headers)
+        active_ids = [m["id"] for m in active.json()]
+        assert m_active["id"] in active_ids
+        assert m_arch["id"] not in active_ids
+
+    def test_no_filter_returns_all(self, client, modules_teacher):
+        headers = _auth(client)
+        _create_module(client, headers, name="A")
+        _create_module(client, headers, name="B")
+        res = client.get(MODULES_URL, headers=headers)
+        assert res.status_code == 200
+        assert len(res.json()) == 2
+
+    def test_invalid_filter_value_returns_422(self, client, modules_teacher):
+        headers = _auth(client)
+        res = client.get(f"{MODULES_URL}?status=nonsense", headers=headers)
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Admin view-only: access control for modules owned by other teachers
+# ---------------------------------------------------------------------------
+
+_ADMIN_EMAIL = "admin_viewonly@test.com"
+_ADMIN_PASSWORD = "adminpass123"
+_OTHER_TEACHER_EMAIL = "other_teacher_viewonly@test.com"
+_OTHER_TEACHER_PASSWORD = "otherpass123"
+
+
+@pytest.fixture
+def admin_teacher(db):
+    """An admin teacher used by the admin view-only tests."""
+    from app.models.teacher import Teacher
+
+    existing = db.query(Teacher).filter(Teacher.email == _ADMIN_EMAIL).first()
+    if existing:
+        yield existing
+        return
+
+    t = Teacher(
+        id=uuid.uuid4(),
+        name="Admin Teacher",
+        email=_ADMIN_EMAIL,
+        password_hash=hash_password(_ADMIN_PASSWORD),
+        is_admin=True,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    yield t
+
+
+@pytest.fixture
+def other_teacher(db):
+    """A non-admin teacher who owns modules that the admin should only view."""
+    from app.models.teacher import Teacher
+
+    existing = db.query(Teacher).filter(Teacher.email == _OTHER_TEACHER_EMAIL).first()
+    if existing:
+        yield existing
+        return
+
+    t = Teacher(
+        id=uuid.uuid4(),
+        name="Other Teacher",
+        email=_OTHER_TEACHER_EMAIL,
+        password_hash=hash_password(_OTHER_TEACHER_PASSWORD),
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    yield t
+
+
+def _admin_auth(client) -> dict:
+    res = client.post(LOGIN_URL, json={"email": _ADMIN_EMAIL, "password": _ADMIN_PASSWORD})
+    assert res.status_code == 200, res.text
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
+def _create_module_for_teacher(db, teacher_id, name="Other Module"):
+    from app.models.module import Module
+
+    m = Module(id=uuid.uuid4(), teacher_id=teacher_id, name=name)
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return m
+
+
+class TestAdminViewOnly:
+    """Admins can view but not mutate modules owned by other teachers."""
+
+    def test_admin_can_list_all_modules(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Listed Module")
+        try:
+            res = client.get(MODULES_URL, headers=_admin_auth(client))
+            assert res.status_code == 200
+            ids = [item["id"] for item in res.json()]
+            assert str(m.id) in ids
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_view_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Viewable Module")
+        try:
+            res = client.get(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 200
+            body = res.json()
+            assert body["id"] == str(m.id)
+            assert body["teacher_id"] == str(other_teacher.id)
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_rename_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Rename Target")
+        try:
+            res = client.patch(
+                f"{MODULES_URL}/{m.id}",
+                json={"name": "Hijacked"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_delete_other_teachers_module(self, client, admin_teacher, other_teacher, db):
+        m = _create_module_for_teacher(db, other_teacher.id, "Delete Target")
+        try:
+            res = client.delete(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_create_group_in_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        m = _create_module_for_teacher(db, other_teacher.id, "Group Target")
+        try:
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/groups",
+                json={"name": "Injected Group"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_add_student_to_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        m = _create_module_for_teacher(db, other_teacher.id, "Student Target")
+        try:
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/students",
+                json={"name": "Injected Student", "student_number": "9999999"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_rename_own_module(self, client, admin_teacher, db):
+        """Admin retains full permissions on their own modules."""
+        m = _create_module_for_teacher(db, admin_teacher.id, "Admin Own Module")
+        try:
+            res = client.patch(
+                f"{MODULES_URL}/{m.id}",
+                json={"name": "Admin Renamed"},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 200
+            assert res.json()["name"] == "Admin Renamed"
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_can_delete_own_module(self, client, admin_teacher, db):
+        """Admin retains full permissions to delete their own modules."""
+        m = _create_module_for_teacher(db, admin_teacher.id, "Admin Delete Me")
+        res = client.delete(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+        assert res.status_code == 204
+
+    def test_module_out_includes_teacher_id(self, client, admin_teacher, other_teacher, db):
+        """ModuleOut now exposes teacher_id so the frontend can detect view mode."""
+        m = _create_module_for_teacher(db, other_teacher.id, "Teacher ID Module")
+        try:
+            res = client.get(f"{MODULES_URL}/{m.id}", headers=_admin_auth(client))
+            assert res.status_code == 200
+            assert "teacher_id" in res.json()
+            assert res.json()["teacher_id"] == str(other_teacher.id)
+        finally:
+            db.delete(m)
+            db.commit()
+
+    def test_admin_cannot_import_students_to_other_teachers_module(
+        self, client, admin_teacher, other_teacher, db
+    ):
+        import io
+
+        m = _create_module_for_teacher(db, other_teacher.id, "Import Target")
+        try:
+            csv_content = b"Name,Student Number\nJohn Doe,1234567\n"
+            res = client.post(
+                f"{MODULES_URL}/{m.id}/students/import",
+                files={"file": ("students.csv", io.BytesIO(csv_content), "text/csv")},
+                headers=_admin_auth(client),
+            )
+            assert res.status_code == 403
+        finally:
+            db.delete(m)
+            db.commit()

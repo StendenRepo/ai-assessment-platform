@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Building2, Settings, Users } from 'lucide-react';
+import {
+  Building2,
+  ClipboardList,
+  FileText,
+  Settings,
+  Users,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import Header from '@/components/layout/Header';
 import { adminFetch } from '@/lib/api/adminFetch';
 import { APP_PATHS } from '@/lib/routes';
@@ -11,6 +18,8 @@ import { TabBtn } from './_ui';
 import { TeachersTab } from './_TeachersTab';
 import { DepartmentsTab } from './_DepartmentsTab';
 import { SettingsTab } from './_SettingsTab';
+import { AuditTab } from './_AuditTab';
+import { ReportsTab } from './_ReportsTab';
 
 export default function AdminPage() {
   const { user, ready } = useAuth();
@@ -45,47 +54,67 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header navItems={[]} subtitle="Admin Panel" logoHref={APP_PATHS.admin} />
+    <NotificationProvider>
+      <div className="min-h-screen bg-background">
+        <Header
+          navItems={[]}
+          subtitle="Admin Panel"
+          logoHref={APP_PATHS.admin}
+        />
 
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage teachers and departments
-          </p>
-        </div>
+        <main className="max-w-7xl mx-auto px-8 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage teachers, departments, and audit logs
+            </p>
+          </div>
 
-        <div className="flex border-b border-border mb-6">
-          <TabBtn
-            active={tab === 'teachers'}
-            onClick={() => setTab('teachers')}
-            icon={<Users size={14} />}
-            label="Teachers"
-          />
-          <TabBtn
-            active={tab === 'departments'}
-            onClick={() => setTab('departments')}
-            icon={<Building2 size={14} />}
-            label="Departments"
-          />
-          <div className="flex-1" />
-          <TabBtn
-            active={tab === 'settings'}
-            onClick={() => setTab('settings')}
-            icon={<Settings size={14} />}
-            label="Settings"
-          />
-        </div>
+          <div className="flex border-b border-border mb-6">
+            <TabBtn
+              active={tab === 'teachers'}
+              onClick={() => setTab('teachers')}
+              icon={<Users size={14} />}
+              label="Teachers"
+            />
+            <TabBtn
+              active={tab === 'departments'}
+              onClick={() => setTab('departments')}
+              icon={<Building2 size={14} />}
+              label="Departments"
+            />
+            <TabBtn
+              active={tab === 'audit'}
+              onClick={() => setTab('audit')}
+              icon={<ClipboardList size={14} />}
+              label="Audit Logs"
+            />
+            <TabBtn
+              active={tab === 'reports'}
+              onClick={() => setTab('reports')}
+              icon={<FileText size={14} />}
+              label="Reports"
+            />
+            <div className="flex-1" />
+            <TabBtn
+              active={tab === 'settings'}
+              onClick={() => setTab('settings')}
+              icon={<Settings size={14} />}
+              label="Settings"
+            />
+          </div>
 
-        {tab === 'teachers' && (
-          <TeachersTab departments={departments} currentUserId={user.id} />
-        )}
-        {tab === 'departments' && (
-          <DepartmentsTab onDataChange={setDepartments} />
-        )}
-        {tab === 'settings' && <SettingsTab />}
-      </main>
-    </div>
+          {tab === 'teachers' && (
+            <TeachersTab departments={departments} currentUserId={user.id} />
+          )}
+          {tab === 'departments' && (
+            <DepartmentsTab onDataChange={setDepartments} />
+          )}
+          {tab === 'audit' && <AuditTab />}
+          {tab === 'reports' && <ReportsTab />}
+          {tab === 'settings' && <SettingsTab />}
+        </main>
+      </div>
+    </NotificationProvider>
   );
 }

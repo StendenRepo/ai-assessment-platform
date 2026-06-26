@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.file_record import FileRecord
 from app.models.module import Module
+from app.models.module_rubric import ModuleRubric
 from app.services.text_extraction import extract_document_text
 
 RUBRIC_UPLOAD_DIR: Path = Path(settings.UPLOAD_DIR) / "rubrics"
@@ -48,6 +49,43 @@ def _get_module_or_404(module_id: str, teacher_id, db: Session, is_admin: bool =
     return module
 
 
+def _store_uploaded_file(
+    module: Module,
+    file: UploadFile,
+    *,
+    base_dir: Path,
+    allowed: set[str],
+    label: str,
+    default_name: str,
+    db: Session,
+) -> FileRecord:
+    filename = file.filename or default_name
+    ext = _check_extension(filename, allowed, label)
+
+    raw = file.file.read()
+    file_hash = hashlib.sha256(raw).hexdigest()
+    size = len(raw)
+    extracted_text = extract_document_text(raw, ext)
+
+    upload_dir = base_dir / str(module.id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    unique_name = f"{_uuid.uuid4().hex}_{filename}"
+    (upload_dir / unique_name).write_bytes(raw)
+
+    record = FileRecord(
+        file_name=filename,
+        path=unique_name,
+        file_type=Path(filename).suffix.lstrip(".").lower(),
+        size_bytes=size,
+        hash=file_hash,
+        extracted_text=extracted_text,
+    )
+    db.add(record)
+    db.flush()
+    return record
+
+
 def _set_module_file(
     module: Module,
     file: UploadFile,
@@ -61,43 +99,21 @@ def _set_module_file(
 ) -> Module:
     """Store an uploaded file, link it to ``module`` via ``fk_attr`` and remove
     the file it replaces (if any). Shared by rubric and module book uploads."""
-    filename = file.filename or default_name
-    ext = _check_extension(filename, allowed, label)
-
-    raw = file.file.read()
-    file_hash = hashlib.sha256(raw).hexdigest()
-    size = len(raw)
-
-    # Re-parse the document to plain text so the AI always retrieves over the
-    # latest version (G2-105). Best-effort: a file that won't parse yields None
-    # and the upload still succeeds. The old record — and its extracted text —
-    # is deleted below, so a replace never leaves stale text behind.
-    extracted_text = extract_document_text(raw, ext)
-
-    upload_dir = base_dir / str(module.id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    unique_name = f"{_uuid.uuid4().hex}_{filename}"
-    (upload_dir / unique_name).write_bytes(raw)
-
-    # Hold reference to the old record so we can delete it after the FK is updated.
     old_id = getattr(module, fk_attr)
     old_record = (
         db.query(FileRecord).filter(FileRecord.id == old_id).first() if old_id else None
     )
 
-    record = FileRecord(
-        file_name=filename,
-        path=unique_name,
-        file_type=Path(filename).suffix.lstrip(".").lower(),
-        size_bytes=size,
-        hash=file_hash,
-        extracted_text=extracted_text,
+    record = _store_uploaded_file(
+        module,
+        file,
+        base_dir=base_dir,
+        allowed=allowed,
+        label=label,
+        default_name=default_name,
+        db=db,
     )
-    db.add(record)
-    db.flush()
 
-    # Update FK to the new record first, then delete the old one.
     setattr(module, fk_attr, record.id)
     db.flush()
 
@@ -187,6 +203,109 @@ class ModuleService:
             missing_detail="This module has no rubric attached.",
             db=db,
         )
+
+    @staticmethod
+    def list_rubrics(module_id: str, teacher_id, db: Session, is_admin: bool = False):
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
+        return module.rubrics
+
+    @staticmethod
+    def add_rubric(
+        module_id: str,
+        file: UploadFile,
+        teacher_id,
+        db: Session,
+        *,
+        name: str | None = None,
+        weight: float | None = None,
+        is_admin: bool = False,
+    ) -> ModuleRubric:
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
+        record = _store_uploaded_file(
+            module,
+            file,
+            base_dir=RUBRIC_UPLOAD_DIR,
+            allowed=RUBRIC_ALLOWED_EXTENSIONS,
+            label=RUBRIC_ALLOWED_LABEL,
+            default_name="rubric",
+            db=db,
+        )
+        rubric = ModuleRubric(
+            module_id=module.id,
+            file_id=record.id,
+            name=(name or record.file_name),
+            weight=weight,
+            position=len(module.rubrics),
+        )
+        db.add(rubric)
+        db.commit()
+        db.refresh(rubric)
+        return rubric
+
+    @staticmethod
+    def update_rubric(
+        module_id: str,
+        rubric_id: str,
+        teacher_id,
+        db: Session,
+        *,
+        name: str | None = None,
+        weight: float | None = None,
+        is_admin: bool = False,
+    ) -> ModuleRubric:
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
+        rubric = (
+            db.query(ModuleRubric)
+            .filter(ModuleRubric.id == rubric_id, ModuleRubric.module_id == module.id)
+            .first()
+        )
+        if not rubric:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Rubric not found"
+            )
+        if name is not None:
+            rubric.name = name
+        if weight is not None:
+            rubric.weight = weight
+        db.commit()
+        db.refresh(rubric)
+        return rubric
+
+    @staticmethod
+    def delete_rubric_entry(
+        module_id: str, rubric_id: str, teacher_id, db: Session, is_admin: bool = False
+    ) -> None:
+        module = _get_module_or_404(module_id, teacher_id, db, is_admin=is_admin)
+        rubric = (
+            db.query(ModuleRubric)
+            .filter(ModuleRubric.id == rubric_id, ModuleRubric.module_id == module.id)
+            .first()
+        )
+        if not rubric:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Rubric not found"
+            )
+
+        record = (
+            db.query(FileRecord).filter(FileRecord.id == rubric.file_id).first()
+        )
+        shared = module.rubric_file_id == rubric.file_id or (
+            db.query(ModuleRubric)
+            .filter(
+                ModuleRubric.file_id == rubric.file_id,
+                ModuleRubric.id != rubric.id,
+            )
+            .count()
+            > 0
+        )
+
+        db.delete(rubric)
+        if record and not shared:
+            _module_file_path(RUBRIC_UPLOAD_DIR, module.id, record.path).unlink(
+                missing_ok=True
+            )
+            db.delete(record)
+        db.commit()
 
     @staticmethod
     def upload_module_book(

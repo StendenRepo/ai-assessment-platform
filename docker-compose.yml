@@ -6,6 +6,8 @@ services:
             context: ./frontend
             target: production
         container_name: frontend
+        volumes:
+            - frontend_tmp:/tmp
         ports:
             - '3000:3000'
         healthcheck:
@@ -33,9 +35,11 @@ services:
                 condition: service_started
             stt:
                 condition: service_healthy
+            ai-detector:
+                condition: service_healthy
         command: >
             sh -c "
-            alembic upgrade head &&
+            alembic upgrade heads &&
             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
             "
         healthcheck:
@@ -52,15 +56,28 @@ services:
         volumes:
             - ollama_data:/root/.ollama
         command: serve
+        deploy:
+            resources:
+                limits:
+                    cpus: '${OLLAMA_CPU_LIMIT:-4.0}'
+                    memory: ${OLLAMA_MEMORY_LIMIT:-4G}
+                reservations:
+                    cpus: '${OLLAMA_CPU_RESERVATION:-1.0}'
+                    memory: ${OLLAMA_MEMORY_RESERVATION:-1G}
         restart: unless-stopped
     ollama-init:
         image: ollama/ollama:latest
         container_name: ollama-init
         env_file: .env
+        volumes:
+            - ollama_data:/root/.ollama
         environment:
             OLLAMA_HOST: ${OLLAMA_BASE_URL:-http://ollama:11434}
             OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
             OLLAMA_MODEL_BACKUP: ${OLLAMA_MODEL_BACKUP:-qwen2.5:3b}
+            ASSESSMENT_OLLAMA_MODEL: ${ASSESSMENT_OLLAMA_MODEL:-qwen2.5:7b}
+            ASSESSMENT_OLLAMA_MODEL_BACKUP: ${ASSESSMENT_OLLAMA_MODEL_BACKUP:-llama3.1:8b}
+            VISION_MODEL: ${VISION_MODEL:-llava:7b}
         depends_on:
             ollama:
                 condition: service_started
@@ -70,13 +87,34 @@ services:
             set -e;
             echo 'Waiting for Ollama API...';
             until ollama list >/dev/null 2>&1; do sleep 2; done;
-                        echo 'Pulling primary model: ${OLLAMA_MODEL}';
-            ollama pull ${OLLAMA_MODEL};
-                        if [ "${OLLAMA_MODEL_BACKUP}" != "${OLLAMA_MODEL}" ]; then
-                            echo 'Pulling backup model: ${OLLAMA_MODEL_BACKUP}';
-                            ollama pull ${OLLAMA_MODEL_BACKUP};
-                        fi;
-                        echo 'Models ready';
+        
+            pull_model() {
+              label=\"$$1\";
+              model=\"$$2\";
+              [ -z \"$$model\" ] && return 0;
+              echo \"Pulling $$label: $$model\";
+              ollama pull \"$$model\";
+            }
+        
+            pull_model 'primary model' \"${OLLAMA_MODEL}\";
+        
+            if [ \"${OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL}\" ]; then
+              pull_model 'backup model' \"${OLLAMA_MODEL_BACKUP}\";
+            fi;
+        
+            if [ \"${ASSESSMENT_OLLAMA_MODEL}\" != \"${OLLAMA_MODEL}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL}\" != \"${OLLAMA_MODEL_BACKUP}\" ]; then
+              pull_model 'assessment model' \"${ASSESSMENT_OLLAMA_MODEL}\";
+            fi;
+        
+            if [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${OLLAMA_MODEL_BACKUP}\" ] && [ \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\" != \"${ASSESSMENT_OLLAMA_MODEL}\" ]; then
+              pull_model 'assessment backup model' \"${ASSESSMENT_OLLAMA_MODEL_BACKUP}\";
+            fi;
+        
+            if [ -n \"${VISION_MODEL}\" ]; then
+              pull_model 'vision model' \"${VISION_MODEL}\";
+            fi;
+        
+            echo 'Models ready';
             "
         restart: 'no'
     stt:
@@ -84,9 +122,13 @@ services:
             context: ./stt
             target: production
         container_name: stt
+        volumes:
+            - stt_cache:/root/.cache
         environment:
             WHISPER_MODEL: ${WHISPER_MODEL:-base}
             WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-nl}
+            # Live-subtitle (FR-06) model, separate from WHISPER_MODEL above.
+            WHISPER_CHUNK_MODEL: ${WHISPER_CHUNK_MODEL:-base}
         healthcheck:
             test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:9000/health'')" || exit 1']
             interval: 30s
@@ -94,18 +136,35 @@ services:
             retries: 5
             start_period: 60s
         restart: unless-stopped
-    worker:
+    ai-detector:
+        build:
+            context: ./ai-detector
+            target: production
+        container_name: ai-detector
+        volumes:
+            - ai_detector_cache:/root/.cache
+        environment:
+            AI_DETECTOR_MODEL: ${AI_DETECTOR_MODEL:-Hello-SimpleAI/chatgpt-detector-roberta}
+            AI_DETECTOR_DEVICE: ${AI_DETECTOR_DEVICE:-cpu}
+        healthcheck:
+            test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:9001/health'')" || exit 1']
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 180s
+        restart: unless-stopped
+    retention-worker:
         build:
             context: ./backend
             target: production
-        container_name: worker
+        container_name: retention-worker
         env_file: .env
         volumes:
             - platform_data:/app/data
         depends_on:
             postgres:
                 condition: service_healthy
-        command: ['python', '-m', 'app.worker']
+        command: ['python', '-m', 'app.retention_worker']
         restart: unless-stopped
     postgres:
         image: postgres:16-alpine
@@ -127,3 +186,6 @@ volumes:
     postgres_data:
     platform_data:
     ollama_data:
+    frontend_tmp:
+    stt_cache:
+    ai_detector_cache:

@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_teacher, get_db
 from app.models.teacher import Teacher
+from app.services import audit_service
 from app.services.evidence_service import SUPPORTED_EXTENSIONS, EvidenceService
 
 router = APIRouter()
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
 
 
 @router.get(
@@ -38,17 +44,64 @@ def delete_evidence(
 )
 def get_evidence_content(
     evidence_id: str,
+    request: Request,
     db: Session = Depends(get_db),
-    _: Teacher = Depends(get_current_teacher),
+    current_teacher: Teacher = Depends(get_current_teacher),
 ):
     """
     Return the raw text content of an evidence file.
 
     Response shape: `{ "id": "...", "file_name": "...", "content": "..." }`
     """
-    evidence, content = EvidenceService.read_content(evidence_id, db)
+    evidence, content = EvidenceService.read_content(evidence_id, db, current_teacher)
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "kind": "evidence",
+            "evidence_id": str(evidence.id),
+            "file_name": evidence.file_name,
+        },
+        ip_address=_client_ip(request),
+    )
     return {
         "id": str(evidence.id),
         "file_name": evidence.file_name,
         "content": content,
     }
+
+
+@router.get(
+    "/{evidence_id}/file",
+    summary="Download or preview the raw evidence file",
+)
+def get_evidence_file(
+    evidence_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Return the stored raw evidence file for authenticated preview/download."""
+    evidence, full_path, media_type = EvidenceService.get_raw_file(
+        evidence_id, db, current_teacher
+    )
+    audit_service.log_action(
+        db,
+        action="document.viewed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "kind": "evidence",
+            "evidence_id": str(evidence.id),
+            "file_name": evidence.file_name,
+        },
+        ip_address=_client_ip(request),
+    )
+    return FileResponse(
+        path=full_path,
+        media_type=media_type,
+        filename=str(evidence.file_name),
+        content_disposition_type="inline",
+    )

@@ -5,28 +5,76 @@ export const APP_PATHS = {
   modules: '/modules',
   moduleNew: '/modules/new',
   moduleManage: (moduleId) => `/modules/${moduleId}/manage`,
+  moduleOverlaps: (moduleId) => `/modules/${moduleId}/overlaps`,
+  moduleOverlapDetail: (moduleId, signalId) =>
+    `/modules/${moduleId}/overlaps/${signalId}`,
   reports: '/reports',
   settings: '/settings',
 };
 
 export const API_PATHS = {
   authLogin: '/auth/login',
+  authLogout: '/auth/logout',
   authMe: '/auth/me',
+  authPin: '/auth/pin',
+  authUsers: '/auth/users',
+  evidenceSupportedTypes: '/evidence/supported-types',
+  evidence: (evidenceId) => `/evidence/${evidenceId}`,
+  evidenceContent: (evidenceId) => `/evidence/${evidenceId}/content`,
+  evidenceFile: (evidenceId) => `/evidence/${evidenceId}/file`,
   modules: '/modules',
   module: (moduleId) => `/modules/${moduleId}`,
+  moduleStatus: (moduleId) => `/modules/${moduleId}/status`,
   moduleRubric: (moduleId) => `/modules/${moduleId}/rubric`,
+  moduleRubrics: (moduleId) => `/modules/${moduleId}/rubrics`,
+  moduleRubricEntry: (moduleId, rubricId) =>
+    `/modules/${moduleId}/rubrics/${rubricId}`,
+  moduleRubricEntryFile: (moduleId, rubricId) =>
+    `/modules/${moduleId}/rubrics/${rubricId}/file`,
+  moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
+  moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
+  moduleBookFile: (moduleId) => `/modules/${moduleId}/module-book/file`,
+  moduleBookContent: (moduleId) => `/modules/${moduleId}/module-book/content`,
   moduleGroups: (moduleId) => `/modules/${moduleId}/groups`,
   moduleGroup: (moduleId, groupId) => `/modules/${moduleId}/groups/${groupId}`,
+  projectEvidence: (projectId) => `/projects/${projectId}/evidence`,
   moduleStudents: (moduleId) => `/modules/${moduleId}/students`,
   moduleStudent: (moduleId, studentId) =>
     `/modules/${moduleId}/students/${studentId}`,
+  studentEvidence: (studentId) => `/students/${studentId}/evidence`,
+  studentDossierExport: (studentId) => `/students/${studentId}/export/dossier`,
+  studentEvidenceMatches: (studentId) =>
+    `/students/${studentId}/evidence-matches`,
+  studentEvidenceMatchRun: (studentId, runId) =>
+    `/students/${studentId}/evidence-matches/runs/${runId}`,
+  studentAssessmentQuestions: (studentId) =>
+    `/students/${studentId}/assessment-questions`,
+  studentRubricScores: (studentId) => `/students/${studentId}/rubric-scores`,
+  studentRubricScore: (studentId, rubricId) =>
+    `/students/${studentId}/rubric-scores/${rubricId}`,
+  studentFinalGrade: (studentId) => `/students/${studentId}/final-grade`,
+  moduleGradesExport: (moduleId) => `/modules/${moduleId}/export/grades`,
+  moduleArchiveExport: (moduleId) => `/modules/${moduleId}/export/archive`,
+  reportsOverview: '/reports',
+  moduleOverlapAnalyze: (moduleId) => `/modules/${moduleId}/overlap/analyze`,
+  moduleOverlapSignals: (moduleId) => `/modules/${moduleId}/overlap/signals`,
+  moduleOverlapSignal: (moduleId, signalId) =>
+    `/modules/${moduleId}/overlap/signals/${signalId}`,
+  moduleOverlapWarning: (moduleId) => `/modules/${moduleId}/overlap/warning`,
+  moduleStudentTemplate: '/modules/template/students',
+  moduleRubricTemplate: '/modules/template/rubric',
   moduleStudentImports: (moduleId, targetGroupId = '') => {
     const query = targetGroupId
       ? `?project_id=${encodeURIComponent(targetGroupId)}`
       : '';
     return `/modules/${moduleId}/students/import${query}`;
   },
+  moduleStudentsBulkMove: (moduleId) =>
+    `/modules/${moduleId}/students/bulk-move`,
+  moduleCoTeachers: (moduleId) => `/modules/${moduleId}/co-teachers`,
+  moduleCoTeacher: (moduleId, teacherId) =>
+    `/modules/${moduleId}/co-teachers/${teacherId}`,
   assessmentForStudent: (studentId) => `/assessments/for-student/${studentId}`,
   assessmentRecordingState: (assessmentId) =>
     `/assessments/${assessmentId}/recording`,
@@ -35,7 +83,33 @@ export const API_PATHS = {
     `/assessments/${assessmentId}/recordings`,
   assessmentRecording: (assessmentId, recordingId) =>
     `/assessments/${assessmentId}/recordings/${recordingId}`,
+  assessmentDraft: (assessmentId) => `/assessments/${assessmentId}/draft`,
+  assessmentDraftGenerate: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/generate`,
+  assessmentDraftOverrides: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/overrides`,
+  assessmentDraftRevert: (assessmentId) =>
+    `/assessments/${assessmentId}/draft/revert`,
+  assessmentChat: (assessmentId) => `/assessments/${assessmentId}/chat`,
+  assessmentChatRefine: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/refine`,
+  assessmentChatApply: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/apply`,
+  assessmentChatReject: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/reject`,
+  assessmentChatUndo: (assessmentId) =>
+    `/assessments/${assessmentId}/chat/undo`,
+  assessmentFinalize: (assessmentId) => `/assessments/${assessmentId}/finalize`,
+  assessmentFinal: (assessmentId) => `/assessments/${assessmentId}/final`,
+  assessmentAuditTrail: (assessmentId) =>
+    `/assessments/${assessmentId}/audit-trail`,
+  assessmentRecordingAudio: (assessmentId, recordingId) =>
+    `/assessments/${assessmentId}/recordings/${recordingId}/audio`,
   notifications: (unreadOnly = false) =>
     `/notifications?unread_only=${unreadOnly ? 'true' : 'false'}`,
   notificationRead: (notificationId) => `/notifications/${notificationId}/read`,
+  notificationPreferences: () => `/notification-preferences`,
+  notificationPreference: (notificationType) =>
+    `/notification-preferences/${notificationType}`,
+  teacherPreferences: () => `/teacher-preferences`,
 };

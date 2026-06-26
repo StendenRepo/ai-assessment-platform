@@ -12,15 +12,26 @@ import {
   Trash2,
   Check,
   X,
-  AlertTriangle,
 } from 'lucide-react';
-import { listModules, renameModule, deleteModule } from '@/lib/api/modulesApi';
+import {
+  listModules,
+  renameModule,
+  deleteModule,
+  updateModuleStatus,
+} from '@/lib/api/modulesApi';
+import { ModuleDeleteConfirmDialog } from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
+import { useAuth } from '@/context/AuthContext';
+import { isModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 
 const statusConfig = {
   active: {
     label: 'Active',
     classes: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
+  },
+  inactive: {
+    label: 'Inactive',
+    classes: 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20',
   },
   completed: {
     label: 'Completed',
@@ -32,87 +43,9 @@ const statusConfig = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Confirmation modal
-// ---------------------------------------------------------------------------
-
-function DeleteConfirmModal({ module, onConfirm, onCancel, loading }) {
-  // Close on Escape key
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onCancel]);
-
-  return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      {/* Panel */}
-      <div
-        className="relative w-full max-w-md mx-4 rounded-xl bg-card border border-border shadow-2xl p-6 space-y-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start gap-4">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-            <AlertTriangle size={18} className="text-red-400" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              Delete module
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Are you sure you want to delete{' '}
-              <span className="font-medium text-foreground">{module.name}</span>
-              ?
-            </p>
-          </div>
-        </div>
-
-        {/* Warning */}
-        <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-4 py-3 text-xs text-red-400 space-y-1">
-          <p className="font-medium">
-            This action cannot be undone. It will permanently delete:
-          </p>
-          <ul className="list-disc list-inside space-y-0.5 text-red-400/80">
-            <li>The module and all its settings</li>
-            <li>All groups and students in this module</li>
-            <li>All uploaded evidence files</li>
-            <li>The rubric file (if any)</li>
-          </ul>
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-1">
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground bg-secondary hover:bg-secondary/80 border border-border transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 flex items-center gap-2"
-          >
-            {loading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <Trash2 size={14} />
-            )}
-            Delete module
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// Order shown in the per-module status selector. Statuses are fully
+// reversible, so every module can move to any of these.
+const STATUS_OPTIONS = ['active', 'inactive', 'completed', 'archived'];
 
 // ---------------------------------------------------------------------------
 // Main page
@@ -120,6 +53,7 @@ function DeleteConfirmModal({ module, onConfirm, onCancel, loading }) {
 
 export default function ModulesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -135,6 +69,9 @@ export default function ModulesPage() {
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Status-change state
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -191,6 +128,23 @@ export default function ModulesPage() {
     }
   };
 
+  const handleStatusChange = async (moduleId, newStatus) => {
+    setStatusUpdatingId(moduleId);
+    setError('');
+    try {
+      const updated = await updateModuleStatus(moduleId, newStatus);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === moduleId ? { ...p, status: updated.status } : p
+        )
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   const requestDelete = (e, module) => {
     e.stopPropagation();
     setDeleteTarget({ id: module.id, name: module.name });
@@ -216,14 +170,13 @@ export default function ModulesPage() {
   return (
     <div className="space-y-6">
       {/* Delete confirmation modal */}
-      {deleteTarget && (
-        <DeleteConfirmModal
-          module={deleteTarget}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-          loading={deleteLoading}
-        />
-      )}
+      <ModuleDeleteConfirmDialog
+        open={Boolean(deleteTarget)}
+        label={deleteTarget?.name}
+        loading={deleteLoading}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
 
       <div>
         <h1 className="text-2xl font-bold text-foreground">Modules</h1>
@@ -258,6 +211,7 @@ export default function ModulesPage() {
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
             <option value="completed">Completed</option>
             <option value="archived">Archived</option>
           </select>
@@ -298,6 +252,7 @@ export default function ModulesPage() {
               classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
             };
             const isRenaming = renamingId === project.id;
+            const isViewOnly = isModuleViewOnly(user, project.teacher_id);
 
             return (
               <div
@@ -333,10 +288,12 @@ export default function ModulesPage() {
                     >
                       {status.label}
                     </span>
-                    {project.rubric_file ? (
+                    {project.rubric_count > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
                         <FileText size={11} />
-                        Rubric attached
+                        {project.rubric_count === 1
+                          ? 'Rubric attached'
+                          : `${project.rubric_count} rubrics`}
                       </span>
                     ) : (
                       <span className="text-xs text-amber-400">No rubric</span>
@@ -374,48 +331,67 @@ export default function ModulesPage() {
                   </div>
                 </div>
 
-                {/* Action buttons */}
-                <div
-                  className="flex items-center gap-1 shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {isRenaming ? (
-                    <>
-                      <button
-                        onClick={(e) => confirmRename(e, project.id)}
-                        disabled={renameLoading}
-                        title="Save name"
-                        className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                {/* Action buttons — hidden in view-only mode */}
+                {!isViewOnly && (
+                  <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {!isRenaming && (
+                      <select
+                        value={project.status}
+                        onChange={(e) =>
+                          handleStatusChange(project.id, e.target.value)
+                        }
+                        disabled={statusUpdatingId === project.id}
+                        title="Change module status"
+                        className="bg-secondary border border-border rounded-md px-2 py-1 mr-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all cursor-pointer disabled:opacity-50"
                       >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={cancelRename}
-                        title="Cancel"
-                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={(e) => startRename(e, project)}
-                        title="Rename module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={(e) => requestDelete(e, project)}
-                        title="Delete module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {statusConfig[s]?.label ?? s}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {isRenaming ? (
+                      <>
+                        <button
+                          onClick={(e) => confirmRename(e, project.id)}
+                          disabled={renameLoading}
+                          title="Save name"
+                          className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={cancelRename}
+                          title="Cancel"
+                          className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => startRename(e, project)}
+                          title="Rename module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => requestDelete(e, project)}
+                          title="Delete module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {!isRenaming && (
                   <ArrowRight

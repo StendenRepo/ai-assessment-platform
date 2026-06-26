@@ -42,23 +42,34 @@ _engine = create_engine(
 )
 _Session = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
+# Route background tasks (e.g. vision processing) through the same SQLite engine
+# as API requests so tests do not open a separate Postgres connection.
+import app.database as _app_database  # noqa: E402
+
+_app_database.engine = _engine
+_app_database.SessionLocal = _Session
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="session", autouse=True)
-def _tables():
-    Base.metadata.create_all(bind=_engine)
-    yield
-    Base.metadata.drop_all(bind=_engine)
+@pytest.fixture(autouse=True)
+def _noop_vision_background(monkeypatch):
+    """Keep async vision jobs from committing in a second session during API tests."""
+    monkeypatch.setattr(
+        "app.services.evidence_service.run_vision_background",
+        lambda *args, **kwargs: None,
+    )
 
 
 @pytest.fixture
-def db(_tables):
+def db():
+    """Fresh schema per test so commits never leak across examples."""
+    Base.metadata.drop_all(bind=_engine)
+    Base.metadata.create_all(bind=_engine)
     session = _Session()
     try:
         yield session
     finally:
-        session.rollback()
         session.close()
 
 
@@ -84,5 +95,3 @@ def teacher(db):
     db.commit()
     db.refresh(t)
     yield t
-    db.delete(t)
-    db.commit()

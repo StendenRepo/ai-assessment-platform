@@ -1,15 +1,18 @@
 """Recording retention logic (G2-141 deletion flagging, G2-142 reminders).
 
-Pure functions invoked by the worker container on a daily schedule. Logic lives
-here (not in the worker entrypoint) so it can be unit-tested against SQLite.
+Pure functions invoked by the retention-worker container on a daily schedule.
+Logic lives here (not in the worker entrypoint) so it can be unit-tested
+against SQLite.
 """
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.assessment import Assessment
 from app.models.enums import AuditSource, NotificationType
 from app.models.file_record import FileRecord
+from app.models.generation_run import GenerationRun
 from app.models.recording import Recording
 from app.services import audit_service, notification_service, recording_service
 
@@ -97,6 +100,55 @@ def create_deletion_reminders(db: Session, *, now: datetime | None = None) -> in
                 f"in {days_left} day(s) (on {record.delete_after.date().isoformat()})."
             ),
             due_date=record.delete_after,
+            commit=False,
+        )
+        created += 1
+
+    db.commit()
+    return created
+
+
+def create_generation_retention_reminders(
+    db: Session, *, now: datetime | None = None
+) -> int:
+    now = now or datetime.utcnow()
+    threshold = now + timedelta(days=settings.GENERATION_REMINDER_LEAD_DAYS)
+
+    rows = (
+        db.query(GenerationRun, Assessment)
+        .join(Assessment, GenerationRun.assessment_id == Assessment.id)
+        .filter(
+            GenerationRun.expires_at.isnot(None),
+            GenerationRun.expires_at <= threshold,
+        )
+        .all()
+    )
+
+    created = 0
+    for run, assessment in rows:
+        if notification_service.generation_reminder_exists(
+            db, generation_run_id=run.id
+        ):
+            continue
+        days_left = max((run.expires_at - now).days, 0)
+        student = assessment.student
+        subject = student.name if student else "a student"
+        if run.expires_at <= now:
+            run.flagged_for_deletion = True
+
+        notification_service.create_notification(
+            db,
+            teacher_id=assessment.teacher_id,
+            type=NotificationType.deletion_reminder,
+            assessment_id=assessment.id,
+            generation_run_id=run.id,
+            message=(
+                f"AI analysis run for {subject} from "
+                f"{run.created_at.date().isoformat()} will be deleted in "
+                f"{days_left} day(s) (on {run.expires_at.date().isoformat()}). "
+                "Review or delete it."
+            ),
+            due_date=run.expires_at,
             commit=False,
         )
         created += 1

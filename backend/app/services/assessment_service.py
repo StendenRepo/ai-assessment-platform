@@ -8,8 +8,6 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from uuid import UUID
-
 from app.models.assessment import Assessment
 from app.models.enums import ConsentStatus
 from app.models.student import Student
@@ -18,7 +16,7 @@ from app.services import audit_service
 
 
 def get_or_create_for_student(
-    db: Session, *, student_id: UUID, teacher: Teacher
+    db: Session, *, student_id: str, teacher: Teacher, module_id=None
 ) -> Assessment | None:
     """Return the current teacher's assessment for a student, creating one if none.
 
@@ -26,23 +24,29 @@ def get_or_create_for_student(
     the student, so it resolves (or lazily creates) the assessment here. Returns
     None if the student does not exist (caller raises 404).
     """
-    student = db.query(Student).filter(Student.id == student_id).first()
+    student = db.get(Student, student_id)
     if student is None:
         return None
 
-    assessment = (
-        db.query(Assessment)
-        .filter(
-            Assessment.student_id == student_id,
-            Assessment.teacher_id == teacher.id,
-        )
-        .order_by(Assessment.created_at.desc())
-        .first()
+    query = db.query(Assessment).filter(
+        Assessment.student_id == student_id,
+        Assessment.teacher_id == teacher.id,
     )
+    if module_id is not None:
+        query = query.filter(
+            (Assessment.module_id == module_id) | (Assessment.module_id.is_(None))
+        )
+    assessment = query.order_by(Assessment.created_at.desc()).first()
     if assessment is not None:
+        if module_id is not None and assessment.module_id is None:
+            assessment.module_id = module_id
+            db.commit()
+            db.refresh(assessment)
         return assessment
 
-    assessment = Assessment(student_id=student_id, teacher_id=teacher.id)
+    assessment = Assessment(
+        student_id=student_id, teacher_id=teacher.id, module_id=module_id
+    )
     db.add(assessment)
     db.flush()  # populate assessment.id
     audit_service.log_action(

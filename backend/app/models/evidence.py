@@ -11,7 +11,8 @@ class Evidence(Base):
     __tablename__ = "evidence"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False)
+    student_id = Column(String, ForeignKey("students.student_number"), nullable=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
     file_name = Column(String, nullable=False)
     file_type = Column(Enum(FileType))
     file_path = Column(String, nullable=False)
@@ -21,4 +22,5 @@ class Evidence(Base):
 
     # Relationships
     student = relationship("Student", back_populates="evidence")
+    project = relationship("Project", back_populates="evidence")
     evidence_matches = relationship("EvidenceMatch", back_populates="evidence")

@@ -8,7 +8,8 @@ from app.models.enums import EmbeddingStatus, FileType, SourceType
 
 class EvidenceOut(BaseModel):
     id: UUID
-    student_id: UUID
+    student_id: str | None = None
+    project_id: UUID | None = None
     file_name: str
     file_type: FileType | None
     file_path: str

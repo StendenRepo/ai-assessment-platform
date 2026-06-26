@@ -14,9 +14,12 @@ class Project(Base):
     module_id = Column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=False)
     name = Column(String, nullable=False)
     group_name = Column(String)
+    github_repo_url = Column(String, nullable=True)
+    github_branch = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(Enum(ProjectStatus), default=ProjectStatus.active)
 
     # Relationships
     module = relationship("Module", back_populates="projects")
-    students = relationship("Student", back_populates="project")
+    students = relationship("Student", secondary="student_projects", back_populates="projects")
+    evidence = relationship("Evidence", back_populates="project")
