@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
+  ChevronDown,
   Download,
+  FileText,
   FolderPlus,
   Github,
-  ChevronDown,
   ScanSearch,
   Search,
   Users,
