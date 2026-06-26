@@ -5,9 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   BookOpen,
   Download,
-  FileText,
   FolderPlus,
   Github,
+  ChevronDown,
   ScanSearch,
   Search,
   Users,
@@ -24,13 +24,9 @@ import {
   getProject,
   listProjectGroups,
   listProjectStudents,
-  uploadRubric,
-  deleteRubric,
   uploadModuleBook,
   deleteModuleBook,
   exportGradesExcel,
-  getRubricFileBlob,
-  getRubricContent,
   getModuleBookFileBlob,
   getModuleBookContent,
 } from '@/lib/api/modulesApi';
@@ -46,12 +42,6 @@ export default function ModulePage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const rubricInputRef = useRef(null);
-  const [uploadingRubric, setUploadingRubric] = useState(false);
-  const [deletingRubric, setDeletingRubric] = useState(false);
-  const [rubricError, setRubricError] = useState('');
-  const [pendingRubricReplace, setPendingRubricReplace] = useState(null);
-
   const moduleBookInputRef = useRef(null);
   const [uploadingModuleBook, setUploadingModuleBook] = useState(false);
   const [deletingModuleBook, setDeletingModuleBook] = useState(false);
@@ -61,31 +51,9 @@ export default function ModulePage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const docPreview = useDocumentPreview();
-
-  const {
-    pendingItem: rubricDeleteTarget,
-    requestDelete: requestRubricDelete,
-    cancelDelete: cancelRubricDelete,
-    confirmDelete: confirmRubricDelete,
-  } = useDeleteConfirm({
-    onDelete: async () => {
-      setRubricError('');
-      setDeletingRubric(true);
-      try {
-        await deleteRubric(moduleId);
-      } finally {
-        setDeletingRubric(false);
-      }
-    },
-    onDeleted: () => {
-      setProject((prev) => ({ ...prev, rubric_file: null }));
-    },
-    onError: (err) => {
-      setRubricError(err.message);
-    },
-  });
 
   const {
     pendingItem: moduleBookDeleteTarget,
@@ -152,56 +120,6 @@ export default function ModulePage() {
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, [moduleId]);
-
-  // ── Rubric upload ─────────────────────────────────────────────────────
-
-  const performRubricUpload = async (file) => {
-    setRubricError('');
-    setUploadingRubric(true);
-    try {
-      const updated = await uploadRubric(moduleId, file);
-      setProject((prev) => ({ ...prev, rubric_file: updated.rubric_file }));
-    } catch (err) {
-      setRubricError(err.message);
-    } finally {
-      setUploadingRubric(false);
-      if (rubricInputRef.current) rubricInputRef.current.value = '';
-    }
-  };
-
-  const handleRubricFile = async (file) => {
-    if (!file) return;
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (ext !== 'pdf' && ext !== 'xlsx') {
-      setRubricError(
-        `Only PDF and Excel files are allowed. "${file.name}" is not supported.`
-      );
-      if (rubricInputRef.current) rubricInputRef.current.value = '';
-      return;
-    }
-    const existing = project?.rubric_file;
-    if (existing) {
-      setPendingRubricReplace({
-        oldName: existing.file_name || 'rubric',
-        newName: file.name,
-        file,
-      });
-      if (rubricInputRef.current) rubricInputRef.current.value = '';
-      return;
-    }
-    await performRubricUpload(file);
-  };
-
-  const handleRubricDelete = () => {
-    requestRubricDelete({ label: project?.rubric_file?.file_name || 'rubric' });
-  };
-
-  const handleConfirmRubricReplace = async () => {
-    if (!pendingRubricReplace?.file) return;
-    const nextFile = pendingRubricReplace.file;
-    setPendingRubricReplace(null);
-    await performRubricUpload(nextFile);
-  };
 
   // ── Module book upload ────────────────────────────────────────────────
 
@@ -306,16 +224,8 @@ export default function ModulePage() {
     );
   }
 
-  const rubric = project?.rubric_file;
   const moduleBook = project?.module_book_file;
 
-  const rubricDescriptor = rubric && {
-    file_name: rubric.file_name || 'rubric',
-    file_type: rubric.file_type,
-    fetchBlob: () => getRubricFileBlob(moduleId),
-    fetchContent: () => getRubricContent(moduleId),
-    supportsAltText: false,
-  };
   const moduleBookDescriptor = moduleBook && {
     file_name: moduleBook.file_name || 'module book',
     file_type: moduleBook.file_type,
@@ -340,32 +250,72 @@ export default function ModulePage() {
                 : 'Manage the students in this module to set up the assessment'}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="relative shrink-0">
             <button
               type="button"
-              onClick={() => router.push(APP_PATHS.moduleOverlaps(moduleId))}
-              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary transition-all"
+              onClick={() => setActionsOpen((o) => !o)}
+              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary active:scale-95 active:bg-secondary active:text-foreground transition-all select-none"
             >
-              <ScanSearch size={14} />
-              Review overlaps
+              Actions
+              <ChevronDown size={14} />
             </button>
-            <button
-              type="button"
-              onClick={handleExportGrades}
-              disabled={exporting}
-              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Download size={14} />
-              {exporting ? 'Exporting…' : 'Export Grades'}
-            </button>
-            {!viewOnly && (
-              <button
-                type="button"
-                onClick={() => router.push(APP_PATHS.moduleManage(moduleId))}
-                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-              >
-                Manage Groups & Students
-              </button>
+            {actionsOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setActionsOpen(false)}
+                />
+                <div className="absolute right-0 mt-1 w-48 rounded-lg border border-border bg-background shadow-xl z-20 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      router.push(APP_PATHS.moduleOverlaps(moduleId));
+                    }}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground rounded-md mx-1 transition-colors group"
+                    style={{ width: 'calc(100% - 8px)' }}
+                  >
+                    <ScanSearch
+                      size={15}
+                      className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0"
+                    />
+                    Review overlaps
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      handleExportGrades();
+                    }}
+                    disabled={exporting}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground rounded-md mx-1 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ width: 'calc(100% - 8px)' }}
+                  >
+                    <Download
+                      size={15}
+                      className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0"
+                    />
+                    {exporting ? 'Exporting…' : 'Export Grades'}
+                  </button>
+                  {!viewOnly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActionsOpen(false);
+                        router.push(APP_PATHS.moduleManage(moduleId));
+                      }}
+                      className="flex items-center gap-3 w-full px-3.5 py-2.5 text-sm font-medium text-foreground hover:bg-secondary hover:text-foreground rounded-md mx-1 transition-colors group"
+                      style={{ width: 'calc(100% - 8px)' }}
+                    >
+                      <Users
+                        size={15}
+                        className="text-muted-foreground group-hover:text-foreground transition-colors shrink-0"
+                      />
+                      Manage students
+                    </button>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -608,35 +558,13 @@ export default function ModulePage() {
           </div>
         </div>
 
-        {/* ── Right: rubric + module book ──────────────────────────────── */}
+        {/* ── Right: rubrics + module book ─────────────────────────────── */}
         <div className="col-span-1 space-y-6">
-          <ModuleFileCard
-            title="Rubric File"
-            icon={FileText}
-            description={
-              <>
-                Attach a rubric so the AI knows the grading criteria for this
-                module. Only{' '}
-                <span className="font-semibold text-foreground">PDF</span> or{' '}
-                <span className="font-semibold text-foreground">Excel</span>{' '}
-                (.xlsx) files are accepted.
-              </>
-            }
-            accept=".pdf,.xlsx"
-            file={rubric}
-            fallbackName="rubric"
-            descriptor={rubricDescriptor}
-            inputRef={rubricInputRef}
-            uploading={uploadingRubric}
-            deleting={deletingRubric}
-            error={rubricError}
-            onFileChange={handleRubricFile}
-            onDelete={handleRubricDelete}
+          <ModuleRubricsPanel
+            moduleId={moduleId}
+            viewOnly={viewOnly}
             docPreview={docPreview}
-            readOnly={viewOnly}
           />
-
-          <ModuleRubricsPanel moduleId={moduleId} />
 
           <ModuleFileCard
             title="Module Book"
@@ -666,46 +594,6 @@ export default function ModulePage() {
       </div>
 
       {/* ── Dialogs ──────────────────────────────────────────────────────── */}
-      <DeleteConfirmDialog
-        open={Boolean(rubricDeleteTarget)}
-        title="Remove Rubric"
-        label={rubricDeleteTarget?.label}
-        message={
-          <>
-            Remove the rubric{' '}
-            <span className="font-semibold text-foreground">
-              {rubricDeleteTarget?.label}
-            </span>{' '}
-            from this module?
-          </>
-        }
-        loading={deletingRubric}
-        confirmLabel="Remove"
-        onConfirm={confirmRubricDelete}
-        onCancel={cancelRubricDelete}
-      />
-
-      <DeleteConfirmDialog
-        open={Boolean(pendingRubricReplace)}
-        title="Replace Rubric"
-        confirmLabel="Replace"
-        message={
-          <>
-            Are you sure you want to replace{' '}
-            <span className="font-semibold text-foreground">
-              {pendingRubricReplace?.oldName}
-            </span>{' '}
-            with{' '}
-            <span className="font-semibold text-foreground">
-              {pendingRubricReplace?.newName}
-            </span>
-            ?
-          </>
-        }
-        onConfirm={handleConfirmRubricReplace}
-        onCancel={() => setPendingRubricReplace(null)}
-      />
-
       <DeleteConfirmDialog
         open={Boolean(moduleBookDeleteTarget)}
         title="Remove Module Book"

@@ -288,10 +288,12 @@ export default function ModulesPage() {
                     >
                       {status.label}
                     </span>
-                    {project.rubric_file ? (
+                    {project.rubric_count > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
                         <FileText size={11} />
-                        Rubric attached
+                        {project.rubric_count === 1
+                          ? 'Rubric attached'
+                          : `${project.rubric_count} rubrics`}
                       </span>
                     ) : (
                       <span className="text-xs text-amber-400">No rubric</span>
