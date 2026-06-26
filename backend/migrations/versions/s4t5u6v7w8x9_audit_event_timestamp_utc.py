@@ -1,7 +1,7 @@
 """audit_event timestamp: TIMESTAMP WITHOUT TIME ZONE -> TIMESTAMPTZ (UTC)
 
-Revision ID: s4t5u6v7w8x9
-Revises: r3s4t5u6v7w8
+Revision ID: s4c5u6v7w8x0
+Revises: s4b5u6v7w8x0
 Create Date: 2026-06-23 00:00:00.000000
 
 """
@@ -9,8 +9,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "s4t5u6v7w8x9"
-down_revision: Union[str, None] = "r3s4t5u6v7w8"
+revision: str = "s4c5u6v7w8x0"
+down_revision: Union[str, None] = "s4b5u6v7w8x0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

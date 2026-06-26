@@ -1,7 +1,7 @@
 """add rubric_scores table for per-rubric grading
 
-Revision ID: u6v7w8x9y0z1
-Revises: t5u6v7w8x9y0
+Revision ID: u6b7v8w9x0y1
+Revises: u6v7w8x9y0z1
 Create Date: 2026-06-22 11:00:00.000000
 
 """
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "u6v7w8x9y0z1"
-down_revision: Union[str, None] = "t5u6v7w8x9y0"
+revision: str = "u6b7v8w9x0y1"
+down_revision: Union[str, None] = "u6v7w8x9y0z1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

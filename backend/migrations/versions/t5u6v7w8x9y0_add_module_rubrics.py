@@ -1,7 +1,7 @@
 """add module_rubrics table for multiple rubrics per module
 
 Revision ID: t5u6v7w8x9y0
-Revises: r3s4t5u6v7w8
+Revises: s4c5u6v7w8x0
 Create Date: 2026-06-22 10:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "t5u6v7w8x9y0"
-down_revision: Union[str, None] = "r3s4t5u6v7w8"
+down_revision: Union[str, None] = "s4c5u6v7w8x0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
