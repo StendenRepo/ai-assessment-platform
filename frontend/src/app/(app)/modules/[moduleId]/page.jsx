@@ -254,7 +254,7 @@ export default function ModulePage() {
             <button
               type="button"
               onClick={() => setActionsOpen((o) => !o)}
-              className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary active:scale-95 active:bg-secondary active:text-foreground transition-all select-none"
+              className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 active:scale-95 transition-all select-none"
             >
               Actions
               <ChevronDown size={14} />

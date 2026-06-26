@@ -55,11 +55,15 @@ function WeightBadge({ rubric, onConfirm }) {
     setValue(rubric.weight != null ? String(rubric.weight) : '');
   }, [rubric.weight]);
 
+  const clamp = (v) => String(Math.min(1, Math.max(0, parseFloat(v) || 0)));
+
   const confirm = async () => {
     if (saving) return;
+    const clamped = clamp(value);
+    setValue(clamped);
     setSaving(true);
     try {
-      await onConfirm(value);
+      await onConfirm(clamped);
       setOpen(false);
     } finally {
       setSaving(false);
@@ -90,7 +94,15 @@ function WeightBadge({ rubric, onConfirm }) {
               max="1"
               step="0.05"
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === '' || v === '0.' || v === '0.0') {
+                  setValue(v);
+                  return;
+                }
+                const n = parseFloat(v);
+                if (!isNaN(n)) setValue(String(Math.min(1, Math.max(0, n))));
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') confirm();
                 if (e.key === 'Escape') setOpen(false);
