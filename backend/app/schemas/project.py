@@ -72,6 +72,7 @@ class StudentOut(BaseModel):
     project_id: Optional[str] = None  # populated in module context to identify the student's group
     github_repo_url: Optional[str] = None
     github_branch: Optional[str] = None
+    has_evidence: bool = False  # True when the student has at least one uploaded evidence file
 
     model_config = {"from_attributes": True}
 

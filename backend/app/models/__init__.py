@@ -8,10 +8,15 @@ from app.models.enums import (
     AssessmentStatus as AssessmentStatus,
     OverlapType as OverlapType,
     AuditSource as AuditSource,
+    Theme as Theme,
+    DateFormat as DateFormat,
+    Language as Language,
 )
 from app.models.department import Department as Department
 from app.models.teacher import Teacher as Teacher
 from app.models.module import Module as Module
+from app.models.module_rubric import ModuleRubric as ModuleRubric
+from app.models.rubric_score import RubricScore as RubricScore
 from app.models.project import Project as Project
 from app.models.student import Student as Student
 from app.models.evidence import Evidence as Evidence
@@ -23,4 +28,10 @@ from app.models.file_record import FileRecord as FileRecord
 from app.models.evidence_match import EvidenceMatch as EvidenceMatch
 from app.models.generation_run import GenerationRun as GenerationRun
 from app.models.notification import Notification as Notification
+from app.models.notification_preference import (
+    NotificationPreference as NotificationPreference,
+)
+from app.models.teacher_preference import (
+    TeacherPreference as TeacherPreference,
+)
 from app.models.recording import Recording as Recording

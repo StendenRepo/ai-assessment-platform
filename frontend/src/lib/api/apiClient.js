@@ -7,6 +7,28 @@ function hasContentType(headers) {
   return Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
 }
 
+/** Turn FastAPI error payloads into a readable string. */
+export function formatApiErrorDetail(detail, fallbackStatus) {
+  if (!detail) return `Request failed (${fallbackStatus})`;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') {
+          const loc = Array.isArray(item.loc) ? item.loc.join('.') : '';
+          const msg = item.msg || item.message || JSON.stringify(item);
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return String(item);
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object') {
+    return detail.msg || detail.message || JSON.stringify(detail);
+  }
+  return String(detail);
+}
 /**
  * Shared authenticated request helper.
  */

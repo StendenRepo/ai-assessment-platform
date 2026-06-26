@@ -60,7 +60,6 @@ export default function RecordingPanel({
   useEffect(() => {
     if (!backendEnabled) return;
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh().catch((e) => active && setError(e.message));
     return () => {
       active = false;

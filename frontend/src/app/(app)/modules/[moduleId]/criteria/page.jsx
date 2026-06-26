@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Upload } from 'lucide-react';
-import { mockCriteria } from '@/lib/mockData';
 import { APP_PATHS } from '@/lib/routes';
 
 const CATEGORIES = ['Technical', 'Communication', 'Process', 'Collaboration'];
@@ -21,7 +20,7 @@ const inputClass =
 
 export default function CriteriaPage() {
   const router = useRouter();
-  const [criteria, setCriteria] = useState(mockCriteria);
+  const [criteria, setCriteria] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: '',

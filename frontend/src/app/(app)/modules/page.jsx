@@ -13,14 +13,25 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { listModules, renameModule, deleteModule } from '@/lib/api/modulesApi';
+import {
+  listModules,
+  renameModule,
+  deleteModule,
+  updateModuleStatus,
+} from '@/lib/api/modulesApi';
 import { ModuleDeleteConfirmDialog } from '@/lib/hooks/useDeleteConfirm';
 import { APP_PATHS } from '@/lib/routes';
+import { useAuth } from '@/context/AuthContext';
+import { isModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 
 const statusConfig = {
   active: {
     label: 'Active',
     classes: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
+  },
+  inactive: {
+    label: 'Inactive',
+    classes: 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20',
   },
   completed: {
     label: 'Completed',
@@ -32,12 +43,17 @@ const statusConfig = {
   },
 };
 
+// Order shown in the per-module status selector. Statuses are fully
+// reversible, so every module can move to any of these.
+const STATUS_OPTIONS = ['active', 'inactive', 'completed', 'archived'];
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
 export default function ModulesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -53,6 +69,9 @@ export default function ModulesPage() {
   // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Status-change state
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -106,6 +125,23 @@ export default function ModulesPage() {
       setError(err.message);
     } finally {
       setRenameLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (moduleId, newStatus) => {
+    setStatusUpdatingId(moduleId);
+    setError('');
+    try {
+      const updated = await updateModuleStatus(moduleId, newStatus);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === moduleId ? { ...p, status: updated.status } : p
+        )
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
@@ -175,6 +211,7 @@ export default function ModulesPage() {
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
             <option value="completed">Completed</option>
             <option value="archived">Archived</option>
           </select>
@@ -215,6 +252,7 @@ export default function ModulesPage() {
               classes: 'bg-secondary text-muted-foreground ring-1 ring-border',
             };
             const isRenaming = renamingId === project.id;
+            const isViewOnly = isModuleViewOnly(user, project.teacher_id);
 
             return (
               <div
@@ -250,10 +288,12 @@ export default function ModulesPage() {
                     >
                       {status.label}
                     </span>
-                    {project.rubric_file ? (
+                    {project.rubric_count > 0 ? (
                       <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
                         <FileText size={11} />
-                        Rubric attached
+                        {project.rubric_count === 1
+                          ? 'Rubric attached'
+                          : `${project.rubric_count} rubrics`}
                       </span>
                     ) : (
                       <span className="text-xs text-amber-400">No rubric</span>
@@ -291,48 +331,67 @@ export default function ModulesPage() {
                   </div>
                 </div>
 
-                {/* Action buttons */}
-                <div
-                  className="flex items-center gap-1 shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {isRenaming ? (
-                    <>
-                      <button
-                        onClick={(e) => confirmRename(e, project.id)}
-                        disabled={renameLoading}
-                        title="Save name"
-                        className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                {/* Action buttons — hidden in view-only mode */}
+                {!isViewOnly && (
+                  <div
+                    className="flex items-center gap-1 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {!isRenaming && (
+                      <select
+                        value={project.status}
+                        onChange={(e) =>
+                          handleStatusChange(project.id, e.target.value)
+                        }
+                        disabled={statusUpdatingId === project.id}
+                        title="Change module status"
+                        className="bg-secondary border border-border rounded-md px-2 py-1 mr-1 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all cursor-pointer disabled:opacity-50"
                       >
-                        <Check size={14} />
-                      </button>
-                      <button
-                        onClick={cancelRename}
-                        title="Cancel"
-                        className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={(e) => startRename(e, project)}
-                        title="Rename module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        onClick={(e) => requestDelete(e, project)}
-                        title="Delete module"
-                        className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </>
-                  )}
-                </div>
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {statusConfig[s]?.label ?? s}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {isRenaming ? (
+                      <>
+                        <button
+                          onClick={(e) => confirmRename(e, project.id)}
+                          disabled={renameLoading}
+                          title="Save name"
+                          className="p-1.5 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          onClick={cancelRename}
+                          title="Cancel"
+                          className="p-1.5 rounded text-muted-foreground hover:bg-secondary transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={(e) => startRename(e, project)}
+                          title="Rename module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          onClick={(e) => requestDelete(e, project)}
+                          title="Delete module"
+                          className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {!isRenaming && (
                   <ArrowRight

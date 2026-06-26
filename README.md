@@ -2,9 +2,7 @@
 
 An on-premise AI-assisted platform for assessing student work in module-based education.
 
-## Project Overview
-
-This project is being developed as part of an Informatica HBO project at NHL Stenden.
+## Overview
 
 The platform supports teachers and assessors by:
 
@@ -15,434 +13,154 @@ The platform supports teachers and assessors by:
 - Using local AI support for evidence analysis and overlap detection
 - Improving consistency and speed of individual contribution assessment
 
-The project is currently in the prototype and development phase.
+All AI inference runs on-premise inside Docker — nothing is sent to external APIs.
+
+> For contributor and developer documentation see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
-
-# Tech Stack
-
-## Frontend
-
-- [Next.js 16](https://nextjs.org/) (App Router)
-- [React 19](https://react.dev/)
-- JavaScript (JSX)
-- [Tailwind CSS 4](https://tailwindcss.com/)
-- [lucide-react](https://lucide.dev/) — icon library
-- [ESLint 9](https://eslint.org/) — linting
-- [Prettier 3](https://prettier.io/) — code formatting
-- [Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) — pre-commit hooks
-
-## Backend
-
-- [Python](https://www.python.org/)
-- [FastAPI](https://fastapi.tiangolo.com/) — web framework
-- [Pydantic v2](https://docs.pydantic.dev/) — data validation
-- [SQLAlchemy 2](https://www.sqlalchemy.org/) — ORM
-- [Alembic](https://alembic.sqlalchemy.org/) — database migrations
-- [Uvicorn](https://www.uvicorn.org/) — ASGI server
-- [psycopg2-binary](https://www.psycopg.org/) — PostgreSQL driver
-- [python-dotenv](https://github.com/theskumar/python-dotenv) — environment variables
-- [PostgreSQL 16](https://www.postgresql.org/)
-
-## Infrastructure
-
-- [Docker](https://www.docker.com/) & Docker Compose
-- [Ollama](https://ollama.com/) for local LLM inference
-- STT microservice (faster-whisper based) for transcription
-- pgAdmin 4 (development only)
-
-## Version Control
-
-- Git
-- GitHub
-
----
-
-# Project Structure
-
-```txt
-ai-assessment-platform/
-│
-├── frontend/                  # Next.js frontend application
-│   ├── src/app/               # App Router pages and layouts
-│   ├── public/                # Static assets
-│   ├── Dockerfile
-│   └── package.json
-│
-├── backend/                   # FastAPI backend application
-│   ├── app/
-│   │   ├── config.py          # Environment-based settings
-│   │   ├── database.py        # SQLAlchemy engine & session
-│   │   ├── main.py            # FastAPI app entry point
-│   │   ├── api/               # API dependencies, routers, endpoints
-│   │   ├── models/            # SQLAlchemy models
-│   │   └── services/          # Business logic
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── stt/                       # Speech-to-text service
-│   ├── app.py
-│   └── Dockerfile
-│
-├── .env.example               # Environment variable template
-├── docker-compose.yml         # Production stack
-├── docker-compose.dev.yml     # Development overrides (pgAdmin, hot-reload)
-└── README.md
-```
-
----
-
-# Getting Started
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- Git
+Before you begin, install the following on the host machine:
+
+| Requirement | Notes |
+| ----------- | ----- |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Includes Docker Compose |
+| Git | For cloning the repository |
+
+No other local dependencies (Node, Python, etc.) are required — everything runs inside Docker.
 
 ---
 
 ## Installation
 
-Clone the repository:
+### 1. Clone the repository
 
 ```bash
 git clone <repository-url>
 cd ai-assessment-platform
 ```
 
-Copy the environment template:
+### 2. Create your environment file
 
 ```bash
 cp .env.example .env
 ```
 
-The default values in `.env` work out of the box with Docker Compose. Edit the file if you need custom credentials.
+The defaults in `.env` work out of the box with Docker Compose. You do not need to change anything for a standard installation. Edit the file only if you need custom database credentials or ports.
 
----
+**Optional — GPU acceleration for Ollama:**
+Set `USE_GPU=1` in `.env` to enable the NVIDIA GPU override. Leave it blank (default) for CPU-only mode.
 
-# Running the Project
-
-## Development
-
-Starts all services with hot-reload for frontend and backend, plus local AI services and pgAdmin:
-
-```bash
-docker compose up -d --build
-```
-
-To enable the NVIDIA GPU override for Ollama, set `USE_GPU=1` in [/.env](.env). Leave it blank for CPU-only mode.
-
-Development uploads, recordings, and exports are stored in [backend/data](backend/data) on the host so files created by the Dockerized backend are visible locally.
-
-| Service  | URL                    |
-| -------- | ---------------------- |
-| Frontend | http://localhost:3000  |
-| Backend  | http://localhost:8000  |
-| STT API  | http://localhost:9000  |
-| Ollama   | http://localhost:11434 |
-| pgAdmin  | http://localhost:5050  |
-
-**pgAdmin login:** `admin@admin.com` / `admin`
-Connect to the database using host `postgres`, port `5432`, database `ai_assessment`, user `postgres`, password `postgres`.
-
-### Regenerate Dev Seed SQLite DB
-
-To regenerate the local development seed database (`backend/database/database.db`) with realistic test records (excluding file/evidence uploads):
-
-```bash
-./scripts/reseed-dev-db.sh
-```
-
-### Import Dev Seed into Postgres
-
-To copy the SQLite seed database into the running Postgres database used by pgAdmin:
-
-```bash
-./scripts/import-db-to-postgres.sh
-```
-
-## Production
+### 3. Build and start all services
 
 ```bash
 docker compose -f docker-compose.yml up -d --build
 ```
 
----
+This builds and starts the frontend, backend, database, Ollama, AI detector, and STT services. The first build takes several minutes.
 
-# API Endpoints
+The backend automatically applies database migrations on startup — no manual migration step is needed.
 
-Base API URL:
+### 4. Pull the AI language models
 
-- http://localhost:8000/api/v1
-
-Core route groups:
-
-- Health: /health
-- Auth: /auth
-- Admin: /admin
-- Modules: /modules
-- Projects: /projects
-- Students: /students
-- Evidence: /evidence
-- Recordings: /recordings
-
-Useful health checks:
-
-- Backend health: http://localhost:8000/api/v1/health
-- Ollama health: http://localhost:8000/api/v1/health/ollama
-
-For interactive docs while running locally:
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
----
-
-# Features
-
-## Current Features
-
-- Role-based authentication and profile endpoint
-- Module and student management APIs
-- Evidence upload, listing, content readback, and supported types endpoint
-- Recording workflow with consent, transcription, reminders, extension limits, and auto-purge
-- Audit events for sensitive operations
-- Overlap detection endpoints and warning flow
-- Frontend dashboard, settings, reports, and module workflows
-
-## Planned Features
-
-- Additional reporting and export options
-- Expanded AI review and evidence matching quality
-- UX polish and deeper workflow integration across module pages
-
----
-
-# Development
-
-## Recommended VS Code Extensions
-
-- ESLint
-- Tailwind CSS IntelliSense
-- Prettier
-- Error Lens
-
----
-
-# Git Workflow
-
-Recommended workflow:
+Container images and model weights are separate. After the `ollama` service is running, pull all configured models:
 
 ```bash
-git checkout -b feature/feature-name
+docker compose -f docker-compose.yml run --rm ollama-init
 ```
 
-Commit changes:
+This pulls the general, assessment, and vision models (~10 GB total on a fresh install). This step is only needed once; weights are stored in the `ollama_data` Docker volume and reused on subsequent starts.
+
+### 5. Wait for the AI detector to be ready
+
+The AI-text classifier (`ai-detector`) downloads its model from Hugging Face on first boot (~1–2 GB). Check when it is ready:
 
 ```bash
-git add .
-git commit -m "Add feature"
+curl http://localhost:9001/health
 ```
 
-Push branch:
+On a fresh install this can take up to 3 minutes. Subsequent starts use the cached `ai_detector_cache` volume and are nearly instant.
+
+### 6. Verify the stack
 
 ```bash
-git push origin feature/feature-name
+curl http://localhost:8000/api/v1/health
+curl http://localhost:8000/api/v1/health/ollama
+curl http://localhost:9001/health
 ```
 
----
-
-# CI/CD & OTAP
-
-This project uses GitHub Actions for continuous integration and an OTAP pipeline. All workflows are located in `.github/workflows/`.
-
-## Workflows
-
-### `ci.yml` — Continuous Integration
-
-Runs on **every push** and **every pull request** (all branches).
-
-| Job            | What it does                                                   |
-| -------------- | -------------------------------------------------------------- |
-| Frontend build | `npm ci` → `npm run build`                                     |
-| Backend check  | `pip install -r requirements.txt` → import check on `app.main` |
+All three should return a healthy status before using the platform.
 
 ---
 
-### `otap-develop.yml` — Development (`dev` branch)
+## Accessing the Platform
 
-Runs on push to `dev`.
+Once all services are running and healthy, open the platform in your browser:
 
-1. Runs the CI checks (see above)
-2. Builds the Docker images for backend and frontend (`ai-assessment-backend:dev`, `ai-assessment-frontend:dev`)
-3. Builds the full stack via `docker compose build`
-
----
-
-### `otap-test.yml` — Test (`test` branch)
-
-Runs on push to `test`.
-
-1. Runs the CI checks
-2. Runs all **backend tests** with pytest + coverage (`backend/tests/`)
-3. Runs **frontend tests** if a `test` script is present in `package.json`
+| Service | URL |
+| ------- | --- |
+| **Platform (Frontend)** | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| STT API | http://localhost:9000 |
+| AI Detector | http://localhost:9001 |
+| Ollama | http://localhost:11434 |
 
 ---
 
-### `otap-main.yml` — Production (`main` branch)
-
-Runs on push to `main`.
-
-1. Runs the CI checks
-2. Automatically generates a version tag (`v<year>.<month>.<day>-<short-sha>`)
-3. Generates a changelog based on commits since the last tag
-4. Creates a **GitHub Release** with the changelog and commit information
-
----
-
-## OTAP Branch Strategy
-
-```
-feature/* → dev → test → main
-```
-
-| Branch | OTAP stage  | Workflow            |
-| ------ | ----------- | ------------------- |
-| `dev`  | Development | CI + Docker build   |
-| `test` | Test        | CI + all tests      |
-| `main` | Production  | CI + GitHub Release |
-
----
-
-# Code Formatting
-
-This project uses Prettier for code formatting. To ensure consistent styling:
-
-1. Install dependencies:
-
-    ```bash
-    npm install
-    ```
-
-2. Format code manually:
-
-    ```bash
-    npm run format
-    ```
-
-3. Pre-commit Hook:
-   Prettier is enforced on staged files via a pre-commit hook. Ensure you have Husky installed by running:
-    ```bash
-    npm run prepare
-    ```
-    This sets up the pre-commit hook to format staged files automatically.
-
----
-
-# Environment Variables
-
-Copy `.env.example` to `.env` and adjust as needed:
-
-```env
-DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_assessment
-UPLOAD_DIR=/app/data/uploads
-RECORDING_DIR=/app/data/recordings
-EXPORT_DIR=/app/data/exports
-```
-
-> `.env` is git-ignored. Never commit real credentials — use `.env.example` as the committed template.
-
----
-
-# Testing
-
-## Backend
-
-Tests are located in `backend/tests/` and use pytest with an in-memory SQLite database — no running services required.
-
-### Run with Docker (recommended)
-
-With the dev stack already running:
+## Stopping the Platform
 
 ```bash
-docker exec backend python -m pytest tests/ -v
+docker compose down
 ```
 
-If the stack is not running:
+This stops all containers. Your database and uploaded files are preserved in Docker volumes and will be available when you start again.
+
+To stop and remove all data (full reset):
 
 ```bash
-docker compose -f docker-compose.dev.yml run --rm backend python -m pytest tests/ -v
-```
-
-With coverage report:
-
-```bash
-docker exec backend python -m pytest tests/ -v --cov=app --cov-report=term-missing
-```
-
-### Run locally (without Docker)
-
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate      # Windows
-# source .venv/bin/activate  # macOS / Linux
-pip install -r requirements.txt
-python -m pytest tests/ -v
+docker compose down -v
 ```
 
 ---
 
-# Database Migration
+## Updating
 
-Run Alembic inside the backend container.
+Pull the latest code and rebuild:
 
-1. Start services:
+```bash
+git pull
+docker compose -f docker-compose.yml up -d --build
+```
 
-    ```bash
-    docker compose up -d --build
-    ```
+Migrations are applied automatically on startup. If new AI models have been added, re-run the model pull step:
 
-2. Create a new migration after model changes:
-
-    ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic revision --autogenerate -m "describe change"
-    ```
-
-3. Upgrade to the latest revision:
-
-    ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic upgrade head
-    ```
-
-4. Check the current revision:
-
-    ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic current -v
-    ```
-
-5. Downgrade one revision:
-
-    ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic downgrade -1
-    ```
-
-6. View migration history:
-
-    ```bash
-    docker compose -f docker-compose.dev.yml exec backend alembic history --indicate-current
-    ```
-
-Use the same commands with docker-compose.yml for non-dev environments.
+```bash
+docker compose -f docker-compose.yml run --rm ollama-init
+```
 
 ---
 
-# Contributors
+## Troubleshooting
+
+**Services are not starting**
+Run `docker compose logs <service-name>` (e.g. `docker compose logs backend`) to inspect errors.
+
+**Ollama health check fails**
+Wait a moment for the service to finish loading, then retry. On first boot the model pull can take several minutes.
+
+**AI Detector is not ready**
+Check `docker compose logs ai-detector`. The Hugging Face download requires an internet connection on first boot.
+
+**Port conflict**
+If a port is already in use on your machine, edit `.env` to remap the conflicting port, or stop the conflicting process.
+
+---
+
+## Contributors
 
 Developed by HBO Informatica students at NHL Stenden.
 
----
-
-# License
+## License
 
 This project is currently intended for educational purposes.

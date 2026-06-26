@@ -1,6 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 export const inputCls =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -84,7 +85,7 @@ export function SaveButtons({ onCancel, saving }) {
         disabled={saving}
         className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? UI_STATUS_LABELS.saving : 'Save'}
       </button>
     </div>
   );

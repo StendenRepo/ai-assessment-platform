@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   ArrowRight,
   CheckCircle2,
@@ -9,6 +10,7 @@ import {
   Clock,
   Github,
   GitBranch,
+  ScanSearch,
   Users,
 } from 'lucide-react';
 import {
@@ -20,7 +22,10 @@ import {
 } from '@/lib/api/modulesApi';
 import ProjectEvidencePanel from '@/components/evidence/ProjectEvidencePanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { APP_PATHS } from '@/lib/routes';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
@@ -55,7 +60,6 @@ function formatAsDdMmYyyy(value) {
 export default function GroupDetailPage() {
   const { moduleId, groupId } = useParams();
   const router = useRouter();
-
   const [module, setModule] = useState(null);
   const [group, setGroup] = useState(null);
   const [students, setStudents] = useState([]);
@@ -100,6 +104,8 @@ export default function GroupDetailPage() {
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, [moduleId, groupId]);
+
+  const viewOnly = useModuleViewOnly(module?.teacher_id);
 
   if (loading) {
     return (
@@ -220,9 +226,20 @@ export default function GroupDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
+      {viewOnly && <ViewModeBanner />}
+
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{module.name}</p>
+        </div>
+        <Link
+          href={`${APP_PATHS.moduleOverlaps(moduleId)}?group_id=${groupId}`}
+          className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-semibold text-foreground hover:bg-secondary shrink-0"
+        >
+          <ScanSearch size={14} />
+          Group overlaps
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -334,7 +351,7 @@ export default function GroupDetailPage() {
 
         <div className="xl:col-span-1">
           <div className="sticky top-4">
-            {!editing && group.github_repo_url ? (
+            {group.github_repo_url && (!editing || viewOnly) ? (
               <div className="rounded-lg bg-card border border-border p-5 space-y-4">
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
                   <Github size={16} />
@@ -376,30 +393,32 @@ export default function GroupDetailPage() {
                     {repoSuccess}
                   </p>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(true);
-                      setRepoSuccess('');
-                      setRepoError('');
-                    }}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Update Branch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRemove(true)}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {repoSaving ? 'Removing…' : 'Remove'}
-                  </button>
-                </div>
+                {!viewOnly && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(true);
+                        setRepoSuccess('');
+                        setRepoError('');
+                      }}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Update Branch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRemove(true)}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {repoSaving ? UI_STATUS_LABELS.removing : 'Remove'}
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
+            ) : !viewOnly ? (
               <form
                 onSubmit={handleSaveGroupRepo}
                 className="rounded-lg bg-card border border-border p-5 space-y-4"
@@ -456,7 +475,7 @@ export default function GroupDetailPage() {
                     {verifying ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Verifying…
+                        {UI_STATUS_LABELS.verifying}
                       </span>
                     ) : (
                       'Verify Repository'
@@ -496,9 +515,19 @@ export default function GroupDetailPage() {
                   disabled={repoSaving || !verified}
                   className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {repoSaving ? 'Saving…' : 'Save Repo'}
+                  {repoSaving ? UI_STATUS_LABELS.saving : 'Save Repo'}
                 </button>
               </form>
+            ) : (
+              <div className="rounded-lg bg-card border border-border p-5">
+                <h2 className="text-base font-semibold text-foreground flex items-center gap-2 mb-2">
+                  <Github size={16} />
+                  Group GitHub Repo
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  No repository configured.
+                </p>
+              </div>
             )}
           </div>
         </div>

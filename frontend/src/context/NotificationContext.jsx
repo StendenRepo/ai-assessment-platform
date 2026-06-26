@@ -12,34 +12,18 @@ import {
   listNotifications,
   markNotificationRead,
 } from '@/lib/api/notifications';
+import {
+  getNotificationPreferences,
+  updateNotificationPreference,
+} from '@/lib/api/notificationPreferences';
 
 const NotificationContext = createContext(null);
-const AI_NOTIFICATIONS_KEY = 'settings.notifications.aiProcessingComplete';
 
 export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
   const [items, setItems] = useState([]);
-  const [aiProcessingEnabled, setAiProcessingEnabled] = useState(true);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(AI_NOTIFICATIONS_KEY);
-      if (stored != null) {
-        setAiProcessingEnabled(stored === 'true');
-      }
-    } catch {
-      // Ignore storage access issues.
-    }
-  }, []);
-
-  const setAiProcessingNotificationsEnabled = useCallback((enabled) => {
-    const next = Boolean(enabled);
-    setAiProcessingEnabled(next);
-    try {
-      localStorage.setItem(AI_NOTIFICATIONS_KEY, String(next));
-    } catch {
-      // Ignore storage access issues.
-    }
-  }, []);
+  // Per-event-type preferences, persisted server-side (G2-220).
+  // Shape: { [notification_type]: boolean }. Missing key defaults to enabled.
+  const [preferences, setPreferences] = useState({});
 
   const refresh = useCallback(async () => {
     try {
@@ -49,6 +33,40 @@ export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
       // Not authenticated or temporarily offline.
     }
   }, []);
+
+  const refreshPreferences = useCallback(async () => {
+    try {
+      const rows = await getNotificationPreferences();
+      if (Array.isArray(rows)) {
+        setPreferences(
+          rows.reduce((acc, row) => {
+            acc[row.notification_type] = row.enabled;
+            return acc;
+          }, {})
+        );
+      }
+    } catch {
+      // Not authenticated or temporarily offline.
+    }
+  }, []);
+
+  const setPreference = useCallback(
+    async (notificationType, enabled) => {
+      const next = Boolean(enabled);
+      // Optimistic: reflect the toggle immediately, reconcile on response.
+      setPreferences((prev) => ({ ...prev, [notificationType]: next }));
+      try {
+        await updateNotificationPreference(notificationType, next);
+        // Server already filters reads by preference; pull the fresh list so a
+        // re-enabled type's existing notifications reappear.
+        refresh();
+      } catch {
+        // Revert on failure.
+        setPreferences((prev) => ({ ...prev, [notificationType]: !next }));
+      }
+    },
+    [refresh]
+  );
 
   const markAsRead = useCallback(async (notificationId) => {
     try {
@@ -67,23 +85,16 @@ export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
 
   useEffect(() => {
     refresh();
+    refreshPreferences();
     const id = setInterval(refresh, pollIntervalMs);
     return () => clearInterval(id);
-  }, [pollIntervalMs, refresh]);
+  }, [pollIntervalMs, refresh, refreshPreferences]);
 
+  // Cosmetic client-side filter for instant toggle feedback; the server is the
+  // authoritative gate (disabled types are never returned by the API).
   const visibleItems = useMemo(
-    () =>
-      items.filter((n) => {
-        if (
-          (n?.type === 'ai_processing_complete' ||
-            n?.type === 'ai_processing_failed') &&
-          !aiProcessingEnabled
-        ) {
-          return false;
-        }
-        return true;
-      }),
-    [items, aiProcessingEnabled]
+    () => items.filter((n) => preferences[n?.type] !== false),
+    [items, preferences]
   );
 
   const unreadCount = useMemo(
@@ -97,17 +108,10 @@ export function NotificationProvider({ children, pollIntervalMs = 60000 }) {
       unreadCount,
       refresh,
       markAsRead,
-      aiProcessingEnabled,
-      setAiProcessingNotificationsEnabled,
+      preferences,
+      setPreference,
     }),
-    [
-      visibleItems,
-      unreadCount,
-      refresh,
-      markAsRead,
-      aiProcessingEnabled,
-      setAiProcessingNotificationsEnabled,
-    ]
+    [visibleItems, unreadCount, refresh, markAsRead, preferences, setPreference]
   );
 
   return (

@@ -1,9 +1,10 @@
 import io
 import json
+import logging
 import mimetypes
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -13,17 +14,25 @@ from app.api.deps import get_current_teacher, get_db
 from app.config import settings
 from app.models.assessment import Assessment
 from app.models.evidence import Evidence
-from app.models.enums import AuditSource, ProjectStatus, StudentStatus
+from app.models.enums import AuditSource, ModuleStatus, ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
+from app.models.module_rubric import ModuleRubric
 from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
 from app.schemas.module import (
+    AddCoTeacherRequest,
+    BulkMoveResult,
+    BulkMoveStudentsRequest,
+    CoTeacherOut,
     ModuleCreate,
     ModuleGroupCreate,
     ModuleGroupUpdate,
     ModuleOut,
+    ModuleRubricOut,
+    ModuleRubricUpdate,
+    ModuleStatusUpdate,
     RubricFileOut,
     StudentGroupUpdate,
 )
@@ -35,17 +44,25 @@ from app.schemas.project import (
     StudentImportResult,
     StudentOut,
 )
-from app.services import audit_service
+from app.services import audit_service, rubric_scoring_service
 from app.services.module_service import (
     MODULE_BOOK_UPLOAD_DIR,
     RUBRIC_UPLOAD_DIR,
     ModuleService,
     _module_file_path,
 )
-from app.services.overlap_service import OverlapService
+from app.services.overlap.integrity import derive_signal_metrics
+from app.services.overlap.markers import dedupe_student_flag_dicts
+from app.services.overlap.service import (
+    OverlapService,
+    build_highlighted_documents,
+    parse_signal_detail,
+)
+from app.services.progress_trail_pdf import build_progress_trail_pdf
 from app.services.student_import import ImportParseError, parse_student_file
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _DUPLICATE_DETAIL = "A student with that student number already exists in this module"
 _DEFAULT_GROUP_NAME = "Individual Students"
@@ -116,7 +133,14 @@ def _collect_grade_rows(
     rows = []
     for student in students:
         assessment = latest_assessment.get(student.student_number)
-        grade = _assessment_grade(assessment) or "—"
+        combined = (
+            rubric_scoring_service.compute_final_grade(db, assessment=assessment)
+            if assessment
+            else None
+        )
+        grade = (
+            (combined["grade"] if combined else _assessment_grade(assessment)) or "—"
+        )
         ast_status = _assessment_status(assessment)
         group_pid = student_project_map.get(student.student_number)
         group_name = project_name_by_id.get(group_pid, "—") if group_pid else "—"
@@ -136,6 +160,7 @@ def _student_to_out(
     assessment_status: str = "not-started",
     grade: Optional[str] = None,
     project_id: Optional[str] = None,
+    has_evidence: bool = False,
 ) -> StudentOut:
     return StudentOut(
         id=s.student_number,
@@ -148,6 +173,7 @@ def _student_to_out(
         assessment_status=assessment_status,
         grade=grade,
         project_id=project_id,
+        has_evidence=has_evidence,
     )
 
 
@@ -185,8 +211,10 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
     module_book = None
     if m.module_book_id:
         module_book = db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
+    rubric_count = len(m.rubrics) if hasattr(m, "rubrics") else 0
     return ModuleOut(
         id=str(m.id),
+        teacher_id=str(m.teacher_id),
         name=m.name,
         academic_year=m.academic_year,
         deadline=m.deadline,
@@ -196,13 +224,23 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         student_count=student_count,
         rubric_file=_rubric_file_out(rubric),
         module_book_file=_rubric_file_out(module_book),
+        rubric_count=rubric_count,
     )
 
 
 def _visible_modules_query(db: Session, teacher: Teacher):
+    from app.models.module import module_teachers
     if teacher.is_admin:
         return db.query(Module)
-    return db.query(Module).filter(Module.teacher_id == teacher.id)
+    # Owner OR co-teacher
+    return db.query(Module).filter(
+        (Module.teacher_id == teacher.id) |
+        Module.id.in_(
+            db.query(module_teachers.c.module_id).filter(
+                module_teachers.c.teacher_id == teacher.id
+            )
+        )
+    )
 
 
 def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) -> Module:
@@ -210,6 +248,15 @@ def _get_visible_module_or_404(db: Session, module_id: str, teacher: Teacher) ->
     if not module:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
     return module
+
+
+def _assert_module_owner_or_403(module: Module, teacher: Teacher) -> None:
+    """Raise 403 when an admin tries to mutate a module they don't own."""
+    if teacher.is_admin and str(module.teacher_id) != str(teacher.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrators cannot modify modules owned by other teachers",
+        )
 
 
 def _module_project_ids(db: Session, module_id: str) -> list[str]:
@@ -250,7 +297,31 @@ def _build_student_project_map(db: Session, project_ids: list) -> dict:
     return {row.student_id: row.project_id for row in rows}
 
 
-def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> OverlapSignalOut:
+def _signal_to_out(
+    signal,
+    student_names: dict,
+    evidence_names: dict,
+    *,
+    db: Session | None = None,
+    include_documents: bool = False,
+) -> OverlapSignalOut:
+    detail = parse_signal_detail(signal.snippet)
+    confidence = round(float(signal.confidence or 0.0), 2)
+    status = detail.get("status")
+    if not status:
+        status = "confirmed" if confidence >= 0.68 else "possible"
+    integrity_type = detail.get("integrity_type") or "student_plagiarism"
+    if integrity_type == "ai":
+        view_mode = "single"
+    else:
+        view_mode = "side_by_side"
+    document_a = document_b = None
+    effective_flags = dedupe_student_flag_dicts(detail.get("flags") or [])
+    if include_documents and db is not None:
+        document_a, document_b, effective_flags = build_highlighted_documents(
+            db, signal, detail=detail
+        )
+    metrics = derive_signal_metrics(detail, confidence, integrity_type)
     return OverlapSignalOut(
         id=str(signal.id),
         student_a_id=str(signal.student_a_id),
@@ -262,9 +333,33 @@ def _signal_to_out(signal, student_names: dict, evidence_names: dict) -> Overlap
         evidence_b_id=str(signal.evidence_b_id),
         evidence_b_name=evidence_names.get(signal.evidence_b_id, "Unknown evidence"),
         overlap_type=signal.overlap_type.value if signal.overlap_type else "textual",
-        confidence=round(float(signal.confidence or 0.0), 2),
-        snippet=signal.snippet,
+        confidence=confidence,
+        snippet=signal.snippet
+        if not detail
+        else detail.get("passage_a") or signal.snippet,
         detected_at=signal.detected_at,
+        status=status,
+        scope=detail.get("scope"),
+        passage_a=detail.get("passage_a"),
+        passage_b=detail.get("passage_b"),
+        document_a=document_a,
+        document_b=document_b,
+        group_a_id=detail.get("group_a_id"),
+        group_b_id=detail.get("group_b_id"),
+        group_a_name=detail.get("group_a_name"),
+        group_b_name=detail.get("group_b_name"),
+        ai_verified=detail.get("ai_verified"),
+        ai_explanation=detail.get("ai_explanation"),
+        detection_method=detail.get("detection_method"),
+        integrity_type=integrity_type,
+        flags=effective_flags or None,
+        view_mode=view_mode,
+        ai_content_percent=metrics.get("ai_content_percent"),
+        peak_ai_section_percent=metrics.get("peak_ai_section_percent"),
+        student_match_count=metrics.get("student_match_count"),
+        overlap_confidence_percent=metrics.get("overlap_confidence_percent"),
+        detection_confidence_percent=metrics.get("detection_confidence_percent"),
+        metrics_summary=metrics.get("metrics_summary"),
     )
 
 
@@ -337,10 +432,16 @@ def _student_duplicate_in_module(db: Session, project_ids: list[str], student_nu
 
 @router.get("", response_model=List[ModuleOut])
 def list_modules(
+    status_filter: Optional[ModuleStatus] = Query(
+        None, alias="status", description="Filter modules by status"
+    ),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
-    modules = _visible_modules_query(db, current_teacher).order_by(Module.created_at.desc()).all()
+    query = _visible_modules_query(db, current_teacher)
+    if status_filter is not None:
+        query = query.filter(Module.status == status_filter)
+    modules = query.order_by(Module.created_at.desc()).all()
     result = []
     for module in modules:
         project_count, student_count = _module_project_counts(db, module.id)
@@ -403,12 +504,12 @@ def download_student_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     # Add a few more empty rows for user input
@@ -422,7 +523,7 @@ def download_student_template(
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.fill = row_fill
             cell.alignment = center if col_idx == 2 else left
-        
+
         ws.row_dimensions[row_idx].height = 18
 
     ws.freeze_panes = "A2"
@@ -480,10 +581,10 @@ def download_rubric_template(
     # Define styles
     header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
-    
+
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    
+
     thin_border = Border(
         left=Side(style='thin'),
         right=Side(style='thin'),
@@ -535,13 +636,13 @@ def download_rubric_template(
             end_color="F8FAFC" if row_idx % 2 == 0 else "FFFFFF",
             fill_type="solid",
         )
-        
+
         for col_idx, value in enumerate(row_data, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=value)
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Add empty rows for user input (rows 7-15)
@@ -556,7 +657,7 @@ def download_rubric_template(
             cell.fill = row_fill
             cell.alignment = center if col_idx > 1 else left
             cell.border = thin_border
-        
+
         ws.row_dimensions[row_idx].height = 35
 
     # Summary section (row 17)
@@ -578,7 +679,7 @@ def download_rubric_template(
     total_label.font = Font(bold=True, size=10)
     total_label.alignment = Alignment(horizontal="right", vertical="center")
     total_label.border = thin_border
-    
+
     total_cell = ws['F19']
     total_cell.value = "=SUM(F4:F15)"  # Sum of max points
     total_cell.font = Font(bold=True, size=10, color="FFFFFF")
@@ -615,6 +716,9 @@ def download_rubric_template(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("", response_model=ModuleOut, status_code=status.HTTP_201_CREATED)
 def create_module(
     payload: ModuleCreate,
     request: Request,
@@ -671,6 +775,7 @@ def rename_module(
 ):
     """Update the name (and optionally academic_year) of a module."""
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     new_name = payload.get("name", "").strip()
     if not new_name:
         raise HTTPException(
@@ -704,6 +809,63 @@ def rename_module(
     return _module_to_out(module, project_count, student_count, db)
 
 
+@router.patch(
+    "/{module_id}/status",
+    response_model=ModuleOut,
+    summary="Update a module's status",
+)
+def update_module_status(
+    module_id: str,
+    payload: ModuleStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Set a module's lifecycle status (active / inactive / completed / archived).
+
+    Only the module's owner may change its status. Admins can view every module
+    but are not owners, so they receive a 403 here. Every change writes an
+    audit entry in the same transaction as the update (NFR-02). Statuses are
+    fully reversible, so any valid target is accepted.
+    """
+    # 404 for modules the teacher can't see; admins pass this gate but are
+    # blocked by the ownership check below.
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
+
+    old_value = module.status.value if module.status else None
+    new_value = payload.status.value
+
+    # No-op: don't write a spurious audit entry when nothing changes.
+    if old_value == new_value:
+        project_count, student_count = _module_project_counts(db, module.id)
+        return _module_to_out(module, project_count, student_count, db)
+
+    module.status = payload.status
+
+    audit_service.log_action(
+        db,
+        action="module.status_changed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "old_status": old_value,
+            "new_status": new_value,
+            "operation": "status_change",
+            "where": "Modules",
+            "route": "/api/v1/modules/{module_id}/status",
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+    db.commit()
+    db.refresh(module)
+    project_count, student_count = _module_project_counts(db, module.id)
+    return _module_to_out(module, project_count, student_count, db)
+
+
 @router.delete("/{module_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a module")
 def delete_module(
     module_id: str,
@@ -720,6 +882,7 @@ def delete_module(
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     module_name = module.name  # Capture name before deletion
     project_ids = _module_project_ids(db, module.id)
 
@@ -833,6 +996,7 @@ def upload_rubric(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_rubric = (
         db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
         if module_before.rubric_file_id
@@ -882,6 +1046,7 @@ def delete_rubric(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_rubric = (
         db.query(FileRecord).filter(FileRecord.id == module_before.rubric_file_id).first()
         if module_before.rubric_file_id
@@ -915,6 +1080,120 @@ def delete_rubric(
 
 
 # ---------------------------------------------------------------------------
+# Multiple rubrics per module (G2-211)
+# ---------------------------------------------------------------------------
+
+def _rubric_entry_out(rubric) -> ModuleRubricOut:
+    return ModuleRubricOut(
+        id=str(rubric.id),
+        name=rubric.name,
+        weight=rubric.weight,
+        position=rubric.position,
+        file_id=str(rubric.file_id),
+        file_name=rubric.file.file_name if rubric.file else None,
+        file_type=rubric.file.file_type if rubric.file else None,
+        size_bytes=rubric.file.size_bytes if rubric.file else None,
+        uploaded_at=rubric.file.uploaded_at if rubric.file else None,
+    )
+
+
+@router.get("/{module_id}/rubrics", response_model=List[ModuleRubricOut])
+def list_rubrics(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubrics = ModuleService.list_rubrics(
+        module_id, current_teacher.id, db, is_admin=current_teacher.is_admin
+    )
+    return [_rubric_entry_out(r) for r in rubrics]
+
+
+@router.post("/{module_id}/rubrics", response_model=ModuleRubricOut, status_code=status.HTTP_201_CREATED)
+def add_rubric(
+    module_id: str,
+    file: UploadFile = File(...),
+    name: Optional[str] = None,
+    weight: Optional[float] = None,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubric = ModuleService.add_rubric(
+        module_id,
+        file,
+        current_teacher.id,
+        db,
+        name=name,
+        weight=weight,
+        is_admin=current_teacher.is_admin,
+    )
+    return _rubric_entry_out(rubric)
+
+
+@router.patch("/{module_id}/rubrics/{rubric_id}", response_model=ModuleRubricOut)
+def update_rubric(
+    module_id: str,
+    rubric_id: str,
+    payload: ModuleRubricUpdate,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    rubric = ModuleService.update_rubric(
+        module_id,
+        rubric_id,
+        current_teacher.id,
+        db,
+        name=payload.name,
+        weight=payload.weight,
+        is_admin=current_teacher.is_admin,
+    )
+    return _rubric_entry_out(rubric)
+
+
+@router.delete(
+    "/{module_id}/rubrics/{rubric_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_rubric_entry(
+    module_id: str,
+    rubric_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    ModuleService.delete_rubric_entry(
+        module_id, rubric_id, current_teacher.id, db, is_admin=current_teacher.is_admin
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{module_id}/rubrics/{rubric_id}/file", summary="View or download an individual rubric file")
+def get_rubric_entry_file(
+    module_id: str,
+    rubric_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    rubric = (
+        db.query(ModuleRubric)
+        .filter(ModuleRubric.id == rubric_id, ModuleRubric.module_id == module.id)
+        .first()
+    )
+    if not rubric:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rubric not found")
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=rubric.file_id,
+        base_dir=RUBRIC_UPLOAD_DIR,
+        kind="rubric",
+        missing_detail="Rubric file not found on disk.",
+        request=request,
+        teacher=current_teacher,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Module book upload
 # ---------------------------------------------------------------------------
 
@@ -928,6 +1207,7 @@ def upload_module_book(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_module_book = (
         db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
         if module_before.module_book_id
@@ -983,6 +1263,7 @@ def delete_module_book(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module_before = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module_before, current_teacher)
     previous_module_book = (
         db.query(FileRecord).filter(FileRecord.id == module_before.module_book_id).first()
         if module_before.module_book_id
@@ -1230,6 +1511,7 @@ def create_module_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = Project(
         module_id=module.id,
         name=payload.name,
@@ -1273,6 +1555,7 @@ def update_module_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     group = (
         db.query(Project)
         .filter(Project.id == group_id, Project.module_id == module.id)
@@ -1384,6 +1667,7 @@ def delete_module_group(
     EVIDENCE_TEXT_DIR = Path(settings.UPLOAD_DIR) / "evidence_text"
 
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     group = (
         db.query(Project)
         .filter(Project.id == group_id, Project.module_id == module.id)
@@ -1506,12 +1790,22 @@ def list_module_students(
             existing = latest_assessment.get(a.student_id)
             if existing is None or a.created_at > existing.created_at:
                 latest_assessment[a.student_id] = a
+
+    # Build a set of student IDs that have at least one evidence file
+    students_with_evidence: set[str] = set()
+    if students:
+        for sid, in db.query(Evidence.student_id).filter(
+            Evidence.student_id.in_([s.student_number for s in students])
+        ).distinct().all():
+            students_with_evidence.add(sid)
+
     return [
         _student_to_out(
             s,
             _assessment_status(latest_assessment.get(s.student_number)),
             _assessment_grade(latest_assessment.get(s.student_number)),
             project_id=str(student_project_map[s.student_number]) if s.student_number in student_project_map else None,
+            has_evidence=s.student_number in students_with_evidence,
         )
         for s in students
     ]
@@ -1526,6 +1820,7 @@ def add_module_student(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = _resolve_group_for_module(db, module, payload.project_id)
 
     if (
@@ -1600,6 +1895,7 @@ def move_student_to_group(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project_ids = _module_project_ids(db, module.id)
 
     student = (
@@ -1757,6 +2053,116 @@ def move_student_to_group(
     return _student_to_out(student, project_id=current_project_id)
 
 
+@router.post(
+    "/{module_id}/students/bulk-move",
+    response_model=BulkMoveResult,
+    summary="Move multiple students to another group in one action",
+)
+def bulk_move_students(
+    module_id: str,
+    payload: BulkMoveStudentsRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    """Move a list of students to a target project group within the same module.
+
+    - Permission: teacher must own the module (or be admin).
+    - All student_ids must belong to this module; unknown IDs are skipped.
+    - The target_project_id must belong to this module.
+    - Duplicate IDs in the request are deduplicated automatically.
+    - GitHub repo/branch of the target group is applied to moved students.
+    """
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    project_ids = _module_project_ids(db, module.id)
+
+    # Validate target group belongs to this module
+    target = (
+        db.query(Project)
+        .filter(Project.id == payload.target_project_id, Project.module_id == module.id)
+        .first()
+    )
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target group not found in this module",
+        )
+
+    # Deduplicate requested student IDs
+    requested_ids = list(dict.fromkeys(payload.student_ids))
+
+    # Fetch students that actually belong to this module
+    students_in_module = (
+        db.query(Student)
+        .join(student_projects, Student.student_number == student_projects.c.student_id)
+        .filter(
+            Student.student_number.in_(requested_ids),
+            student_projects.c.project_id.in_(project_ids),
+        )
+        .all()
+    ) if project_ids else []
+
+    found_ids = {s.student_number for s in students_in_module}
+    skipped_ids = [sid for sid in requested_ids if sid not in found_ids]
+
+    if not students_in_module:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="None of the provided student IDs belong to this module",
+        )
+
+    moved_count = 0
+    for student in students_in_module:
+        # Remove student from all current groups in this module
+        db.execute(
+            student_projects.delete().where(
+                student_projects.c.student_id == student.student_number,
+                student_projects.c.project_id.in_(project_ids),
+            )
+        )
+        # Add to target group
+        db.execute(
+            student_projects.insert().values(
+                student_id=student.student_number,
+                project_id=target.id,
+            )
+        )
+        # Sync GitHub repo/branch from target group
+        if target.github_repo_url is not None:
+            student.github_repo_url = target.github_repo_url
+        if target.github_branch is not None:
+            student.github_branch = target.github_branch
+
+        moved_count += 1
+
+    audit_service.log_action(
+        db,
+        action="students.bulk_moved",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "target_group_id": str(target.id),
+            "target_group_name": target.group_name or target.name,
+            "moved_count": moved_count,
+            "skipped_count": len(skipped_ids),
+            "skipped_ids": skipped_ids,
+            "student_ids": [s.student_number for s in students_in_module],
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+
+    return BulkMoveResult(
+        moved_count=moved_count,
+        skipped_count=len(skipped_ids),
+        skipped_ids=skipped_ids,
+    )
+
+
 @router.post("/{module_id}/students/import", response_model=StudentImportResult)
 async def import_module_students(
     module_id: str,
@@ -1766,6 +2172,7 @@ async def import_module_students(
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
+    _assert_module_owner_or_403(module, current_teacher)
     project = _resolve_group_for_module(db, module, project_id)
 
     contents = await file.read()
@@ -1852,13 +2259,43 @@ async def import_module_students(
 @router.get("/{module_id}/overlap/signals", response_model=List[OverlapSignalOut])
 def list_module_overlap_signals(
     module_id: str,
+    status: Optional[str] = Query(None, description="confirmed or possible"),
+    scope: Optional[str] = Query(None, description="within_group or cross_group"),
+    group_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_teacher: Teacher = Depends(get_current_teacher),
 ):
     module = _get_visible_module_or_404(db, module_id, current_teacher)
-    signals = OverlapService.get_module_signals(db, str(module.id))
+    signals = OverlapService.get_module_signals(
+        db,
+        str(module.id),
+        status=status,
+        scope=scope,
+        group_id=group_id,
+    )
     student_names, evidence_names = _module_signal_context(db, module)
     return [_signal_to_out(signal, student_names, evidence_names) for signal in signals]
+
+
+@router.get("/{module_id}/overlap/signals/{signal_id}", response_model=OverlapSignalOut)
+def get_module_overlap_signal(
+    module_id: str,
+    signal_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    signal = OverlapService.get_signal(db, str(module.id), signal_id)
+    if not signal:
+        raise HTTPException(status_code=404, detail="Overlap signal not found")
+    student_names, evidence_names = _module_signal_context(db, module)
+    return _signal_to_out(
+        signal,
+        student_names,
+        evidence_names,
+        db=db,
+        include_documents=True,
+    )
 
 
 @router.post("/{module_id}/overlap/analyze", response_model=OverlapAnalysisOut)
@@ -2202,6 +2639,20 @@ def export_module_archive(
                     form_bytes = ("\n".join(ast_lines) + "\n").encode("utf-8")
                     entries.append((f"{folder}/assessment.txt", form_bytes))
 
+            try:
+                progress_pdf = build_progress_trail_pdf(
+                    db,
+                    student=student,
+                    assessment=assessment,
+                    module_name=module.name,
+                )
+                entries.append((f"{folder}/progress-trail.pdf", progress_pdf))
+            except Exception:
+                logger.exception(
+                    "Failed to generate progress trail PDF for student %s in module export",
+                    student.student_number,
+                )
+
         # Grades CSV — built from the shared _collect_grade_rows result
         grades_buf = _io.StringIO()
         writer = csv.writer(grades_buf, delimiter=";")
@@ -2232,7 +2683,8 @@ def export_module_archive(
             "module_book/     — Original module book",
             "groups/          — Per-group folders, each containing per-student subfolders",
             "  <group>/students/<student>/evidence/  — Evidence files",
-            "  <group>/students/<student>/assessment.json  — Assessment form",
+            "  <group>/students/<student>/assessment.txt  — Assessment summary",
+            "  <group>/students/<student>/progress-trail.pdf  — Transparency trail",
             "grades.csv       — Grade list for all students",
             "",
             "=" * 60,
@@ -2283,3 +2735,138 @@ def export_module_archive(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Co-teachers
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{module_id}/co-teachers",
+    response_model=List[CoTeacherOut],
+    summary="List co-teachers of a module",
+)
+def list_co_teachers(
+    module_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    return [
+        CoTeacherOut(id=str(t.id), name=t.name, email=t.email)
+        for t in module.co_teachers
+    ]
+
+
+@router.post(
+    "/{module_id}/co-teachers",
+    response_model=CoTeacherOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a co-teacher to a module by email",
+)
+def add_co_teacher(
+    module_id: str,
+    payload: AddCoTeacherRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may add co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can add co-teachers",
+        )
+
+    invitee = db.query(Teacher).filter(Teacher.email == payload.email).first()
+    if not invitee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No teacher account found with that email address",
+        )
+
+    if invitee.id == module.teacher_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The module owner is already a teacher of this module",
+        )
+
+    if any(t.id == invitee.id for t in module.co_teachers):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This teacher is already a co-teacher of this module",
+        )
+
+    module.co_teachers.append(invitee)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_added",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(invitee.id),
+            "co_teacher_name": invitee.name,
+            "co_teacher_email": invitee.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return CoTeacherOut(id=str(invitee.id), name=invitee.name, email=invitee.email)
+
+
+@router.delete(
+    "/{module_id}/co-teachers/{teacher_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a co-teacher from a module",
+)
+def remove_co_teacher(
+    module_id: str,
+    teacher_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+
+    # Only the module owner (or admin) may remove co-teachers
+    if not current_teacher.is_admin and module.teacher_id != current_teacher.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the module owner can remove co-teachers",
+        )
+
+    target = next((t for t in module.co_teachers if str(t.id) == teacher_id), None)
+    if not target:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This teacher is not a co-teacher of this module",
+        )
+
+    module.co_teachers.remove(target)
+
+    audit_service.log_action(
+        db,
+        action="module.co_teacher_removed",
+        teacher_id=current_teacher.id,
+        teacher_name=current_teacher.name,
+        details={
+            "module_id": str(module.id),
+            "module_name": module.name,
+            "co_teacher_id": str(target.id),
+            "co_teacher_name": target.name,
+            "co_teacher_email": target.email,
+        },
+        ip_address=request.client.host if request.client else None,
+        commit=False,
+    )
+
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

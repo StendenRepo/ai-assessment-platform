@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import {
   AlertTriangle,
-  Lightbulb,
-  Activity,
   ChevronDown,
   ChevronRight,
   Shield,
@@ -17,11 +15,6 @@ import {
   Github,
   GitBranch,
 } from 'lucide-react';
-import {
-  mockContributions,
-  mockCriteria,
-  mockAIInsights,
-} from '@/lib/mockData';
 import { authHeaders } from '@/lib/auth';
 import RecordingPanel from '@/components/recording/RecordingPanel';
 import EvidenceListSections from '@/components/evidence/EvidenceListSections';
@@ -29,7 +22,9 @@ import EvidencePreviewDialog from '@/components/evidence/EvidencePreviewDialog';
 import EvidenceUploadPanel from '@/components/evidence/EvidenceUploadPanel';
 import EvidenceMatchingPanel from '@/components/evidence/EvidenceMatchingPanel';
 import SuggestedQuestionsPanel from '@/components/evidence/SuggestedQuestionsPanel';
+import RubricScoresPanel from '@/components/evidence/RubricScoresPanel';
 import DeleteConfirmDialog from '@/components/common/DeleteConfirmDialog';
+import ViewModeBanner from '@/components/common/ViewModeBanner';
 import { useEvidencePreview } from '@/lib/hooks/useEvidencePreview';
 import { useEvidenceUpload } from '@/context/EvidenceUploadContext';
 import { resolveAssessmentForStudent } from '@/lib/api/recording';
@@ -40,19 +35,26 @@ import {
   listStudentEvidence,
 } from '@/lib/api/evidence';
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import {
+  listModuleOverlapSignals,
   listProjectStudents,
   getProject,
   setStudentGithubRepo,
   updateModuleStudent,
   verifyGithubRepo,
 } from '@/lib/api/modulesApi';
+import { APP_PATHS } from '@/lib/routes';
+import { useModuleViewOnly } from '@/lib/hooks/useModuleViewOnly';
+import AssessmentFormPanel from '@/components/assessment/AssessmentFormPanel';
+import FloatingAssessmentChat from '@/components/assessment/FloatingAssessmentChat';
+import TransparencyPanel from '@/components/assessment/TransparencyPanel';
 import EmailDraftModal from '@/components/assessment/EmailDraftModal';
+import { UI_STATUS_LABELS } from '@/lib/uiStatusLabels';
 
 const inputClass =
   'w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all';
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── AI Insights Panel ───────────────────────────────────────────────────────
 
@@ -66,31 +68,88 @@ const insightConfig = {
       low: 'bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/20',
     },
   },
-  suggestion: {
-    icon: Lightbulb,
-    label: 'Suggestion',
-    severityColors: {
-      high: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
-      medium: 'bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20',
-      low: 'bg-secondary text-muted-foreground ring-1 ring-border',
-    },
-  },
-  anomaly: {
-    icon: Activity,
-    label: 'Anomaly',
-    severityColors: {
-      high: 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20',
-      medium: 'bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20',
-      low: 'bg-secondary text-muted-foreground ring-1 ring-border',
-    },
-  },
 };
 
-function AIInsightsPanel({ studentId }) {
-  const insights = mockAIInsights.filter((i) =>
-    i.affectedStudents.includes(studentId)
-  );
+function overlapToInsight(signal, studentId, studentNames = {}) {
+  const integrityType = signal.integrity_type || 'student_plagiarism';
+  const isA = signal.student_a_id === studentId;
+  const otherId = isA ? signal.student_b_id : signal.student_a_id;
+  const otherName =
+    (isA ? signal.student_b_name : signal.student_a_name) ||
+    studentNames[otherId] ||
+    otherId;
+  const severity =
+    signal.status === 'confirmed' && signal.confidence >= 0.7
+      ? 'high'
+      : signal.status === 'confirmed'
+        ? 'medium'
+        : 'low';
+
+  let title = `Possible overlap with ${otherName}`;
+  if (integrityType === 'ai') {
+    title = 'Possible AI-assisted text';
+  } else if (integrityType === 'both') {
+    title = `Possible AI + overlap with ${otherName}`;
+  } else if (integrityType === 'student_plagiarism') {
+    title = `Possible overlap with ${otherName}`;
+  }
+
+  const typeLabel =
+    integrityType === 'ai'
+      ? 'Possible AI-assisted'
+      : integrityType === 'both'
+        ? 'Possible AI + student overlap'
+        : 'Possible student overlap';
+
+  return {
+    id: signal.id,
+    type: 'overlap',
+    title,
+    severity,
+    description:
+      signal.ai_explanation ||
+      signal.passage_a ||
+      signal.snippet ||
+      `${typeLabel} (estimated confidence ${Math.round((signal.confidence || 0) * 100)}%). Manual review recommended.`,
+    sourceFiles: [signal.evidence_a_name, signal.evidence_b_name].filter(
+      (f, i) => f && (integrityType !== 'ai' || i === 0)
+    ),
+    link: null,
+  };
+}
+
+function AIInsightsPanel({ moduleId, studentId }) {
+  const [overlapSignals, setOverlapSignals] = useState([]);
+  const [overlapLoading, setOverlapLoading] = useState(false);
   const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    if (!moduleId || !studentId) return;
+    let cancelled = false;
+    (async () => {
+      setOverlapLoading(true);
+      try {
+        const signals = await listModuleOverlapSignals(moduleId);
+        if (!cancelled) {
+          const forStudent = (signals || []).filter(
+            (s) => s.student_a_id === studentId || s.student_b_id === studentId
+          );
+          setOverlapSignals(forStudent);
+        }
+      } catch {
+        if (!cancelled) setOverlapSignals([]);
+      } finally {
+        if (!cancelled) setOverlapLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [moduleId, studentId]);
+
+  const overlapInsights = overlapSignals.map((s) =>
+    overlapToInsight(s, studentId)
+  );
 
   return (
     <div className="rounded-lg bg-card border border-border overflow-hidden">
@@ -103,7 +162,8 @@ function AIInsightsPanel({ studentId }) {
             AI Insights
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {insights.length} finding{insights.length !== 1 ? 's' : ''}
+            {overlapInsights.length} finding
+            {overlapInsights.length !== 1 ? 's' : ''}
           </div>
         </div>
       </div>
@@ -117,7 +177,11 @@ function AIInsightsPanel({ studentId }) {
           </p>
         </div>
 
-        {insights.length === 0 ? (
+        {overlapLoading ? (
+          <div className="flex justify-center py-4">
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : overlapInsights.length === 0 ? (
           <div className="rounded-lg border border-border p-6 text-center">
             <div className="text-2xl mb-2">✓</div>
             <p className="text-sm font-medium text-foreground">
@@ -128,7 +192,7 @@ function AIInsightsPanel({ studentId }) {
             </p>
           </div>
         ) : (
-          insights.map((insight) => {
+          overlapInsights.map((insight) => {
             const config = insightConfig[insight.type];
             const Icon = config.icon;
             const severityClass = config.severityColors[insight.severity];
@@ -174,7 +238,7 @@ function AIInsightsPanel({ studentId }) {
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       {insight.description}
                     </p>
-                    {insight.sourceFiles.length > 0 && (
+                    {insight.sourceFiles?.length > 0 && (
                       <div>
                         <p className="text-[10px] font-semibold text-foreground mb-1.5 uppercase tracking-wide">
                           Source Files
@@ -190,6 +254,14 @@ function AIInsightsPanel({ studentId }) {
                           ))}
                         </div>
                       </div>
+                    )}
+                    {insight.type === 'overlap' && moduleId && (
+                      <a
+                        href={APP_PATHS.moduleOverlaps(moduleId)}
+                        className="text-[11px] text-primary hover:underline inline-block"
+                      >
+                        View overlap details →
+                      </a>
                     )}
                   </div>
                 )}
@@ -567,30 +639,24 @@ function EvidenceUpload({ studentId }) {
 
 // ─── Student Assessment Page ──────────────────────────────────────────────────
 
-const contributionTypeLabel = {
-  code: 'CODE',
-  documentation: 'DOC',
-  presentation: 'PRES',
-  research: 'RES',
-};
-const contributionTypeColor = {
-  code: 'bg-blue-500/10 text-blue-400',
-  documentation: 'bg-violet-500/10 text-violet-400',
-  presentation: 'bg-amber-500/10 text-amber-400',
-  research: 'bg-emerald-500/10 text-emerald-400',
-};
-
 export default function StudentAssessmentPage() {
   const { moduleId, studentId } = useParams();
   const [student, setStudent] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [currentTab, setCurrentTab] = useState(0);
-  const [expanded, setExpanded] = useState(null);
-  const [scores, setScores] = useState({});
-  const [comments, setComments] = useState({});
   const [assessmentId, setAssessmentId] = useState(null);
   const [moduleName, setModuleName] = useState('');
+  const [moduleTeacherId, setModuleTeacherId] = useState(null);
   const [emailDraftOpen, setEmailDraftOpen] = useState(false);
+  const [draftSnapshot, setDraftSnapshot] = useState(null);
+  const [formKey, setFormKey] = useState(0);
+  const [auditRefresh, setAuditRefresh] = useState(0);
+  const [draftRefreshToken, setDraftRefreshToken] = useState(0);
+  const [highlightedCriteria, setHighlightedCriteria] = useState([]);
+  const chatRef = useRef(null);
+  const pendingDiscussRef = useRef(null);
+  const [discussTrigger, setDiscussTrigger] = useState(0);
+
   const [repoUrl, setRepoUrl] = useState('');
   const [repoBranch, setRepoBranch] = useState('');
   const [branches, setBranches] = useState([]);
@@ -602,28 +668,70 @@ export default function StudentAssessmentPage() {
   const [editing, setEditing] = useState(false);
   const [confirmRepoRemove, setConfirmRepoRemove] = useState(false);
 
+  function handleChatDraftUpdated(draft) {
+    setDraftSnapshot(draft);
+    setDraftRefreshToken((k) => k + 1);
+    setAuditRefresh((k) => k + 1);
+  }
+
+  function handleChatApplied(changes) {
+    const keys = (changes || []).map((c) => c.criterion_key).filter(Boolean);
+    if (keys.length) {
+      setHighlightedCriteria(keys);
+    }
+    setDraftRefreshToken((k) => k + 1);
+    setAuditRefresh((k) => k + 1);
+  }
+
+  function handleDiscussCriterion({ key, name, score }) {
+    setCurrentTab(1);
+    pendingDiscussRef.current = { key, name, score };
+    setDiscussTrigger((t) => t + 1);
+  }
+
+  useEffect(() => {
+    if (currentTab !== 1 || !pendingDiscussRef.current) return;
+    const { key, name, score } = pendingDiscussRef.current;
+    pendingDiscussRef.current = null;
+    requestAnimationFrame(() => {
+      chatRef.current?.focusCriterion(key, name, score);
+    });
+  }, [currentTab, discussTrigger]);
+
   useEffect(() => {
     getProject(moduleId)
-      .then((m) => setModuleName(m?.name || ''))
+      .then((m) => {
+        setModuleName(m?.name || '');
+        setModuleTeacherId(m?.teacher_id ?? null);
+      })
       .catch(() => {});
   }, [moduleId]);
 
   useEffect(() => {
     listProjectStudents(moduleId)
       .then((students) => {
-        const found = students.find((s) => s.id === studentId);
+        const found = students.find(
+          (s) => s.id === studentId || s.student_number === studentId
+        );
         if (found) {
           setStudent(found);
           setRepoUrl(found.github_repo_url || '');
           setRepoBranch(found.github_branch || '');
+
           if (found.github_repo_url) {
             setVerified(true);
             setBranches(found.github_branch ? [found.github_branch] : []);
+          } else {
+            setVerified(false);
+            setBranches([]);
           }
+
           setEditing(!found.github_repo_url);
-        } else setLoadError('Student not found in this module.');
+        } else {
+          setLoadError('Student not found in this module.');
+        }
       })
-      .catch((e) => setLoadError(e.message));
+      .catch((e) => setLoadError(e?.message || 'Failed to load student data'));
   }, [moduleId, studentId]);
 
   const handleVerifyRepo = async () => {
@@ -719,11 +827,22 @@ export default function StudentAssessmentPage() {
     let active = true;
     resolveAssessmentForStudent(studentId)
       .then((s) => active && setAssessmentId(s.assessment_id))
-      .catch((e) => active && setLoadError(e.message));
+      .catch(
+        (e) =>
+          active &&
+          setLoadError(e?.message || 'Failed to resolve assessment for student')
+      );
     return () => {
       active = false;
     };
   }, [studentId]);
+
+  const handleDraftChange = useCallback((draft) => {
+    setDraftSnapshot(draft);
+    setAuditRefresh((k) => k + 1);
+  }, []);
+
+  const viewOnly = useModuleViewOnly(moduleTeacherId);
 
   if (loadError)
     return <div className="text-sm text-red-400 p-4">{loadError}</div>;
@@ -736,20 +855,35 @@ export default function StudentAssessmentPage() {
     );
 
   const overallScore =
-    Object.values(scores).length > 0
-      ? (
-          Object.values(scores).reduce((a, b) => a + b, 0) /
-          Object.values(scores).length
-        ).toFixed(1)
-      : '—';
+    draftSnapshot?.overall_score != null
+      ? Number(draftSnapshot.overall_score).toFixed(1)
+      : student.grade && student.grade !== '—'
+        ? student.grade
+        : '—';
+  const displayGrade =
+    draftSnapshot?.overall_grade?.effective ||
+    (student.assessment_status === 'completed' ? student.grade : null);
 
   return (
     <div className="space-y-6">
+      {viewOnly && <ViewModeBanner />}
+
       {emailDraftOpen && (
         <EmailDraftModal
           student={student}
           moduleName={moduleName}
           onClose={() => setEmailDraftOpen(false)}
+        />
+      )}
+
+      {currentTab === 1 && assessmentId && (
+        <FloatingAssessmentChat
+          ref={chatRef}
+          assessmentId={assessmentId}
+          disabled={draftSnapshot?.locked}
+          canChat={draftSnapshot?.can_chat ?? false}
+          onDraftUpdated={handleChatDraftUpdated}
+          onApplied={handleChatApplied}
         />
       )}
 
@@ -780,11 +914,16 @@ export default function StudentAssessmentPage() {
             </button>
             <div className="text-center border-l border-border pl-6 shrink-0">
               <div className="text-xs text-muted-foreground mb-1">
-                Current Score
+                {displayGrade ? 'Grade' : 'Avg score'}
               </div>
               <div className="text-3xl font-bold text-foreground font-mono">
-                {overallScore}
+                {displayGrade || overallScore}
               </div>
+              {draftSnapshot?.locked && (
+                <div className="text-[10px] text-emerald-400 mt-1 font-medium uppercase tracking-wide">
+                  Finalized
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -818,191 +957,34 @@ export default function StudentAssessmentPage() {
                     moduleId={moduleId}
                   />
 
-                  <div className="space-y-3">
-                    <div className="mb-4">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        Detected Contributions
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        AI-detected contributions linked to supporting evidence
-                      </p>
-                    </div>
-                    {mockContributions.map((contrib) => (
-                      <div
-                        key={contrib.id}
-                        className="rounded-lg border border-border overflow-hidden"
-                      >
-                        <button
-                          onClick={() =>
-                            setExpanded(
-                              expanded === contrib.id ? null : contrib.id
-                            )
-                          }
-                          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left cursor-pointer"
-                        >
-                          <span
-                            className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wide shrink-0 ${contributionTypeColor[contrib.type]}`}
-                          >
-                            {contributionTypeLabel[contrib.type]}
-                          </span>
-                          {expanded === contrib.id ? (
-                            <ChevronDown
-                              size={15}
-                              className="text-muted-foreground shrink-0"
-                            />
-                          ) : (
-                            <ChevronRight
-                              size={15}
-                              className="text-muted-foreground shrink-0"
-                            />
-                          )}
-                        </button>
-                        {expanded === contrib.id && (
-                          <div className="border-t border-border bg-secondary/30 p-5 space-y-4">
-                            <p className="text-sm text-muted-foreground">
-                              {contrib.description}
-                            </p>
-                            <div>
-                              <p className="text-xs font-semibold text-foreground mb-2">
-                                Evidence ({contrib.evidenceFiles.length})
-                              </p>
-                              <div className="space-y-2">
-                                {contrib.evidenceFiles.map((ev) => (
-                                  <div
-                                    key={ev.id}
-                                    className="rounded-md bg-card border border-border p-3"
-                                  >
-                                    <div className="flex items-center justify-between mb-2">
-                                      <span className="text-xs font-semibold text-foreground font-mono">
-                                        {ev.fileName}
-                                      </span>
-                                      <button className="text-xs text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                                        View source →
-                                      </button>
-                                    </div>
-                                    {ev.excerpt && (
-                                      <div className="rounded bg-background border border-border px-3 py-2 text-xs font-mono text-muted-foreground mb-2">
-                                        {ev.excerpt}
-                                      </div>
-                                    )}
-                                    <div className="text-[10px] text-muted-foreground">
-                                      Uploaded{' '}
-                                      {new Date(
-                                        ev.uploadDate
-                                      ).toLocaleDateString('en-US')}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                            {contrib.linkedCriteria.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-foreground mb-2">
-                                  Linked Criteria
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {contrib.linkedCriteria.map((cid) => {
-                                    const c = mockCriteria.find(
-                                      (x) => x.id === cid
-                                    );
-                                    return c ? (
-                                      <span
-                                        key={cid}
-                                        className="rounded-full px-2.5 py-0.5 text-xs bg-primary/10 text-primary ring-1 ring-primary/20"
-                                      >
-                                        {c.name}
-                                      </span>
-                                    ) : null;
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  {!viewOnly && (
+                    <RubricScoresPanel
+                      studentId={studentId}
+                      moduleId={moduleId}
+                    />
+                  )}
 
-                  <EvidenceUpload studentId={studentId} />
+                  {!viewOnly && <EvidenceUpload studentId={studentId} />}
                 </div>
               )}
 
-              {currentTab === 1 && (
-                <div className="space-y-4">
-                  <div className="mb-4">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Assessment Criteria
-                    </h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Enter a score and explanation for each criterion
-                    </p>
-                  </div>
-                  {mockCriteria.map((criterion) => (
-                    <div
-                      key={criterion.id}
-                      className="rounded-lg border border-border p-5"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h4 className="text-sm font-semibold text-foreground">
-                            {criterion.name}
-                          </h4>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {criterion.description}
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full px-2.5 py-0.5 text-xs bg-secondary text-muted-foreground ring-1 ring-border ml-4">
-                          {criterion.category}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                            Score (max {criterion.maxScore})
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={criterion.maxScore}
-                            step="0.5"
-                            value={scores[criterion.id] ?? ''}
-                            onChange={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (!isNaN(v))
-                                setScores((s) => ({ ...s, [criterion.id]: v }));
-                            }}
-                            placeholder="0"
-                            className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
-                          />
-                        </div>
-                        <div className="col-span-3">
-                          <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-                            Explanation
-                          </label>
-                          <textarea
-                            rows={2}
-                            value={comments[criterion.id] ?? ''}
-                            onChange={(e) =>
-                              setComments((c) => ({
-                                ...c,
-                                [criterion.id]: e.target.value,
-                              }))
-                            }
-                            placeholder="Provide your reasoning..."
-                            className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all resize-none"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex gap-3 justify-end pt-2">
-                    <button className="px-4 py-2 rounded-md border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-all cursor-pointer">
-                      Save Draft
-                    </button>
-                    <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors cursor-pointer">
-                      Complete Assessment
-                    </button>
-                  </div>
+              {currentTab === 1 && assessmentId && (
+                <AssessmentFormPanel
+                  key={formKey}
+                  assessmentId={assessmentId}
+                  moduleId={moduleId}
+                  refreshToken={draftRefreshToken}
+                  highlightedCriteria={highlightedCriteria}
+                  onDiscussCriterion={handleDiscussCriterion}
+                  onDraftChange={handleDraftChange}
+                  onFinalized={() => {
+                    setAuditRefresh((k) => k + 1);
+                  }}
+                />
+              )}
+              {currentTab === 1 && !assessmentId && (
+                <div className="text-sm text-muted-foreground py-8 text-center">
+                  Resolving assessment...
                 </div>
               )}
             </div>
@@ -1011,7 +993,7 @@ export default function StudentAssessmentPage() {
 
         <div className="col-span-1 space-y-4">
           <div className="sticky top-4 space-y-4">
-            {!editing && student.github_repo_url ? (
+            {student.github_repo_url && (!editing || viewOnly) ? (
               <div className="rounded-lg bg-card border border-border p-5 space-y-4">
                 <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
                   <Github size={16} />
@@ -1056,30 +1038,32 @@ export default function StudentAssessmentPage() {
                     {repoSuccess}
                   </p>
                 )}
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(true);
-                      setRepoSuccess('');
-                      setRepoError('');
-                    }}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Update Branch
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmRepoRemove(true)}
-                    disabled={repoSaving}
-                    className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {repoSaving ? 'Removing…' : 'Remove'}
-                  </button>
-                </div>
+                {!viewOnly && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditing(true);
+                        setRepoSuccess('');
+                        setRepoError('');
+                      }}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Update Branch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmRepoRemove(true)}
+                      disabled={repoSaving}
+                      className="w-full px-4 py-2 rounded-md border border-destructive/30 text-sm font-semibold text-destructive hover:bg-destructive/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {repoSaving ? UI_STATUS_LABELS.removing : 'Remove'}
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
+            ) : !viewOnly ? (
               <form
                 onSubmit={handleSaveStudentRepo}
                 className="rounded-lg bg-card border border-border p-5 space-y-4"
@@ -1132,7 +1116,7 @@ export default function StudentAssessmentPage() {
                     {verifying ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Verifying…
+                        {UI_STATUS_LABELS.verifying}
                       </span>
                     ) : (
                       'Verify Repository'
@@ -1172,26 +1156,36 @@ export default function StudentAssessmentPage() {
                   disabled={repoSaving || !verified}
                   className="w-full px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {repoSaving ? 'Saving…' : 'Save Repo'}
+                  {repoSaving ? UI_STATUS_LABELS.saving : 'Save Repo'}
                 </button>
               </form>
+            ) : null}
+
+            {!viewOnly && (
+              <DeleteConfirmDialog
+                open={confirmRepoRemove}
+                title="Remove GitHub Repository"
+                message="Are you sure you want to remove this student's GitHub repository and branch?"
+                confirmLabel="Remove"
+                loading={repoSaving}
+                onCancel={() => setConfirmRepoRemove(false)}
+                onConfirm={async () => {
+                  setConfirmRepoRemove(false);
+                  await handleRemoveStudentRepo();
+                }}
+              />
             )}
 
-            <DeleteConfirmDialog
-              open={confirmRepoRemove}
-              title="Remove GitHub Repository"
-              message="Are you sure you want to remove this student's GitHub repository and branch?"
-              confirmLabel="Remove"
-              loading={repoSaving}
-              onCancel={() => setConfirmRepoRemove(false)}
-              onConfirm={async () => {
-                setConfirmRepoRemove(false);
-                await handleRemoveStudentRepo();
-              }}
-            />
-
-            {assessmentId && <RecordingPanel assessmentId={assessmentId} />}
-            <AIInsightsPanel studentId={studentId} />
+            {!viewOnly && assessmentId && (
+              <RecordingPanel assessmentId={assessmentId} />
+            )}
+            {assessmentId && (
+              <TransparencyPanel
+                assessmentId={assessmentId}
+                refreshKey={auditRefresh}
+              />
+            )}
+            <AIInsightsPanel moduleId={moduleId} studentId={studentId} />
           </div>
         </div>
       </div>

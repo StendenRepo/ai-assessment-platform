@@ -1,0 +1,335 @@
+{
+  "summary": {
+    "n": 21,
+    "score_mae": 0.914,
+    "score_rmse": 1.253,
+    "grade_exact_pct": 28.6,
+    "grade_within_one_band_pct": 57.1,
+    "within_tolerance_pct": 85.7,
+    "mean_run_stdev": 0.0,
+    "max_run_stdev": 0.0,
+    "tolerance": 1.5,
+    "mae_by_tier": {
+      "partial": 0.362,
+      "strong": 1.038,
+      "weak": 1.6
+    }
+  },
+  "cases": [
+    {
+      "case_id": "code-quality-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        8.2
+      ],
+      "pred_grade": "B+",
+      "mean_pred": 8.2,
+      "abs_error": 0.8,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[code_review.md]] supports code quality: \"The service layer separates concerns cleanly: each handler is under 25 lines, functions have single responsibilities, and names like calculate_we"
+    },
+    {
+      "case_id": "code-quality-partial",
+      "tier": "partial",
+      "gold_score": 6.0,
+      "gold_grade": "C",
+      "pred_scores": [
+        6.3
+      ],
+      "pred_grade": "C",
+      "mean_pred": 6.3,
+      "abs_error": 0.3,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[code_review.md]] supports code quality: \"Core logic works but several functions exceed 60 lines and mix validation with persistence. Some variable names are unclear (tmp, data2, flag). T"
+    },
+    {
+      "case_id": "code-quality-weak",
+      "tier": "weak",
+      "gold_score": 2.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        5.6
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.6,
+      "abs_error": 3.1,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[code_review.md]] supports code quality: \"A single 400-line file contains all logic. Functions are deeply nested with up to 6 levels of indentation, names are single letters, and the same"
+    },
+    {
+      "case_id": "documentation-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        7.8
+      ],
+      "pred_grade": "B",
+      "mean_pred": 7.8,
+      "abs_error": 0.7,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[README.md]] supports documentation: \"Includes a one-command Docker setup, an architecture diagram, an endpoint reference table, environment-variable documentation, and a troubleshooting "
+    },
+    {
+      "case_id": "documentation-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        6.0
+      ],
+      "pred_grade": "C",
+      "mean_pred": 6.0,
+      "abs_error": 0.5,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[README.md]] supports documentation: \"README explains how to install dependencies and start the dev server, but the architecture section is a TODO, several listed commands are out of date"
+    },
+    {
+      "case_id": "documentation-missing",
+      "tier": "weak",
+      "gold_score": 1.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        1.5
+      ],
+      "pred_grade": "F",
+      "mean_pred": 1.5,
+      "abs_error": 0.0,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "No grounded evidence found for Documentation. No documentation file was uploaded for this student. Manual review recommended."
+    },
+    {
+      "case_id": "testing-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        8.0
+      ],
+      "pred_grade": "B+",
+      "mean_pred": 8.0,
+      "abs_error": 1.0,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[test_report.txt]] supports testing: \"142 tests, 87% line coverage. Includes unit tests for the grading service, integration tests for the API endpoints, and edge cases for empty input, o"
+    },
+    {
+      "case_id": "testing-partial",
+      "tier": "partial",
+      "gold_score": 5.0,
+      "gold_grade": "D",
+      "pred_scores": [
+        5.8
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.8,
+      "abs_error": 0.8,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[test_report.txt]] supports testing: \"23 unit tests covering the happy path of the main service. Coverage is 41%. No integration tests and no edge-case tests for invalid input....\" (retri"
+    },
+    {
+      "case_id": "testing-weak",
+      "tier": "weak",
+      "gold_score": 2.0,
+      "gold_grade": "F",
+      "pred_scores": [
+        5.1
+      ],
+      "pred_grade": "D",
+      "mean_pred": 5.1,
+      "abs_error": 3.1,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[repo_snapshot.txt]] supports testing: \"The tests directory contains a single placeholder file with one assert True statement. Coverage tooling reports 3%....\" (retrieval confidence 44%)."
+    },
+    {
+      "case_id": "collaboration-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        7.1
+      ],
+      "pred_grade": "B-",
+      "mean_pred": 7.1,
+      "abs_error": 1.4,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[git_activity.txt]] supports collaboration: \"Authored 64 commits across 9 weeks, reviewed 38 pull requests, and opened 12 issues. Contributions are spread evenly across the sprint timelin"
+    },
+    {
+      "case_id": "collaboration-partial",
+      "tier": "partial",
+      "gold_score": 5.0,
+      "gold_grade": "D",
+      "pred_scores": [
+        5.5
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.5,
+      "abs_error": 0.5,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[git_activity.txt]] supports collaboration: \"Authored 18 commits, most of them in the final two weeks. Reviewed 3 pull requests. Attendance at standups was irregular according to the retr"
+    },
+    {
+      "case_id": "presentation-strong",
+      "tier": "strong",
+      "gold_score": 8.0,
+      "gold_grade": "B+",
+      "pred_scores": [
+        6.9
+      ],
+      "pred_grade": "C+",
+      "mean_pred": 6.9,
+      "abs_error": 1.1,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[presentation_notes.md]] supports presentation: \"Slides followed a problem-solution-demo-reflection structure. The live demo succeeded on the first attempt. The examiner noted strong hand"
+    },
+    {
+      "case_id": "presentation-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        5.3
+      ],
+      "pred_grade": "D",
+      "mean_pred": 5.3,
+      "abs_error": 0.2,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[presentation_notes.md]] supports presentation: \"Content was present but delivery was hesitant and the structure was hard to follow. The reflection section was rushed....\" (retrieval conf"
+    },
+    {
+      "case_id": "system-analysis-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        7.6
+      ],
+      "pred_grade": "B",
+      "mean_pred": 7.6,
+      "abs_error": 1.4,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[analysis_report.pdf]] supports system analysis: \"Functional and non-functional requirements are derived from three stakeholder interviews, prioritised with MoSCoW, and mapped to a domain"
+    },
+    {
+      "case_id": "system-analysis-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        5.8
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.8,
+      "abs_error": 0.3,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[analysis_report.pdf]] supports system analysis: \"A list of requirements is provided and a single class diagram is included. There is no prioritisation, the diagram is not explained, and "
+    },
+    {
+      "case_id": "programming-principles-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        7.4
+      ],
+      "pred_grade": "B-",
+      "mean_pred": 7.4,
+      "abs_error": 1.1,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[design_doc.md]] supports programming principles: \"The repository pattern abstracts persistence, dependency injection is used for the grading service, and the strategy pattern handles the"
+    },
+    {
+      "case_id": "programming-principles-weak",
+      "tier": "weak",
+      "gold_score": 3.0,
+      "gold_grade": "F",
+      "pred_scores": [
+        4.8
+      ],
+      "pred_grade": "F",
+      "mean_pred": 4.8,
+      "abs_error": 1.8,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[design_doc.md]] supports programming principles: \"All state is held in global variables and logic lives in one procedural script. Classes are not used. The document claims to use the sin"
+    },
+    {
+      "case_id": "development-street-partial",
+      "tier": "partial",
+      "gold_score": 6.0,
+      "gold_grade": "C",
+      "pred_scores": [
+        5.8
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.8,
+      "abs_error": 0.2,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[ci_config.yml]] supports development street: \"A GitHub Actions workflow runs the test suite on push to main. There is no linting stage, no coverage gate, and deployment is manual. Branch"
+    },
+    {
+      "case_id": "development-street-no-evidence",
+      "tier": "weak",
+      "gold_score": 1.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        1.5
+      ],
+      "pred_grade": "F",
+      "mean_pred": 1.5,
+      "abs_error": 0.0,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "No grounded evidence found for Development Street. No CI configuration or pipeline evidence was uploaded. Manual review recommended."
+    },
+    {
+      "case_id": "draft-advice-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        7.7
+      ],
+      "pred_grade": "B",
+      "mean_pred": 7.7,
+      "abs_error": 0.8,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[advice_report.pdf]] supports draft advice report: \"The report opens with a management summary, presents three options with cost-benefit analysis, backs each recommendation with the gathe"
+    },
+    {
+      "case_id": "draft-advice-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        5.6
+      ],
+      "pred_grade": "C-",
+      "mean_pred": 5.6,
+      "abs_error": 0.1,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "Evidence in [[advice_report.pdf]] supports draft advice report: \"The report gives a single recommendation but does not compare alternatives or reference the collected data. Structure is loose and ther"
+    }
+  ]
+}

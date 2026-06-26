@@ -1,7 +1,9 @@
 import uuid
 
+from app.models.audit_event import AuditEvent
 
 LOGIN_URL = "/api/v1/auth/login"
+LOGOUT_URL = "/api/v1/auth/logout"
 ME_URL = "/api/v1/auth/me"
 
 
@@ -51,6 +53,77 @@ class TestLogin:
         client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "password123"})
         db.refresh(teacher)
         assert teacher.last_login is not None
+
+
+class TestLoginAudit:
+    def test_successful_login_creates_audit_event(self, client, teacher, db):
+        client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "password123"})
+        events = db.query(AuditEvent).filter(AuditEvent.action == "auth.login").all()
+        assert len(events) == 1
+        event = events[0]
+        assert str(event.teacher_id) == str(teacher.id)
+        assert event.details_json["email"] == "teacher@test.com"
+        assert event.details_json["role"] == "teacher"
+        assert "password" not in event.details_json
+
+    def test_successful_login_does_not_log_sensitive_fields(self, client, teacher, db):
+        client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "password123"})
+        event = db.query(AuditEvent).filter(AuditEvent.action == "auth.login").first()
+        assert event is not None
+        for forbidden in ("password", "pin", "access_token", "token"):
+            assert forbidden not in event.details_json
+
+    def test_wrong_password_creates_login_failed_audit_event(self, client, teacher, db):
+        client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "wrong"})
+        events = db.query(AuditEvent).filter(AuditEvent.action == "auth.login_failed").all()
+        assert len(events) == 1
+        event = events[0]
+        assert event.details_json["email"] == "teacher@test.com"
+        assert event.details_json["reason"] == "Invalid password"
+        assert "password" not in event.details_json
+
+    def test_unknown_email_creates_login_failed_audit_event(self, client, db):
+        client.post(LOGIN_URL, json={"email": "ghost@test.com", "password": "password123"})
+        events = db.query(AuditEvent).filter(AuditEvent.action == "auth.login_failed").all()
+        assert len(events) == 1
+        event = events[0]
+        assert event.details_json["email"] == "ghost@test.com"
+        assert event.details_json["reason"] == "Unknown user"
+        assert event.teacher_id is None
+
+    def test_login_failed_does_not_log_sensitive_fields(self, client, teacher, db):
+        client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "bad"})
+        event = db.query(AuditEvent).filter(AuditEvent.action == "auth.login_failed").first()
+        assert event is not None
+        for forbidden in ("password", "pin", "access_token", "token"):
+            assert forbidden not in event.details_json
+
+    def test_successful_login_does_not_create_login_failed_event(self, client, teacher, db):
+        client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "password123"})
+        failed = db.query(AuditEvent).filter(AuditEvent.action == "auth.login_failed").all()
+        assert len(failed) == 0
+
+
+class TestLogoutAudit:
+    def _get_token(self, client):
+        res = client.post(LOGIN_URL, json={"email": "teacher@test.com", "password": "password123"})
+        return res.json()["access_token"]
+
+    def test_logout_creates_audit_event(self, client, teacher, db):
+        token = self._get_token(client)
+        res = client.post(LOGOUT_URL, headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 204
+        events = db.query(AuditEvent).filter(AuditEvent.action == "auth.logout").all()
+        assert len(events) == 1
+        event = events[0]
+        assert str(event.teacher_id) == str(teacher.id)
+        assert event.details_json["email"] == "teacher@test.com"
+
+    def test_logout_requires_authentication(self, client, teacher, db):
+        res = client.post(LOGOUT_URL)
+        assert res.status_code == 401
+        events = db.query(AuditEvent).filter(AuditEvent.action == "auth.logout").all()
+        assert len(events) == 0
 
 
 class TestMe:

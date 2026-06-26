@@ -39,23 +39,36 @@ export default function DashboardPage() {
       running = true;
       try {
         const moduleList = await listModules();
-        const studentLists = await Promise.all(
-          moduleList.map((module) => listProjectStudents(module.id))
-        );
-
-        const pendingCount = studentLists.reduce(
-          (sum, students) =>
-            sum +
-            students.filter(
-              (student) => student.assessment_status === 'in-progress'
-            ).length,
-          0
-        );
-
         if (!mounted) return;
         setModules(moduleList);
-        setPendingReviewCount(pendingCount);
         setError('');
+
+        // Fetch student counts separately so modules still display even if this fails
+        try {
+          const studentLists = await Promise.allSettled(
+            moduleList.map((module) => listProjectStudents(module.id))
+          );
+
+          const pendingCount = studentLists.reduce(
+            (sum, result) => {
+              if (result.status === 'fulfilled') {
+                return (
+                  sum +
+                  result.value.filter(
+                    (student) => student.assessment_status === 'in-progress'
+                  ).length
+                );
+              }
+              return sum;
+            },
+            0
+          );
+
+          if (mounted) setPendingReviewCount(pendingCount);
+        } catch (e) {
+          // If student fetch fails, we still have modules displayed
+          if (mounted) setPendingReviewCount(0);
+        }
       } catch (e) {
         if (mounted) setError(e.message);
       } finally {
@@ -181,7 +194,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="rounded-lg bg-card border border-border divide-y divide-border overflow-hidden">
-            {modules.map((module) => {
+            {modules.slice(0, 5).map((module) => {
               const status = statusConfig[module.status] ?? {
                 label: module.status || 'Unknown',
                 classes:

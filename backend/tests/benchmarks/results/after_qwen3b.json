@@ -1,0 +1,356 @@
+{
+  "summary": {
+    "n": 21,
+    "score_mae": 2.119,
+    "score_rmse": 2.598,
+    "grade_exact_pct": 28.6,
+    "grade_within_one_band_pct": 47.6,
+    "within_tolerance_pct": 38.1,
+    "mean_run_stdev": 0.0,
+    "max_run_stdev": 0.0,
+    "tolerance": 1.5,
+    "mae_by_tier": {
+      "partial": 2.625,
+      "strong": 2.375,
+      "weak": 0.9
+    }
+  },
+  "cases": [
+    {
+      "case_id": "code-quality-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        7.0,
+        7.0
+      ],
+      "pred_grade": "B-",
+      "mean_pred": 7.0,
+      "abs_error": 2.0,
+      "grade_distance": 4,
+      "run_stdev": 0.0,
+      "comment": "The code review report indicates that the service layer separates concerns cleanly with each handler under 25 lines and functions having single responsibilities, which aligns with clean-code principle"
+    },
+    {
+      "case_id": "code-quality-partial",
+      "tier": "partial",
+      "gold_score": 6.0,
+      "gold_grade": "C",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 3.0,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "The code review mentions several issues such as functions exceeding 60 lines, unclear variable names, and duplicated date-parsing logic, indicating a lack of readability and maintainability."
+    },
+    {
+      "case_id": "code-quality-weak",
+      "tier": "weak",
+      "gold_score": 2.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        2.0,
+        2.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 2.0,
+      "abs_error": 0.5,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "The code review document contains a single quote describing a 400-line file with deeply nested functions, unclear naming, and repeated database queries without structure or separation of concerns. Thi"
+    },
+    {
+      "case_id": "documentation-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        9.0,
+        9.0
+      ],
+      "pred_grade": "A",
+      "mean_pred": 9.0,
+      "abs_error": 0.5,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "The README includes a one-command Docker setup, an architecture diagram, an endpoint reference table, environment-variable documentation, and a troubleshooting section. A new team member reproduced th"
+    },
+    {
+      "case_id": "documentation-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.5,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "The README explains installation steps but lacks a comprehensive architecture section, contains outdated commands, and no API documentation is provided."
+    },
+    {
+      "case_id": "documentation-missing",
+      "tier": "weak",
+      "gold_score": 1.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        0.0,
+        0.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 0.0,
+      "abs_error": 1.5,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "No documentation file was uploaded for this student."
+    },
+    {
+      "case_id": "testing-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        7.0,
+        7.0
+      ],
+      "pred_grade": "B-",
+      "mean_pred": 7.0,
+      "abs_error": 2.0,
+      "grade_distance": 4,
+      "run_stdev": 0.0,
+      "comment": "Includes unit tests for the grading service, integration tests for API endpoints, and edge cases. However, coverage is only at 87%, which does not meet the 'Excellent' level of above 80%."
+    },
+    {
+      "case_id": "testing-partial",
+      "tier": "partial",
+      "gold_score": 5.0,
+      "gold_grade": "D",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.0,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "The test report indicates only 23 unit tests covering the happy path, with a coverage rate of 41%. No integration tests or edge-case tests for invalid input are mentioned. This demonstrates insufficie"
+    },
+    {
+      "case_id": "testing-weak",
+      "tier": "weak",
+      "gold_score": 2.0,
+      "gold_grade": "F",
+      "pred_scores": [
+        2.0,
+        2.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 2.0,
+      "abs_error": 0.0,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "The tests directory contains a single placeholder file with one assert True statement, indicating no meaningful testing has been performed. Coverage tooling reports 3% coverage, which is insufficient."
+    },
+    {
+      "case_id": "collaboration-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 5.5,
+      "grade_distance": 8,
+      "run_stdev": 0.0,
+      "comment": "The student's contributions are detailed in the git_activity.txt, but they do not specifically address support for teammates or collaboration during team reviews and planning."
+    },
+    {
+      "case_id": "collaboration-partial",
+      "tier": "partial",
+      "gold_score": 5.0,
+      "gold_grade": "D",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.0,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "Authored 18 commits, most of them in the final two weeks. Reviewed 3 pull requests. Attendance at standups was irregular according to the retrospective notes."
+    },
+    {
+      "case_id": "presentation-strong",
+      "tier": "strong",
+      "gold_score": 8.0,
+      "gold_grade": "B+",
+      "pred_scores": [
+        8.0,
+        8.0
+      ],
+      "pred_grade": "B+",
+      "mean_pred": 8.0,
+      "abs_error": 0.0,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "Slides followed a problem-solution-demo-reflection structure, as evidenced in the presentation_notes.md file. The live demo succeeded on the first attempt and strong handling of follow-up questions on"
+    },
+    {
+      "case_id": "presentation-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.5,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "The quote indicates content was present but delivery was hesitant and the structure was hard to follow, suggesting insufficient presentation skills."
+    },
+    {
+      "case_id": "system-analysis-strong",
+      "tier": "strong",
+      "gold_score": 9.0,
+      "gold_grade": "A",
+      "pred_scores": [
+        6.0,
+        6.0
+      ],
+      "pred_grade": "C",
+      "mean_pred": 6.0,
+      "abs_error": 3.0,
+      "grade_distance": 6,
+      "run_stdev": 0.0,
+      "comment": "The quote indicates functional and non-functional requirements are derived from stakeholder interviews, prioritised with MoSCoW, and mapped to a domain model and sequence diagrams. However, the justif"
+    },
+    {
+      "case_id": "system-analysis-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.5,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "The provided analysis report lacks prioritisation, explanation of the class diagram, and justification for design decisions."
+    },
+    {
+      "case_id": "programming-principles-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 5.5,
+      "grade_distance": 8,
+      "run_stdev": 0.0,
+      "comment": "The provided quote discusses design patterns but does not address OOP principles or SOLID, which are required for a score of 7-8.9 or higher."
+    },
+    {
+      "case_id": "programming-principles-weak",
+      "tier": "weak",
+      "gold_score": 3.0,
+      "gold_grade": "F",
+      "pred_scores": [
+        2.0,
+        2.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 2.0,
+      "abs_error": 1.0,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "The provided quote indicates that classes are not used, state is held in global variables, and the singleton pattern is misapplied as a simple global dictionary. This demonstrates insufficient applica"
+    },
+    {
+      "case_id": "development-street-partial",
+      "tier": "partial",
+      "gold_score": 6.0,
+      "gold_grade": "C",
+      "pred_scores": [
+        2.0,
+        2.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 2.0,
+      "abs_error": 4.0,
+      "grade_distance": 3,
+      "run_stdev": 0.0,
+      "comment": "The provided CI/CD configuration only mentions a test suite run on push to main, with no mention of linting, coverage gates, or deployment automation. Branch protection is also not enabled."
+    },
+    {
+      "case_id": "development-street-no-evidence",
+      "tier": "weak",
+      "gold_score": 1.5,
+      "gold_grade": "F",
+      "pred_scores": [
+        0.0,
+        0.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 0.0,
+      "abs_error": 1.5,
+      "grade_distance": 0,
+      "run_stdev": 0.0,
+      "comment": "No CI configuration or pipeline evidence was uploaded, indicating the criterion is not addressed."
+    },
+    {
+      "case_id": "draft-advice-strong",
+      "tier": "strong",
+      "gold_score": 8.5,
+      "gold_grade": "A-",
+      "pred_scores": [
+        8.0,
+        8.0
+      ],
+      "pred_grade": "B+",
+      "mean_pred": 8.0,
+      "abs_error": 0.5,
+      "grade_distance": 1,
+      "run_stdev": 0.0,
+      "comment": "The quote indicates that the report opens with a management summary, presents three options with cost-benefit analysis, backs each recommendation with gathered data, and closes with a clear implementa"
+    },
+    {
+      "case_id": "draft-advice-partial",
+      "tier": "partial",
+      "gold_score": 5.5,
+      "gold_grade": "C-",
+      "pred_scores": [
+        3.0,
+        3.0
+      ],
+      "pred_grade": "F",
+      "mean_pred": 3.0,
+      "abs_error": 2.5,
+      "grade_distance": 2,
+      "run_stdev": 0.0,
+      "comment": "The report gives a single recommendation but does not compare alternatives or reference the collected data, indicating incomplete advice and lack of thoroughness."
+    }
+  ]
+}

@@ -81,6 +81,38 @@ export const updateModuleStudent = (moduleId, studentId, payload) =>
 export const moveStudentToGroup = (moduleId, studentId, projectId) =>
   updateModuleStudent(moduleId, studentId, { project_id: projectId });
 
+/**
+ * Move multiple students to a target group in one request.
+ * @param {string} moduleId
+ * @param {string[]} studentIds  - array of student_number strings
+ * @param {string} targetProjectId
+ */
+export async function listCoTeachers(moduleId) {
+  return request(API_PATHS.moduleCoTeachers(moduleId));
+}
+
+export async function addCoTeacher(moduleId, email) {
+  return request(API_PATHS.moduleCoTeachers(moduleId), {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function removeCoTeacher(moduleId, teacherId) {
+  return request(API_PATHS.moduleCoTeacher(moduleId, teacherId), {
+    method: 'DELETE',
+  });
+}
+
+export const bulkMoveStudents = (moduleId, studentIds, targetProjectId) =>
+  request(API_PATHS.moduleStudentsBulkMove(moduleId), {
+    method: 'POST',
+    body: JSON.stringify({
+      student_ids: studentIds,
+      target_project_id: targetProjectId,
+    }),
+  });
+
 export const setStudentGithubRepo = (moduleId, studentId, githubRepoUrl) =>
   updateModuleStudent(moduleId, studentId, {
     github_repo_url: githubRepoUrl || null,
@@ -168,6 +200,36 @@ export const uploadRubric = (moduleId, file) => {
 export const deleteRubric = (moduleId) =>
   request(API_PATHS.moduleRubric(moduleId), { method: 'DELETE' });
 
+export const listModuleRubrics = (moduleId) =>
+  request(API_PATHS.moduleRubrics(moduleId));
+
+export const addModuleRubric = (moduleId, file, name, weight) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const params = new URLSearchParams();
+  if (name) params.set('name', name);
+  if (weight != null && weight !== '') params.set('weight', String(weight));
+  const query = params.toString();
+  const path = query
+    ? `${API_PATHS.moduleRubrics(moduleId)}?${query}`
+    : API_PATHS.moduleRubrics(moduleId);
+  return request(path, { method: 'POST', body: formData });
+};
+
+export const updateModuleRubric = (moduleId, rubricId, payload) =>
+  request(API_PATHS.moduleRubricEntry(moduleId, rubricId), {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteModuleRubric = (moduleId, rubricId) =>
+  request(API_PATHS.moduleRubricEntry(moduleId, rubricId), {
+    method: 'DELETE',
+  });
+
+export const getModuleRubricFileBlob = (moduleId, rubricId) =>
+  fetchModuleBlob(API_PATHS.moduleRubricEntryFile(moduleId, rubricId));
+
 export const uploadModuleBook = (moduleId, file) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -186,6 +248,12 @@ export const renameModule = (moduleId, name) =>
     body: JSON.stringify({ name }),
   });
 
+export const updateModuleStatus = (moduleId, status) =>
+  request(API_PATHS.moduleStatus(moduleId), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+
 export const deleteModule = (moduleId) =>
   request(API_PATHS.module(moduleId), { method: 'DELETE' });
 
@@ -195,7 +263,11 @@ export const deleteModule = (moduleId) =>
  * @param {string} studentId
  * @param {string} studentName  - used to build the filename client-side
  */
-export async function exportStudentDossier(studentId, studentName = '', format = 'zip') {
+export async function exportStudentDossier(
+  studentId,
+  studentName = '',
+  format = 'zip'
+) {
   const url = `${API_URL}/api/v1${API_PATHS.studentDossierExport(studentId)}?format=${format}`;
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
@@ -221,7 +293,11 @@ export async function exportStudentDossier(studentId, studentName = '', format =
  * @param {string} moduleId
  * @param {string} moduleName  - used to build the filename client-side
  */
-export async function exportModuleArchive(moduleId, moduleName = '', format = 'zip') {
+export async function exportModuleArchive(
+  moduleId,
+  moduleName = '',
+  format = 'zip'
+) {
   const url = `${API_URL}/api/v1${API_PATHS.moduleArchiveExport(moduleId)}?format=${format}`;
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
@@ -246,6 +322,26 @@ export async function exportModuleArchive(moduleId, moduleName = '', format = 'z
  * @param {string} moduleId
  * @param {string} moduleName  - used to build the filename client-side
  */
+export const analyzeModuleOverlap = (moduleId) =>
+  request(API_PATHS.moduleOverlapAnalyze(moduleId), { method: 'POST' });
+
+export const listModuleOverlapSignals = (moduleId, params = {}) => {
+  const sp = new URLSearchParams();
+  if (params.status) sp.set('status', params.status);
+  if (params.scope) sp.set('scope', params.scope);
+  if (params.group_id) sp.set('group_id', params.group_id);
+  const qs = sp.toString();
+  const path = qs
+    ? `${API_PATHS.moduleOverlapSignals(moduleId)}?${qs}`
+    : API_PATHS.moduleOverlapSignals(moduleId);
+  return request(path);
+};
+
+export const getModuleOverlapSignal = (moduleId, signalId) =>
+  request(API_PATHS.moduleOverlapSignal(moduleId, signalId));
+
+export const getModuleOverlapWarning = (moduleId) =>
+  request(API_PATHS.moduleOverlapWarning(moduleId));
 export async function exportGradesExcel(moduleId, moduleName = '') {
   const res = await fetch(
     `${API_URL}/api/v1${API_PATHS.moduleGradesExport(moduleId)}`,
