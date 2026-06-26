@@ -29,6 +29,8 @@ export const API_PATHS = {
   moduleRubrics: (moduleId) => `/modules/${moduleId}/rubrics`,
   moduleRubricEntry: (moduleId, rubricId) =>
     `/modules/${moduleId}/rubrics/${rubricId}`,
+  moduleRubricEntryFile: (moduleId, rubricId) =>
+    `/modules/${moduleId}/rubrics/${rubricId}/file`,
   moduleRubricFile: (moduleId) => `/modules/${moduleId}/rubric/file`,
   moduleRubricContent: (moduleId) => `/modules/${moduleId}/rubric/content`,
   moduleBook: (moduleId) => `/modules/${moduleId}/module-book`,
