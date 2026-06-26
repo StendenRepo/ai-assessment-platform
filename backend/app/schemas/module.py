@@ -52,6 +52,9 @@ class ModuleRubricOut(BaseModel):
     position: int = 0
     file_id: str
     file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    uploaded_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -213,5 +216,6 @@ class ModuleOut(BaseModel):
     student_count: int = 0
     rubric_file: Optional[RubricFileOut] = None
     module_book_file: Optional[RubricFileOut] = None
+    rubric_count: int = 0
 
     model_config = {"from_attributes": True}

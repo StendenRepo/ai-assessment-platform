@@ -227,6 +227,9 @@ export const deleteModuleRubric = (moduleId, rubricId) =>
     method: 'DELETE',
   });
 
+export const getModuleRubricFileBlob = (moduleId, rubricId) =>
+  fetchModuleBlob(API_PATHS.moduleRubricEntryFile(moduleId, rubricId));
+
 export const uploadModuleBook = (moduleId, file) => {
   const formData = new FormData();
   formData.append('file', file);

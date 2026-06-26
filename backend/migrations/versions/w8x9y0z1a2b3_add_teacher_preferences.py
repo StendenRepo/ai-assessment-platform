@@ -20,20 +20,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create enums
-    theme_enum = postgresql.ENUM("light", "dark", name="theme", create_type=True)
-    date_format_enum = postgresql.ENUM(
-        "DD-MM-YYYY", "MM-DD-YYYY", "YYYY-MM-DD", name="dateformat", create_type=True
-    )
-    language_enum = postgresql.ENUM(
-        "en", "nl", "de", name="language", create_type=True
-    )
+    # Create enums explicitly so checkfirst works; create_type=False on the
+    # table columns prevents SQLAlchemy's _on_table_create hook from trying
+    # to create them a second time and failing.
+    postgresql.ENUM("light", "dark", name="theme").create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM("DD-MM-YYYY", "MM-DD-YYYY", "YYYY-MM-DD", name="dateformat").create(op.get_bind(), checkfirst=True)
+    postgresql.ENUM("en", "nl", "de", name="language").create(op.get_bind(), checkfirst=True)
 
-    theme_enum.create(op.get_bind())
-    date_format_enum.create(op.get_bind())
-    language_enum.create(op.get_bind())
+    theme_enum = postgresql.ENUM("light", "dark", name="theme", create_type=False)
+    date_format_enum = postgresql.ENUM("DD-MM-YYYY", "MM-DD-YYYY", "YYYY-MM-DD", name="dateformat", create_type=False)
+    language_enum = postgresql.ENUM("en", "nl", "de", name="language", create_type=False)
 
-    # Create table
     op.create_table(
         "teacher_preferences",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),

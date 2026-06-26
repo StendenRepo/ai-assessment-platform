@@ -17,6 +17,7 @@ from app.models.evidence import Evidence
 from app.models.enums import AuditSource, ModuleStatus, ProjectStatus, StudentStatus
 from app.models.file_record import FileRecord
 from app.models.module import Module
+from app.models.module_rubric import ModuleRubric
 from app.models.project import Project
 from app.models.student import Student, student_projects
 from app.models.teacher import Teacher
@@ -210,6 +211,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
     module_book = None
     if m.module_book_id:
         module_book = db.query(FileRecord).filter(FileRecord.id == m.module_book_id).first()
+    rubric_count = len(m.rubrics) if hasattr(m, "rubrics") else 0
     return ModuleOut(
         id=str(m.id),
         teacher_id=str(m.teacher_id),
@@ -222,6 +224,7 @@ def _module_to_out(m: Module, project_count: int, student_count: int, db: Sessio
         student_count=student_count,
         rubric_file=_rubric_file_out(rubric),
         module_book_file=_rubric_file_out(module_book),
+        rubric_count=rubric_count,
     )
 
 
@@ -1088,6 +1091,9 @@ def _rubric_entry_out(rubric) -> ModuleRubricOut:
         position=rubric.position,
         file_id=str(rubric.file_id),
         file_name=rubric.file.file_name if rubric.file else None,
+        file_type=rubric.file.file_type if rubric.file else None,
+        size_bytes=rubric.file.size_bytes if rubric.file else None,
+        uploaded_at=rubric.file.uploaded_at if rubric.file else None,
     )
 
 
@@ -1157,6 +1163,34 @@ def delete_rubric_entry(
         module_id, rubric_id, current_teacher.id, db, is_admin=current_teacher.is_admin
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{module_id}/rubrics/{rubric_id}/file", summary="View or download an individual rubric file")
+def get_rubric_entry_file(
+    module_id: str,
+    rubric_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_teacher: Teacher = Depends(get_current_teacher),
+):
+    module = _get_visible_module_or_404(db, module_id, current_teacher)
+    rubric = (
+        db.query(ModuleRubric)
+        .filter(ModuleRubric.id == rubric_id, ModuleRubric.module_id == module.id)
+        .first()
+    )
+    if not rubric:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rubric not found")
+    return _serve_module_document(
+        db,
+        module=module,
+        file_id=rubric.file_id,
+        base_dir=RUBRIC_UPLOAD_DIR,
+        kind="rubric",
+        missing_detail="Rubric file not found on disk.",
+        request=request,
+        teacher=current_teacher,
+    )
 
 
 # ---------------------------------------------------------------------------

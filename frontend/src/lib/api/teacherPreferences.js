@@ -1,8 +1,8 @@
-import { apiFetch } from '@/lib/api/apiClient';
+import { apiFetch, apiRequest } from '@/lib/api/apiClient';
 import { API_PATHS } from '@/lib/routes';
 
 export function getTeacherPreferences() {
-  return apiFetch(API_PATHS.teacherPreferences());
+  return apiRequest(API_PATHS.teacherPreferences(), { onUnauthorized: false });
 }
 
 export function updateTeacherPreferences(preferences) {
